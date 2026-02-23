@@ -15,7 +15,6 @@
     html, body { height: 100%; background: #0a1628; color: #e8f5e9; font-family: 'DM Sans', sans-serif; -webkit-tap-highlight-color: transparent; }
     select, input, button { font-family: 'DM Sans', sans-serif; }
     select { -webkit-appearance: none; appearance: none; }
-
     .app { min-height: 100vh; min-height: -webkit-fill-available; display: flex; flex-direction: column; }
     .header { background: linear-gradient(135deg, #1b4332 0%, #0a1628 100%); border-bottom: 1px solid #2d6a4f; padding: 52px 20px 0; padding-top: max(52px, calc(44px + env(safe-area-inset-top))); }
     .header-inner { max-width: 540px; margin: 0 auto; }
@@ -24,17 +23,15 @@
     .header-title { font-size: 22px; font-weight: 700; color: #d8f3dc; }
     .saving { font-size: 10px; color: #52b788; font-family: 'Space Mono', monospace; text-align: right; margin-bottom: 4px; }
     .header-date { font-size: 12px; color: #74c69d; text-align: right; }
-    .nav { display: flex; }
-    .nav-btn { background: none; border: none; cursor: pointer; padding: 10px 18px; font-size: 13px; font-weight: 600; color: #4a7c59; border-bottom: 2px solid transparent; transition: all 0.2s; text-transform: capitalize; }
+    .nav { display: flex; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .nav::-webkit-scrollbar { display: none; }
+    .nav-btn { background: none; border: none; cursor: pointer; padding: 10px 16px; font-size: 13px; font-weight: 600; color: #4a7c59; border-bottom: 2px solid transparent; transition: all 0.2s; white-space: nowrap; flex-shrink: 0; }
     .nav-btn.active { color: #52b788; border-bottom-color: #52b788; }
-
     .content { max-width: 540px; margin: 0 auto; padding: 18px 16px; padding-bottom: max(18px, calc(18px + env(safe-area-inset-bottom))); width: 100%; flex: 1; }
-
     .date-nav { display: flex; gap: 8px; align-items: center; margin-bottom: 18px; }
     .date-nav-btn { background: #112240; border: 1px solid #1b4332; border-radius: 8px; color: #52b788; width: 36px; height: 36px; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .date-nav-btn:disabled { opacity: 0.3; }
     .date-label { flex: 1; text-align: center; font-size: 14px; font-weight: 600; color: #b7e4c7; }
-
     .macro-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
     .macro-card { background: #112240; border: 1px solid #1b4332; border-radius: 12px; padding: 13px 14px; }
     .macro-card.over { border-color: #e63946; }
@@ -48,7 +45,6 @@
     .macro-bar-bg { background: #0a1628; border-radius: 4px; height: 4px; overflow: hidden; }
     .macro-bar { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
     .macro-card-sub { font-family: 'Space Mono', monospace; font-size: 10px; color: #2d6a4f; margin-top: 4px; }
-
     .panel { background: #112240; border: 1px solid #1b4332; border-radius: 14px; padding: 16px; margin-bottom: 18px; }
     .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
     .panel-title { font-family: 'Space Mono', monospace; font-size: 11px; color: #52b788; letter-spacing: 2px; text-transform: uppercase; }
@@ -61,7 +57,6 @@
     .macro-preview { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 12px; }
     .preview-chip { background: #0a1628; border-radius: 6px; padding: 4px 9px; font-size: 11px; color: #74c69d; font-family: 'Space Mono', monospace; }
     .add-btn { width: 100%; padding: 12px; background: linear-gradient(135deg, #2d6a4f, #1b4332); border: 1px solid #52b788; border-radius: 10px; color: #d8f3dc; font-size: 14px; font-weight: 600; cursor: pointer; }
-
     .meal-section { margin-bottom: 14px; }
     .meal-label { font-family: 'Space Mono', monospace; font-size: 10px; color: #2d6a4f; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 7px; padding-left: 2px; }
     .entry { background: #112240; border: 1px solid #1b4332; border-radius: 10px; padding: 11px 13px; margin-bottom: 7px; display: flex; align-items: center; gap: 10px; }
@@ -70,9 +65,8 @@
     .entry-macros { display: flex; gap: 9px; font-size: 11px; color: #4a7c59; font-family: 'Space Mono', monospace; }
     .del-btn { background: none; border: none; color: #2d6a4f; cursor: pointer; font-size: 20px; padding: 0 3px; line-height: 1; flex-shrink: 0; }
     .empty { text-align: center; color: #2d6a4f; font-size: 13px; padding: 40px 0; font-family: 'Space Mono', monospace; line-height: 1.8; }
-
     .history-title { font-family: 'Space Mono', monospace; font-size: 11px; color: #52b788; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 14px; }
-    .history-card { background: #112240; border: 1px solid #1b4332; border-radius: 12px; padding: 13px 15px; margin-bottom: 10px; cursor: pointer; transition: border-color 0.2s; }
+    .history-card { background: #112240; border: 1px solid #1b4332; border-radius: 12px; padding: 13px 15px; margin-bottom: 10px; cursor: pointer; }
     .history-card:active { border-color: #52b788; }
     .history-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
     .history-date { font-size: 14px; font-weight: 600; color: #b7e4c7; }
@@ -85,14 +79,55 @@
     .hbar-val { font-size: 10px; font-family: 'Space Mono', monospace; color: #52b788; }
     .hbar-val.over { color: #e63946; }
 
+    /* WORKOUT */
+    .workout-day-picker { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 18px; -webkit-overflow-scrolling: touch; }
+    .workout-day-picker::-webkit-scrollbar { display: none; }
+    .day-chip { flex-shrink: 0; padding: 7px 14px; border-radius: 20px; border: 1px solid #1b4332; background: #112240; color: #4a7c59; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .day-chip.active { background: linear-gradient(135deg, #2d6a4f, #1b4332); border-color: #52b788; color: #d8f3dc; }
+    .day-chip.rest { border-color: #1b2a1b; color: #2d4a2d; }
+    .day-chip.rest.active { background: #0f1f0f; border-color: #2d6a4f; color: #52b788; }
+    .workout-day-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+    .workout-day-title { font-size: 18px; font-weight: 700; color: #d8f3dc; }
+    .workout-day-subtitle { font-family: 'Space Mono', monospace; font-size: 10px; color: #52b788; letter-spacing: 2px; text-transform: uppercase; margin-top: 4px; }
+    .complete-badge { background: linear-gradient(135deg, #52b788, #2d6a4f); border-radius: 20px; padding: 5px 13px; font-size: 11px; font-weight: 700; color: #0a1628; flex-shrink: 0; }
+    .workout-progress { background: #112240; border: 1px solid #1b4332; border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; }
+    .workout-progress-top { display: flex; justify-content: space-between; margin-bottom: 8px; }
+    .workout-progress-label { font-size: 12px; color: #4a7c59; }
+    .workout-progress-val { font-family: 'Space Mono', monospace; font-size: 12px; color: #52b788; }
+    .exercise-card { background: #112240; border: 1px solid #1b4332; border-radius: 12px; margin-bottom: 10px; overflow: hidden; }
+    .exercise-card.done { border-color: #2d6a4f; background: #0d1f14; }
+    .exercise-header { display: flex; align-items: center; gap: 12px; padding: 13px 14px; cursor: pointer; }
+    .ex-check { width: 22px; height: 22px; border-radius: 6px; border: 2px solid #2d6a4f; background: transparent; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: transparent; }
+    .ex-check.checked { background: #52b788; border-color: #52b788; color: #0a1628; }
+    .exercise-info { flex: 1; min-width: 0; }
+    .exercise-name { font-size: 14px; font-weight: 600; color: #b7e4c7; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .exercise-name.done { color: #4a7c59; text-decoration: line-through; }
+    .exercise-sets-label { font-family: 'Space Mono', monospace; font-size: 11px; color: #4a7c59; }
+    .expand-arrow { color: #2d6a4f; font-size: 14px; transition: transform 0.2s; flex-shrink: 0; }
+    .expand-arrow.open { transform: rotate(180deg); }
+    .exercise-body { border-top: 1px solid #0d1a2e; padding: 0 14px 14px; }
+    .sets-header { display: grid; grid-template-columns: 28px 1fr 1fr 36px; gap: 8px; padding: 10px 0 6px; }
+    .sets-header span { font-family: 'Space Mono', monospace; font-size: 10px; color: #2d6a4f; text-transform: uppercase; text-align: center; }
+    .set-row { display: grid; grid-template-columns: 28px 1fr 1fr 36px; gap: 8px; margin-bottom: 8px; align-items: center; }
+    .set-num { font-family: 'Space Mono', monospace; font-size: 12px; color: #4a7c59; text-align: center; }
+    .set-input { background: #0a1628; border: 1px solid #1b4332; border-radius: 7px; color: #b7e4c7; padding: 8px 6px; font-size: 13px; outline: none; text-align: center; width: 100%; }
+    .set-input:focus { border-color: #2d6a4f; }
+    .set-input::placeholder { color: #2a3a28; }
+    .set-check-btn { width: 34px; height: 34px; border-radius: 7px; border: 1px solid #1b4332; background: transparent; color: #2d6a4f; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .set-check-btn.done { background: #1b4332; border-color: #52b788; color: #52b788; }
+    .rest-day-msg { text-align: center; padding: 50px 20px; }
+    .rest-day-icon { font-size: 52px; margin-bottom: 16px; }
+    .rest-day-title { font-size: 18px; font-weight: 700; color: #b7e4c7; margin-bottom: 8px; }
+    .rest-day-sub { font-size: 12px; color: #4a7c59; font-family: 'Space Mono', monospace; line-height: 1.8; }
+
     /* MODAL */
-    .modal-overlay { position: fixed; inset: 0; background: rgba(10,22,40,0.97); z-index: 200; display: flex; align-items: flex-end; justify-content: center; padding: 0; }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(10,22,40,0.97); z-index: 200; display: flex; align-items: flex-end; justify-content: center; }
     .modal { background: #112240; border: 1px solid #2d6a4f; border-radius: 20px 20px 0 0; padding: 24px 20px; width: 100%; max-width: 540px; max-height: 92vh; overflow-y: auto; padding-bottom: max(24px, calc(24px + env(safe-area-inset-bottom))); }
     .modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
     .modal-label { font-family: 'Space Mono', monospace; font-size: 10px; color: #52b788; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 4px; }
     .modal-title { font-size: 18px; font-weight: 700; color: #d8f3dc; }
-    .modal-close { background: none; border: none; color: #4a7c59; font-size: 26px; cursor: pointer; line-height: 1; padding: 0; }
-    .upload-area { border: 2px dashed #2d6a4f; border-radius: 12px; padding: 36px 20px; text-align: center; cursor: pointer; margin-bottom: 14px; transition: border-color 0.2s; }
+    .modal-close { background: none; border: none; color: #4a7c59; font-size: 26px; cursor: pointer; line-height: 1; }
+    .upload-area { border: 2px dashed #2d6a4f; border-radius: 12px; padding: 36px 20px; text-align: center; cursor: pointer; margin-bottom: 14px; }
     .upload-area:active { border-color: #52b788; }
     .upload-icon { font-size: 38px; margin-bottom: 10px; }
     .upload-title { font-size: 14px; font-weight: 600; color: #b7e4c7; margin-bottom: 5px; }
@@ -111,365 +146,331 @@
     .result-macro-val { font-family: 'Space Mono', monospace; font-size: 14px; font-weight: 700; color: #52b788; }
     .result-macro-label { font-size: 10px; color: #4a7c59; margin-top: 2px; }
     .confirm-btn { width: 100%; padding: 13px; background: linear-gradient(135deg, #52b788, #2d6a4f); border: none; border-radius: 10px; color: #0a1628; font-size: 14px; font-weight: 700; cursor: pointer; }
-
     @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
-<div class="app" id="app"></div>
-
+<div id="app"></div>
 <script>
-// ── DATA ──────────────────────────────────────────────────────────────────────
-const TARGETS = { calories: 2800, protein: 172, carbs: 330, fat: 80 };
-const FOODS = [
-  { name: "Eggs (1 whole)", calories: 78, protein: 6, carbs: 0.6, fat: 5 },
-  { name: "Ground Beef (100g)", calories: 254, protein: 26, carbs: 0, fat: 17 },
-  { name: "Chicken Breast (100g)", calories: 165, protein: 31, carbs: 0, fat: 3.6 },
-  { name: "White Rice, cooked (1 cup)", calories: 206, protein: 4, carbs: 45, fat: 0.4 },
-  { name: "Potato, medium (150g)", calories: 130, protein: 3, carbs: 30, fat: 0.1 },
-  { name: "Carrots (100g)", calories: 41, protein: 0.9, carbs: 10, fat: 0.2 },
-  { name: "Asparagus (100g)", calories: 20, protein: 2.2, carbs: 3.7, fat: 0.1 },
+// ── WORKOUT PLAN ──────────────────────────────────────────────────────────────
+const WORKOUT_PLAN = [
+  { day:"Day 1", name:"Upper — Push", type:"training", exercises:[
+    {id:"d1e1",name:"Barbell Bench Press",sets:4,reps:"6-8"},
+    {id:"d1e2",name:"Incline Dumbbell Press",sets:3,reps:"8-10"},
+    {id:"d1e3",name:"Overhead Press",sets:3,reps:"8-10"},
+    {id:"d1e4",name:"Cable Lateral Raises",sets:3,reps:"12-15"},
+    {id:"d1e5",name:"Tricep Pushdowns",sets:3,reps:"10-12"},
+  ]},
+  { day:"Day 2", name:"Lower — Quads", type:"training", exercises:[
+    {id:"d2e1",name:"Barbell Back Squat",sets:4,reps:"6-8"},
+    {id:"d2e2",name:"Romanian Deadlift",sets:3,reps:"8-10"},
+    {id:"d2e3",name:"Leg Press",sets:3,reps:"10-12"},
+    {id:"d2e4",name:"Walking Lunges",sets:3,reps:"12 each"},
+    {id:"d2e5",name:"Leg Curl",sets:3,reps:"12-15"},
+  ]},
+  { day:"Day 3", name:"Rest Day", type:"rest", exercises:[] },
+  { day:"Day 4", name:"Upper — Pull", type:"training", exercises:[
+    {id:"d4e1",name:"Barbell Row",sets:4,reps:"6-8"},
+    {id:"d4e2",name:"Weighted Pull-Ups / Lat Pulldown",sets:3,reps:"8-10"},
+    {id:"d4e3",name:"Seated Cable Row",sets:3,reps:"10-12"},
+    {id:"d4e4",name:"Face Pulls",sets:3,reps:"15"},
+    {id:"d4e5",name:"Dumbbell Curl",sets:3,reps:"10-12"},
+  ]},
+  { day:"Day 5", name:"Lower — Glutes", type:"training", exercises:[
+    {id:"d5e1",name:"Conventional Deadlift",sets:4,reps:"5"},
+    {id:"d5e2",name:"Bulgarian Split Squat",sets:3,reps:"8-10 each"},
+    {id:"d5e3",name:"Hip Thrust",sets:3,reps:"10-12"},
+    {id:"d5e4",name:"Leg Extension",sets:3,reps:"12-15"},
+    {id:"d5e5",name:"Standing Calf Raise",sets:4,reps:"15"},
+  ]},
+  { day:"Day 6", name:"Arms & Weak Points", type:"training", exercises:[
+    {id:"d6e1",name:"Barbell Curl",sets:3,reps:"10-12"},
+    {id:"d6e2",name:"Hammer Curl",sets:3,reps:"10-12"},
+    {id:"d6e3",name:"Skull Crushers",sets:3,reps:"10-12"},
+    {id:"d6e4",name:"Overhead Tricep Extension",sets:3,reps:"10-12"},
+    {id:"d6e5",name:"Cable Curl",sets:3,reps:"12-15"},
+  ]},
+  { day:"Day 7", name:"Rest Day", type:"rest", exercises:[] },
 ];
-const MEALS = ["Breakfast", "Lunch", "Pre-Workout", "Dinner", "Evening Snack"];
-const MACRO_COLORS = { calories: "#52b788", protein: "#74c69d", carbs: "#b7e4c7", fat: "#d8f3dc" };
 
-// ── STATE ─────────────────────────────────────────────────────────────────────
+const TARGETS = {calories:2800,protein:172,carbs:330,fat:80};
+const FOODS = [
+  {name:"Eggs (1 whole)",calories:78,protein:6,carbs:0.6,fat:5},
+  {name:"Ground Beef (100g)",calories:254,protein:26,carbs:0,fat:17},
+  {name:"Chicken Breast (100g)",calories:165,protein:31,carbs:0,fat:3.6},
+  {name:"White Rice, cooked (1 cup)",calories:206,protein:4,carbs:45,fat:0.4},
+  {name:"Potato, medium (150g)",calories:130,protein:3,carbs:30,fat:0.1},
+  {name:"Carrots (100g)",calories:41,protein:0.9,carbs:10,fat:0.2},
+  {name:"Asparagus (100g)",calories:20,protein:2.2,carbs:3.7,fat:0.1},
+];
+const MEALS = ["Breakfast","Lunch","Pre-Workout","Dinner","Evening Snack"];
+const MC = {calories:"#52b788",protein:"#74c69d",carbs:"#b7e4c7",fat:"#d8f3dc"};
+
 const todayStr = () => new Date().toISOString().split("T")[0];
-let state = {
-  logs: {}, activeDate: todayStr(), selectedMeal: "Breakfast",
-  selectedFood: FOODS[0].name, quantity: 1, view: "log", saving: false,
-  scanMode: false, scanImage: null, scanBase64: null, scanType: "image/jpeg",
-  scanning: false, scanResult: null, scanError: null,
-  scanMeal: "Breakfast", scanServings: 1,
+let S = {
+  logs:{}, activeDate:todayStr(), selectedMeal:"Breakfast",
+  selectedFood:FOODS[0].name, quantity:1, view:"log", saving:false,
+  scanMode:false,scanImage:null,scanBase64:null,scanType:"image/jpeg",
+  scanning:false,scanResult:null,scanError:null,scanMeal:"Breakfast",scanServings:1,
+  activeWorkoutDay:0, expandedExercise:null, workoutLogs:{},
 };
 
-function setState(patch) { Object.assign(state, patch); render(); }
+function ss(p){Object.assign(S,p);render();}
+function load(k,d){try{return JSON.parse(localStorage.getItem(k))??d;}catch{return d;}}
+function save(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
+function fmtDate(d){return new Date(d+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});}
+function pct(v,t){return Math.min(100,Math.round(v/t*100));}
+function tots(es){return es.reduce((a,e)=>({calories:a.calories+e.calories,protein:a.protein+e.protein,carbs:a.carbs+e.carbs,fat:a.fat+e.fat}),{calories:0,protein:0,carbs:0,fat:0});}
+function r1(n){return Math.round(n*10)/10;}
+function wKey(date,di){return date+"_"+di;}
+function getExLog(date,di,exId){return((S.workoutLogs[wKey(date,di)]||{})[exId])||{done:false,sets:[]};}
+function initSets(ex){return Array.from({length:ex.sets},()=>({weight:"",reps:"",done:false}));}
 
-// ── STORAGE ───────────────────────────────────────────────────────────────────
-function loadLogs() {
-  try { return JSON.parse(localStorage.getItem("macro-logs") || "{}"); } catch { return {}; }
+function toggleExDone(di,exId){
+  const k=wKey(todayStr(),di);
+  const wl={...S.workoutLogs};
+  const day={...(wl[k]||{})};
+  const ex=WORKOUT_PLAN[di].exercises.find(e=>e.id===exId);
+  const cur=day[exId]||{done:false,sets:initSets(ex)};
+  day[exId]={...cur,done:!cur.done};
+  wl[k]=day; save("wlogs",wl); ss({workoutLogs:wl});
 }
-function saveLogs(logs) {
-  try { localStorage.setItem("macro-logs", JSON.stringify(logs)); } catch {}
+function updateSet(di,exId,si,field,value){
+  const k=wKey(todayStr(),di);
+  const wl={...S.workoutLogs};
+  const day={...(wl[k]||{})};
+  const ex=WORKOUT_PLAN[di].exercises.find(e=>e.id===exId);
+  const cur=day[exId]||{done:false,sets:initSets(ex)};
+  const sets=cur.sets.map((s,i)=>i===si?{...s,[field]:value}:s);
+  day[exId]={...cur,sets}; wl[k]=day; save("wlogs",wl); ss({workoutLogs:wl});
 }
-
-// ── HELPERS ───────────────────────────────────────────────────────────────────
-function formatDate(d) {
-  const date = new Date(d + "T12:00:00");
-  return date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
-}
-function pct(val, target) { return Math.min(100, Math.round((val / target) * 100)); }
-function totals(entries) {
-  return entries.reduce((a, e) => ({
-    calories: a.calories + e.calories, protein: a.protein + e.protein,
-    carbs: a.carbs + e.carbs, fat: a.fat + e.fat,
-  }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
-}
-function r1(n) { return Math.round(n * 10) / 10; }
-
-// ── ACTIONS ───────────────────────────────────────────────────────────────────
-function addEntry() {
-  const food = FOODS.find(f => f.name === state.selectedFood);
-  if (!food) return;
-  const q = state.quantity;
-  const entry = {
-    id: Date.now(), meal: state.selectedMeal, food: food.name, qty: q,
-    calories: Math.round(food.calories * q), protein: r1(food.protein * q),
-    carbs: r1(food.carbs * q), fat: r1(food.fat * q),
-  };
-  const logs = { ...state.logs, [state.activeDate]: [...(state.logs[state.activeDate] || []), entry] };
-  saveLogs(logs);
-  setState({ logs, saving: true });
-  setTimeout(() => setState({ saving: false }), 800);
-}
-
-function removeEntry(id) {
-  const logs = { ...state.logs, [state.activeDate]: (state.logs[state.activeDate] || []).filter(e => e.id !== id) };
-  saveLogs(logs);
-  setState({ logs });
+function toggleSetDone(di,exId,si){
+  const k=wKey(todayStr(),di);
+  const wl={...S.workoutLogs};
+  const day={...(wl[k]||{})};
+  const ex=WORKOUT_PLAN[di].exercises.find(e=>e.id===exId);
+  const cur=day[exId]||{done:false,sets:initSets(ex)};
+  const sets=cur.sets.map((s,i)=>i===si?{...s,done:!s.done}:s);
+  const allDone=sets.every(s=>s.done);
+  day[exId]={...cur,sets,done:allDone}; wl[k]=day; save("wlogs",wl); ss({workoutLogs:wl});
 }
 
-function addScannedEntry() {
-  const r = state.scanResult; const s = state.scanServings;
-  const entry = {
-    id: Date.now(), meal: state.scanMeal, food: r.name, qty: s,
-    calories: Math.round(r.calories * s), protein: r1(r.protein * s),
-    carbs: r1(r.carbs * s), fat: r1(r.fat * s),
-  };
-  const logs = { ...state.logs, [state.activeDate]: [...(state.logs[state.activeDate] || []), entry] };
-  saveLogs(logs);
-  setState({ logs, scanMode: false, scanImage: null, scanBase64: null, scanResult: null, scanError: null, scanServings: 1, saving: true });
-  setTimeout(() => setState({ saving: false }), 800);
+function addEntry(){
+  const food=FOODS.find(f=>f.name===S.selectedFood); if(!food)return;
+  const q=S.quantity;
+  const entry={id:Date.now(),meal:S.selectedMeal,food:food.name,qty:q,
+    calories:Math.round(food.calories*q),protein:r1(food.protein*q),
+    carbs:r1(food.carbs*q),fat:r1(food.fat*q)};
+  const logs={...S.logs,[S.activeDate]:[...(S.logs[S.activeDate]||[]),entry]};
+  save("mlogs",logs); ss({logs,saving:true}); setTimeout(()=>ss({saving:false}),800);
+}
+function removeEntry(id){
+  const logs={...S.logs,[S.activeDate]:(S.logs[S.activeDate]||[]).filter(e=>e.id!==id)};
+  save("mlogs",logs); ss({logs});
+}
+function addScannedEntry(){
+  const r=S.scanResult,s=S.scanServings;
+  const entry={id:Date.now(),meal:S.scanMeal,food:r.name,qty:s,
+    calories:Math.round(r.calories*s),protein:r1(r.protein*s),
+    carbs:r1(r.carbs*s),fat:r1(r.fat*s)};
+  const logs={...S.logs,[S.activeDate]:[...(S.logs[S.activeDate]||[]),entry]};
+  save("mlogs",logs); ss({logs,scanMode:false,scanImage:null,scanBase64:null,scanResult:null,scanError:null,scanServings:1,saving:true});
+  setTimeout(()=>ss({saving:false}),800);
+}
+function changeDate(d){
+  const dt=new Date(S.activeDate+"T12:00:00"); dt.setDate(dt.getDate()+d);
+  const next=dt.toISOString().split("T")[0];
+  if(next<=todayStr())ss({activeDate:next});
+}
+async function scanLabel(){
+  if(!S.scanBase64)return; ss({scanning:true,scanError:null,scanResult:null});
+  try{
+    const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:[
+        {type:"image",source:{type:"base64",media_type:S.scanType,data:S.scanBase64}},
+        {type:"text",text:'Read this nutrition label and respond ONLY with JSON, no markdown:\n{"name":"product name","serving_size":"e.g. 1 cup","calories":number,"protein":number,"carbs":number,"fat":number}\nIf unreadable: {"error":"message"}'}
+      ]}]})});
+    const data=await res.json();
+    const text=(data.content?.find(b=>b.type==="text")?.text||"").replace(/```json|```/g,"").trim();
+    const parsed=JSON.parse(text);
+    if(parsed.error)ss({scanning:false,scanError:parsed.error});
+    else ss({scanning:false,scanResult:parsed});
+  }catch{ss({scanning:false,scanError:"Could not read the label. Please try again."});}
 }
 
-function changeDate(delta) {
-  const d = new Date(state.activeDate + "T12:00:00");
-  d.setDate(d.getDate() + delta);
-  const next = d.toISOString().split("T")[0];
-  if (next <= todayStr()) setState({ activeDate: next });
-}
-
-async function scanLabel() {
-  if (!state.scanBase64) return;
-  setState({ scanning: true, scanError: null, scanResult: null });
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
-        messages: [{
-          role: "user",
-          content: [
-            { type: "image", source: { type: "base64", media_type: state.scanType, data: state.scanBase64 } },
-            { type: "text", text: `Read this nutrition label and respond ONLY with JSON, no markdown:\n{"name":"product name","serving_size":"e.g. 1 cup","calories":number,"protein":number,"carbs":number,"fat":number}\nIf unreadable: {"error":"message"}` }
-          ]
-        }]
-      })
-    });
-    const data = await res.json();
-    const text = (data.content?.find(b => b.type === "text")?.text || "").replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(text);
-    if (parsed.error) setState({ scanning: false, scanError: parsed.error });
-    else setState({ scanning: false, scanResult: parsed });
-  } catch {
-    setState({ scanning: false, scanError: "Could not read the label. Please try again." });
-  }
-}
-
-// ── RENDER ────────────────────────────────────────────────────────────────────
-function render() {
-  const s = state;
-  const dayLogs = s.logs[s.activeDate] || [];
-  const t = totals(dayLogs);
-  const allDates = Object.keys(s.logs).sort((a, b) => b.localeCompare(a));
-  const food = FOODS.find(f => f.name === s.selectedFood);
-
-  document.getElementById("app").innerHTML = `
-    <div class="app">
-      <div class="header">
-        <div class="header-inner">
-          <div class="header-top">
-            <div>
-              <div class="header-label">Daily Tracker</div>
-              <div class="header-title">Macro Log</div>
-            </div>
-            <div>
-              ${s.saving ? `<div class="saving">saving…</div>` : ""}
-              <div class="header-date">${formatDate(s.activeDate)}</div>
-            </div>
-          </div>
-          <div class="nav">
-            <button class="nav-btn ${s.view === 'log' ? 'active' : ''}" onclick="setState({view:'log'})">Log</button>
-            <button class="nav-btn ${s.view === 'history' ? 'active' : ''}" onclick="setState({view:'history'})">History</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="content">
-
-        ${s.view === 'log' ? `
-          <!-- Date nav -->
-          <div class="date-nav">
-            <button class="date-nav-btn" onclick="changeDate(-1)">‹</button>
-            <div class="date-label">${s.activeDate === todayStr() ? "Today" : formatDate(s.activeDate)}</div>
-            <button class="date-nav-btn" onclick="changeDate(1)" ${s.activeDate === todayStr() ? "disabled" : ""}>›</button>
-          </div>
-
-          <!-- Macro cards -->
-          <div class="macro-grid">
-            ${[
-              { key: "calories", label: "Calories", unit: "kcal", target: TARGETS.calories },
-              { key: "protein", label: "Protein", unit: "g", target: TARGETS.protein },
-              { key: "carbs", label: "Carbs", unit: "g", target: TARGETS.carbs },
-              { key: "fat", label: "Fat", unit: "g", target: TARGETS.fat },
-            ].map(({ key, label, unit, target }) => {
-              const val = t[key]; const p = pct(val, target); const over = val > target;
-              return `<div class="macro-card ${over ? 'over' : ''}">
-                <div class="macro-card-top">
-                  <span class="macro-card-label">${label}</span>
-                  <span class="macro-card-pct ${over ? 'over' : ''}">${p}%</span>
-                </div>
-                <div class="macro-card-val ${over ? 'over' : ''}">${Math.round(val)}<span>${unit}</span></div>
-                <div class="macro-bar-bg"><div class="macro-bar" style="width:${p}%;background:${over ? '#e63946' : MACRO_COLORS[key]}"></div></div>
-                <div class="macro-card-sub">of ${target}${unit}</div>
-              </div>`;
-            }).join("")}
-          </div>
-
-          <!-- Add food panel -->
-          <div class="panel">
-            <div class="panel-header">
-              <div class="panel-title">Add Food</div>
-              <button class="scan-btn" onclick="setState({scanMode:true,scanMeal:state.selectedMeal})">📷 Scan Label</button>
-            </div>
-            <div class="row2">
-              <select class="field" onchange="setState({selectedMeal:this.value})">
-                ${MEALS.map(m => `<option ${m === s.selectedMeal ? "selected" : ""}>${m}</option>`).join("")}
-              </select>
-              <div class="qty-row">
-                <span class="qty-label">Qty</span>
-                <input class="field" type="number" min="0.25" max="10" step="0.25" value="${s.quantity}" oninput="setState({quantity:parseFloat(this.value)||1})" />
-              </div>
-            </div>
-            <select class="field" style="margin-bottom:12px" onchange="setState({selectedFood:this.value})">
-              ${FOODS.map(f => `<option ${f.name === s.selectedFood ? "selected" : ""}>${f.name}</option>`).join("")}
-            </select>
-            ${food ? `<div class="macro-preview">
-              <span class="preview-chip">Cal: ${Math.round(food.calories * s.quantity)}</span>
-              <span class="preview-chip">P: ${r1(food.protein * s.quantity)}g</span>
-              <span class="preview-chip">C: ${r1(food.carbs * s.quantity)}g</span>
-              <span class="preview-chip">F: ${r1(food.fat * s.quantity)}g</span>
-            </div>` : ""}
-            <button class="add-btn" onclick="addEntry()">+ Add to Log</button>
-          </div>
-
-          <!-- Log entries -->
-          ${MEALS.map(meal => {
-            const entries = dayLogs.filter(e => e.meal === meal);
-            if (!entries.length) return "";
-            return `<div class="meal-section">
-              <div class="meal-label">${meal}</div>
-              ${entries.map(e => `
-                <div class="entry">
-                  <div style="flex:1">
-                    <div class="entry-name">${e.qty !== 1 ? `<span class="entry-qty">${e.qty}×</span>` : ""}${e.food}</div>
-                    <div class="entry-macros">
-                      <span>${e.calories} cal</span><span>P ${e.protein}g</span><span>C ${e.carbs}g</span><span>F ${e.fat}g</span>
-                    </div>
-                  </div>
-                  <button class="del-btn" onclick="removeEntry(${e.id})">×</button>
-                </div>
-              `).join("")}
-            </div>`;
-          }).join("")}
-          ${dayLogs.length === 0 ? `<div class="empty">No food logged yet.<br>Add from your list or scan a label.</div>` : ""}
-
-        ` : `
-          <!-- History -->
-          <div class="history-title">Past Logs</div>
-          ${allDates.length === 0 ? `<div class="empty">No history yet.<br>Start logging!</div>` : ""}
-          ${allDates.map(date => {
-            const entries = s.logs[date] || [];
-            const ht = totals(entries);
-            const over = ht.calories > TARGETS.calories;
-            return `<div class="history-card" onclick="setState({activeDate:'${date}',view:'log'})">
-              <div class="history-top">
-                <span class="history-date">${date === todayStr() ? "Today" : formatDate(date)}</span>
-                <span class="history-cal ${over ? 'over' : ''}">${Math.round(ht.calories)} <span>kcal</span></span>
-              </div>
-              <div class="history-bars">
-                ${[
-                  { l: "Protein", v: ht.protein, target: TARGETS.protein, u: "g" },
-                  { l: "Carbs", v: ht.carbs, target: TARGETS.carbs, u: "g" },
-                  { l: "Fat", v: ht.fat, target: TARGETS.fat, u: "g" },
-                ].map(({ l, v, target, u }) => {
-                  const p = pct(v, target); const ov = v > target;
-                  return `<div>
-                    <div class="hbar-label">
-                      <span class="hbar-name">${l}</span>
-                      <span class="hbar-val ${ov ? 'over' : ''}">${Math.round(v)}${u}</span>
-                    </div>
-                    <div class="macro-bar-bg"><div class="macro-bar" style="width:${p}%;background:${ov ? '#e63946' : '#52b788'}"></div></div>
-                  </div>`;
-                }).join("")}
-              </div>
-            </div>`;
-          }).join("")}
-        `}
-
-      </div>
+function renderWorkout(){
+  const di=S.activeWorkoutDay, plan=WORKOUT_PLAN[di], date=todayStr();
+  const wl=S.workoutLogs[wKey(date,di)]||{};
+  const totalEx=plan.exercises.length;
+  const doneEx=plan.exercises.filter(ex=>(wl[ex.id]||{}).done).length;
+  const allDone=totalEx>0&&doneEx===totalEx;
+  return `
+    <div class="workout-day-picker">
+      ${WORKOUT_PLAN.map((p,i)=>`<button class="day-chip${i===di?" active":""}${p.type==="rest"?" rest":""}" onclick="ss({activeWorkoutDay:${i},expandedExercise:null})">${p.day}</button>`).join("")}
     </div>
+    <div class="workout-day-header">
+      <div>
+        <div class="workout-day-title">${plan.name}</div>
+        ${plan.type==="training"?`<div class="workout-day-subtitle">${totalEx} exercises · ${plan.exercises.reduce((a,e)=>a+e.sets,0)} sets</div>`:""}
+      </div>
+      ${allDone?`<div class="complete-badge">✓ Complete</div>`:""}
+    </div>
+    ${plan.type==="rest"?`
+      <div class="rest-day-msg">
+        <div class="rest-day-icon">😴</div>
+        <div class="rest-day-title">Rest & Recover</div>
+        <div class="rest-day-sub">Growth happens outside the gym.<br>Eat your macros and sleep well.</div>
+      </div>
+    `:`
+      <div class="workout-progress">
+        <div class="workout-progress-top">
+          <span class="workout-progress-label">Today's Progress</span>
+          <span class="workout-progress-val">${doneEx} / ${totalEx} exercises</span>
+        </div>
+        <div class="macro-bar-bg"><div class="macro-bar" style="width:${totalEx>0?Math.round(doneEx/totalEx*100):0}%;background:#52b788"></div></div>
+      </div>
+      ${plan.exercises.map(ex=>{
+        const exLog=getExLog(date,di,ex.id);
+        const sets=exLog.sets.length===ex.sets?exLog.sets:initSets(ex);
+        const isOpen=S.expandedExercise===ex.id;
+        const isDone=exLog.done;
+        return `<div class="exercise-card${isDone?" done":""}">
+          <div class="exercise-header" onclick="ss({expandedExercise:${isOpen?null:`'${ex.id}'`}})">
+            <div class="ex-check${isDone?" checked":""}" onclick="event.stopPropagation();toggleExDone(${di},'${ex.id}')">${isDone?"✓":""}</div>
+            <div class="exercise-info">
+              <div class="exercise-name${isDone?" done":""}">${ex.name}</div>
+              <div class="exercise-sets-label">${ex.sets} sets × ${ex.reps} reps</div>
+            </div>
+            <div class="expand-arrow${isOpen?" open":""}">▾</div>
+          </div>
+          ${isOpen?`<div class="exercise-body">
+            <div class="sets-header"><span>Set</span><span>Weight (lbs)</span><span>Reps</span><span>✓</span></div>
+            ${sets.map((set,si)=>`<div class="set-row">
+              <div class="set-num">${si+1}</div>
+              <input class="set-input" type="number" placeholder="lbs" value="${set.weight}" oninput="updateSet(${di},'${ex.id}',${si},'weight',this.value)" />
+              <input class="set-input" type="number" placeholder="reps" value="${set.reps}" oninput="updateSet(${di},'${ex.id}',${si},'reps',this.value)" />
+              <button class="set-check-btn${set.done?" done":""}" onclick="toggleSetDone(${di},'${ex.id}',${si})">✓</button>
+            </div>`).join("")}
+          </div>`:""}
+        </div>`;
+      }).join("")}
+    `}`;
+}
 
-    <!-- SCAN MODAL -->
-    ${s.scanMode ? `
-    <div class="modal-overlay">
-      <div class="modal">
-        <div class="modal-header">
+function render(){
+  const s=S;
+  const dayLogs=s.logs[s.activeDate]||[];
+  const t=tots(dayLogs);
+  const allDates=Object.keys(s.logs).sort((a,b)=>b.localeCompare(a));
+  const food=FOODS.find(f=>f.name===s.selectedFood);
+
+  document.getElementById("app").innerHTML=`
+  <div class="app">
+    <div class="header">
+      <div class="header-inner">
+        <div class="header-top">
           <div>
-            <div class="modal-label">AI Scanner</div>
-            <div class="modal-title">Scan Food Label</div>
+            <div class="header-label">Fitness Tracker</div>
+            <div class="header-title">${s.view==="workout"?"Workout":"Macro Log"}</div>
           </div>
-          <button class="modal-close" onclick="setState({scanMode:false,scanImage:null,scanBase64:null,scanResult:null,scanError:null})">×</button>
+          <div>
+            ${s.saving?`<div class="saving">saving…</div>`:""}
+            <div class="header-date">${fmtDate(todayStr())}</div>
+          </div>
         </div>
-
-        ${!s.scanImage ? `
-          <div class="upload-area" onclick="document.getElementById('fileInput').click()">
-            <div class="upload-icon">📷</div>
-            <div class="upload-title">Upload a photo of your food label</div>
-            <div class="upload-sub">Tap to choose from camera or gallery</div>
-          </div>
-          <input id="fileInput" type="file" accept="image/*" capture="environment" style="display:none" onchange="handleFile(this)" />
-        ` : `
-          <img class="preview-img" src="${s.scanImage}" alt="Label" />
-          <button class="change-img-btn" onclick="setState({scanImage:null,scanBase64:null,scanResult:null,scanError:null});document.getElementById('fileInput2').click()">Choose different image</button>
-          <input id="fileInput2" type="file" accept="image/*" capture="environment" style="display:none" onchange="handleFile(this)" />
-        `}
-
-        ${s.scanImage && !s.scanResult ? `
-          <button class="scan-api-btn" onclick="scanLabel()" ${s.scanning ? "disabled" : ""}>
-            ${s.scanning ? `<span class="spin">⟳</span> Reading label…` : "🔍 Scan Label with AI"}
-          </button>
-        ` : ""}
-
-        ${s.scanError ? `<div class="error-box">${s.scanError}</div>` : ""}
-
-        ${s.scanResult ? `
-          <div class="result-box">
-            <div class="result-name">${s.scanResult.name}</div>
-            <div class="result-serving">Per serving: ${s.scanResult.serving_size}</div>
-            <div class="result-macros">
-              ${[
-                { l: "Calories", v: Math.round(s.scanResult.calories * s.scanServings), u: "" },
-                { l: "Protein", v: r1(s.scanResult.protein * s.scanServings), u: "g" },
-                { l: "Carbs", v: r1(s.scanResult.carbs * s.scanServings), u: "g" },
-                { l: "Fat", v: r1(s.scanResult.fat * s.scanServings), u: "g" },
-              ].map(({ l, v, u }) => `
-                <div class="result-macro">
-                  <div class="result-macro-val">${v}${u}</div>
-                  <div class="result-macro-label">${l}</div>
-                </div>
-              `).join("")}
-            </div>
-            <div class="row2" style="margin-bottom:14px">
-              <div>
-                <div style="font-size:11px;color:#4a7c59;margin-bottom:5px">Meal</div>
-                <select class="field" onchange="setState({scanMeal:this.value})">
-                  ${MEALS.map(m => `<option ${m === s.scanMeal ? "selected" : ""}>${m}</option>`).join("")}
-                </select>
-              </div>
-              <div>
-                <div style="font-size:11px;color:#4a7c59;margin-bottom:5px">Servings</div>
-                <input class="field" type="number" min="0.25" max="20" step="0.25" value="${s.scanServings}" oninput="setState({scanServings:parseFloat(this.value)||1})" />
-              </div>
-            </div>
-            <button class="confirm-btn" onclick="addScannedEntry()">✓ Add to Log</button>
-          </div>
-        ` : ""}
+        <div class="nav">
+          <button class="nav-btn${s.view==="log"?" active":""}" onclick="ss({view:'log'})">Log</button>
+          <button class="nav-btn${s.view==="workout"?" active":""}" onclick="ss({view:'workout'})">Workout</button>
+          <button class="nav-btn${s.view==="history"?" active":""}" onclick="ss({view:'history'})">History</button>
+        </div>
       </div>
     </div>
-    ` : ""}
-  `;
+    <div class="content">
+      ${s.view==="workout"?renderWorkout():""}
+      ${s.view==="log"?`
+        <div class="date-nav">
+          <button class="date-nav-btn" onclick="changeDate(-1)">‹</button>
+          <div class="date-label">${s.activeDate===todayStr()?"Today":fmtDate(s.activeDate)}</div>
+          <button class="date-nav-btn" onclick="changeDate(1)"${s.activeDate===todayStr()?" disabled":""}>›</button>
+        </div>
+        <div class="macro-grid">
+          ${[{key:"calories",label:"Calories",unit:"kcal",target:TARGETS.calories},{key:"protein",label:"Protein",unit:"g",target:TARGETS.protein},{key:"carbs",label:"Carbs",unit:"g",target:TARGETS.carbs},{key:"fat",label:"Fat",unit:"g",target:TARGETS.fat}].map(({key,label,unit,target})=>{
+            const val=t[key],p=pct(val,target),over=val>target;
+            return `<div class="macro-card${over?" over":""}">
+              <div class="macro-card-top"><span class="macro-card-label">${label}</span><span class="macro-card-pct${over?" over":""}">${p}%</span></div>
+              <div class="macro-card-val${over?" over":""}">${Math.round(val)}<span>${unit}</span></div>
+              <div class="macro-bar-bg"><div class="macro-bar" style="width:${p}%;background:${over?"#e63946":MC[key]}"></div></div>
+              <div class="macro-card-sub">of ${target}${unit}</div>
+            </div>`;
+          }).join("")}
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Add Food</div>
+            <button class="scan-btn" onclick="ss({scanMode:true,scanMeal:S.selectedMeal})">📷 Scan Label</button>
+          </div>
+          <div class="row2">
+            <select class="field" onchange="ss({selectedMeal:this.value})">${MEALS.map(m=>`<option${m===s.selectedMeal?" selected":""}>${m}</option>`).join("")}</select>
+            <div class="qty-row"><span class="qty-label">Qty</span><input class="field" type="number" min="0.25" max="10" step="0.25" value="${s.quantity}" oninput="ss({quantity:parseFloat(this.value)||1})" /></div>
+          </div>
+          <select class="field" style="margin-bottom:12px" onchange="ss({selectedFood:this.value})">${FOODS.map(f=>`<option${f.name===s.selectedFood?" selected":""}>${f.name}</option>`).join("")}</select>
+          ${food?`<div class="macro-preview"><span class="preview-chip">Cal: ${Math.round(food.calories*s.quantity)}</span><span class="preview-chip">P: ${r1(food.protein*s.quantity)}g</span><span class="preview-chip">C: ${r1(food.carbs*s.quantity)}g</span><span class="preview-chip">F: ${r1(food.fat*s.quantity)}g</span></div>`:""}
+          <button class="add-btn" onclick="addEntry()">+ Add to Log</button>
+        </div>
+        ${MEALS.map(meal=>{
+          const entries=dayLogs.filter(e=>e.meal===meal); if(!entries.length)return"";
+          return `<div class="meal-section"><div class="meal-label">${meal}</div>${entries.map(e=>`<div class="entry"><div style="flex:1"><div class="entry-name">${e.qty!==1?`<span class="entry-qty">${e.qty}×</span>`:""}${e.food}</div><div class="entry-macros"><span>${e.calories} cal</span><span>P ${e.protein}g</span><span>C ${e.carbs}g</span><span>F ${e.fat}g</span></div></div><button class="del-btn" onclick="removeEntry(${e.id})">×</button></div>`).join("")}</div>`;
+        }).join("")}
+        ${dayLogs.length===0?`<div class="empty">No food logged yet.<br>Add from your list or scan a label.</div>`:""}
+      `:""}
+      ${s.view==="history"?`
+        <div class="history-title">Past Logs</div>
+        ${allDates.length===0?`<div class="empty">No history yet.<br>Start logging!</div>`:""}
+        ${allDates.map(date=>{
+          const entries=s.logs[date]||[],ht=tots(entries),over=ht.calories>TARGETS.calories;
+          return `<div class="history-card" onclick="ss({activeDate:'${date}',view:'log'})">
+            <div class="history-top"><span class="history-date">${date===todayStr()?"Today":fmtDate(date)}</span><span class="history-cal${over?" over":""}">${Math.round(ht.calories)} <span>kcal</span></span></div>
+            <div class="history-bars">${[{l:"Protein",v:ht.protein,target:TARGETS.protein,u:"g"},{l:"Carbs",v:ht.carbs,target:TARGETS.carbs,u:"g"},{l:"Fat",v:ht.fat,target:TARGETS.fat,u:"g"}].map(({l,v,target,u})=>{const p=pct(v,target),ov=v>target;return`<div><div class="hbar-label"><span class="hbar-name">${l}</span><span class="hbar-val${ov?" over":""}">${Math.round(v)}${u}</span></div><div class="macro-bar-bg"><div class="macro-bar" style="width:${p}%;background:${ov?"#e63946":"#52b788"}"></div></div></div>`;}).join("")}</div>
+          </div>`;
+        }).join("")}
+      `:""}
+    </div>
+  </div>
+  ${s.scanMode?`
+  <div class="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <div><div class="modal-label">AI Scanner</div><div class="modal-title">Scan Food Label</div></div>
+        <button class="modal-close" onclick="ss({scanMode:false,scanImage:null,scanBase64:null,scanResult:null,scanError:null})">×</button>
+      </div>
+      ${!s.scanImage?`<div class="upload-area" onclick="document.getElementById('fi').click()"><div class="upload-icon">📷</div><div class="upload-title">Upload a photo of your food label</div><div class="upload-sub">Tap to choose from camera or gallery</div></div><input id="fi" type="file" accept="image/*" capture="environment" style="display:none" onchange="handleFile(this)" />`:`<img class="preview-img" src="${s.scanImage}" /><button class="change-img-btn" onclick="ss({scanImage:null,scanBase64:null,scanResult:null,scanError:null});document.getElementById('fi2').click()">Choose different image</button><input id="fi2" type="file" accept="image/*" capture="environment" style="display:none" onchange="handleFile(this)" />`}
+      ${s.scanImage&&!s.scanResult?`<button class="scan-api-btn" onclick="scanLabel()"${s.scanning?" disabled":""}>${s.scanning?`<span class="spin">⟳</span> Reading label…`:"🔍 Scan Label with AI"}</button>`:``}
+      ${s.scanError?`<div class="error-box">${s.scanError}</div>`:""}
+      ${s.scanResult?`<div class="result-box">
+        <div class="result-name">${s.scanResult.name}</div>
+        <div class="result-serving">Per serving: ${s.scanResult.serving_size}</div>
+        <div class="result-macros">${[{l:"Calories",v:Math.round(s.scanResult.calories*s.scanServings),u:""},{l:"Protein",v:r1(s.scanResult.protein*s.scanServings),u:"g"},{l:"Carbs",v:r1(s.scanResult.carbs*s.scanServings),u:"g"},{l:"Fat",v:r1(s.scanResult.fat*s.scanServings),u:"g"}].map(({l,v,u})=>`<div class="result-macro"><div class="result-macro-val">${v}${u}</div><div class="result-macro-label">${l}</div></div>`).join("")}</div>
+        <div class="row2" style="margin-bottom:14px">
+          <div><div style="font-size:11px;color:#4a7c59;margin-bottom:5px">Meal</div><select class="field" onchange="ss({scanMeal:this.value})">${MEALS.map(m=>`<option${m===s.scanMeal?" selected":""}>${m}</option>`).join("")}</select></div>
+          <div><div style="font-size:11px;color:#4a7c59;margin-bottom:5px">Servings</div><input class="field" type="number" min="0.25" max="20" step="0.25" value="${s.scanServings}" oninput="ss({scanServings:parseFloat(this.value)||1})" /></div>
+        </div>
+        <button class="confirm-btn" onclick="addScannedEntry()">✓ Add to Log</button>
+      </div>`:""}
+    </div>
+  </div>`:""}`;
 }
 
-function handleFile(input) {
-  const file = input.files[0];
-  if (!file) return;
-  const mediaType = file.type || "image/jpeg";
-  const reader = new FileReader();
-  reader.onload = ev => setState({ scanImage: ev.target.result, scanBase64: ev.target.result.split(",")[1], scanType: mediaType, scanResult: null, scanError: null });
+function handleFile(input){
+  const file=input.files[0]; if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>ss({scanImage:ev.target.result,scanBase64:ev.target.result.split(",")[1],scanType:file.type||"image/jpeg",scanResult:null,scanError:null});
   reader.readAsDataURL(file);
 }
 
-// ── INIT ──────────────────────────────────────────────────────────────────────
-state.logs = loadLogs();
+S.logs=load("mlogs",{});
+S.workoutLogs=load("wlogs",{});
 render();
-
-// ── SERVICE WORKER ────────────────────────────────────────────────────────────
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").catch(() => {});
-}
+if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script>
 </body>
 </html>
