@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#121212" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Macro Log" />
+  <title>Macro Log</title>
+  <link rel="manifest" href="manifest.json" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; background: #121212; color: #fff; font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+    select, input, button { font-family: 'Inter', sans-serif; }
+    select { -webkit-appearance: none; appearance: none; }
+
+    /* ── LAYOUT ── */
+    .app { min-height: 100vh; min-height: -webkit-fill-available; display: flex; flex-direction: column; background: #121212; }
+    .header { background: #121212; padding: 0 20px; padding-top: max(52px, calc(44px + env(safe-area-inset-top))); border-bottom: 1px solid #222; }
+    .header-inner { max-width: 540px; margin: 0 auto; }
+    .header-row { display: flex; justify-content: space-between; align-items: center; padding-bottom: 0; }
+    .header-title { font-size: 28px; font-weight: 800; color: #fff; letter-spacing: -0.5px; }
+    .header-date { font-size: 13px; color: #555; font-weight: 500; }
+    .nav { display: flex; gap: 0; margin-top: 16px; overflow-x: auto; }
+    .nav::-webkit-scrollbar { display: none; }
+    .nav-btn { flex-shrink: 0; background: none; border: none; cursor: pointer; padding: 10px 18px 12px; font-size: 14px; font-weight: 600; color: #555; border-bottom: 2px solid transparent; transition: all 0.2s; }
+    .nav-btn.active { color: #fff; border-bottom-color: #fff; }
+
+    .content { max-width: 540px; margin: 0 auto; padding: 20px 16px; padding-bottom: max(20px, calc(20px + env(safe-area-inset-bottom))); width: 100%; flex: 1; }
+
+    /* ── DATE NAV ── */
+    .date-nav { display: flex; gap: 8px; align-items: center; margin-bottom: 24px; }
+    .date-nav-btn { background: #1e1e1e; border: none; border-radius: 10px; color: #fff; width: 36px; height: 36px; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .date-nav-btn:disabled { opacity: 0.25; }
+    .date-label { flex: 1; text-align: center; font-size: 15px; font-weight: 600; color: #fff; }
+
+    /* ── CALORIE HERO ── */
+    .calorie-hero { text-align: center; margin-bottom: 28px; }
+    .calorie-hero-label { font-size: 12px; font-weight: 600; color: #555; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 6px; }
+    .calorie-hero-num { font-size: 72px; font-weight: 900; color: #fff; letter-spacing: -3px; line-height: 1; }
+    .calorie-hero-num.over { color: #ff4f4f; }
+    .calorie-hero-sub { font-size: 13px; color: #444; margin-top: 6px; font-weight: 500; }
+    .calorie-hero-sub span { color: #777; }
+
+    /* ── MACRO RINGS ── */
+    .macro-rings { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 28px; }
+    .ring-card { background: #1a1a1a; border-radius: 16px; padding: 16px 10px 14px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .ring-wrap { position: relative; width: 72px; height: 72px; }
+    .ring-svg { width: 72px; height: 72px; transform: rotate(-90deg); }
+    .ring-track { fill: none; stroke: #2a2a2a; stroke-width: 6; }
+    .ring-fill { fill: none; stroke-width: 6; stroke-linecap: round; transition: stroke-dashoffset 0.6s ease; }
+    .ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .ring-val { font-size: 15px; font-weight: 800; color: #fff; line-height: 1; }
+    .ring-unit { font-size: 9px; color: #555; font-weight: 600; margin-top: 1px; }
+    .ring-label { font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+    .ring-remaining { font-size: 10px; color: #444; font-weight: 500; }
+
+    /* ── MACRO COLOURS ── */
+    .protein-color { color: #4a9eff; }
+    .carbs-color { color: #fbbf24; }
+    .fat-color { color: #f472b6; }
+    .protein-stroke { stroke: #4a9eff; }
+    .carbs-stroke { stroke: #fbbf24; }
+    .fat-stroke { stroke: #f472b6; }
+    .protein-bg { background: rgba(74,158,255,0.12); }
+    .carbs-bg { background: rgba(251,191,36,0.12); }
+    .fat-bg { background: rgba(244,114,182,0.12); }
+
+    /* ── ADD FOOD PANEL ── */
+    .section-title { font-size: 13px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+    .add-panel { background: #1a1a1a; border-radius: 16px; padding: 16px; margin-bottom: 20px; }
+    .add-panel-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+    .scan-btn { background: #252525; border: none; border-radius: 10px; color: #aaa; font-size: 12px; font-weight: 600; cursor: pointer; padding: 7px 12px; display: flex; align-items: center; gap: 5px; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    .field { background: #252525; border: none; border-radius: 10px; color: #fff; padding: 11px 12px; font-size: 14px; outline: none; width: 100%; }
+    .field::placeholder { color: #444; }
+    .field:focus { background: #2a2a2a; }
+    .qty-row { display: flex; align-items: center; gap: 8px; }
+    .qty-label { font-size: 12px; color: #555; flex-shrink: 0; font-weight: 600; }
+    .macro-preview { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+    .preview-chip { border-radius: 8px; padding: 4px 10px; font-size: 11px; font-weight: 700; }
+    .add-btn { width: 100%; padding: 14px; background: #fff; border: none; border-radius: 12px; color: #000; font-size: 15px; font-weight: 700; cursor: pointer; transition: opacity 0.2s; }
+    .add-btn:active { opacity: 0.8; }
+
+    /* ── FOOD LOG ── */
+    .meal-section { margin-bottom: 8px; }
+    .meal-header { font-size: 11px; font-weight: 700; color: #444; text-transform: uppercase; letter-spacing: 1px; padding: 10px 4px 6px; }
+    .entry { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: #1a1a1a; border-radius: 12px; margin-bottom: 6px; }
+    .entry-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .entry-info { flex: 1; min-width: 0; }
+    .entry-name { font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; }
+    .entry-macros { display: flex; gap: 8px; font-size: 11px; font-weight: 600; }
+    .entry-cal { color: #555; }
+    .del-btn { background: none; border: none; color: #333; cursor: pointer; font-size: 18px; padding: 2px 4px; flex-shrink: 0; }
+    .del-btn:active { color: #ff4f4f; }
+    .empty { text-align: center; color: #333; font-size: 14px; padding: 48px 0; font-weight: 500; line-height: 2; }
+
+    /* ── HISTORY ── */
+    .history-card { background: #1a1a1a; border-radius: 16px; padding: 16px; margin-bottom: 10px; cursor: pointer; }
+    .history-card:active { background: #222; }
+    .history-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; }
+    .history-date { font-size: 15px; font-weight: 700; color: #fff; }
+    .history-cal { font-size: 22px; font-weight: 800; color: #fff; }
+    .history-cal.over { color: #ff4f4f; }
+    .history-cal span { font-size: 11px; font-weight: 600; color: #555; margin-left: 2px; }
+    .history-macros { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .hm-item { }
+    .hm-label { display: flex; justify-content: space-between; margin-bottom: 5px; }
+    .hm-name { font-size: 11px; font-weight: 700; }
+    .hm-val { font-size: 11px; font-weight: 700; color: #555; }
+    .hm-bar-bg { background: #2a2a2a; border-radius: 3px; height: 3px; }
+    .hm-bar { height: 100%; border-radius: 3px; }
+
+    /* ── WORKOUT ── */
+    .workout-day-picker { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 20px; }
+    .workout-day-picker::-webkit-scrollbar { display: none; }
+    .day-chip { flex-shrink: 0; padding: 8px 16px; border-radius: 20px; border: none; background: #1e1e1e; color: #555; font-size: 13px; font-weight: 700; cursor: pointer; }
+    .day-chip.active { background: #fff; color: #000; }
+    .day-chip.rest { color: #333; }
+    .day-chip.rest.active { background: #2a2a2a; color: #777; }
+    .workout-day-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+    .workout-day-title { font-size: 22px; font-weight: 800; color: #fff; letter-spacing: -0.5px; }
+    .workout-day-sub { font-size: 12px; color: #444; font-weight: 600; margin-top: 3px; }
+    .complete-badge { background: #1a3a1a; border-radius: 20px; padding: 5px 13px; font-size: 11px; font-weight: 700; color: #4ade80; flex-shrink: 0; margin-top: 4px; }
+    .workout-progress { background: #1a1a1a; border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
+    .workout-progress-top { display: flex; justify-content: space-between; margin-bottom: 10px; }
+    .workout-progress-label { font-size: 13px; color: #555; font-weight: 600; }
+    .workout-progress-val { font-size: 13px; color: #fff; font-weight: 700; }
+    .prog-bar-bg { background: #2a2a2a; border-radius: 4px; height: 4px; overflow: hidden; }
+    .prog-bar { height: 100%; border-radius: 4px; background: #fff; transition: width 0.5s ease; }
+    .exercise-card { background: #1a1a1a; border-radius: 14px; margin-bottom: 8px; overflow: hidden; }
+    .exercise-card.done { background: #161f16; }
+    .exercise-header { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; }
+    .ex-check { width: 24px; height: 24px; border-radius: 8px; border: 2px solid #333; background: transparent; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: transparent; transition: all 0.2s; }
+    .ex-check.checked { background: #4ade80; border-color: #4ade80; color: #000; }
+    .exercise-info { flex: 1; min-width: 0; }
+    .exercise-name { font-size: 15px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; }
+    .exercise-name.done { color: #333; text-decoration: line-through; }
+    .exercise-sets-label { font-size: 12px; color: #444; font-weight: 600; }
+    .expand-arrow { color: #333; font-size: 13px; transition: transform 0.2s; flex-shrink: 0; }
+    .expand-arrow.open { transform: rotate(180deg); color: #555; }
+    .exercise-body { border-top: 1px solid #222; padding: 0 16px 14px; }
+    .sets-header { display: grid; grid-template-columns: 28px 1fr 1fr 36px; gap: 8px; padding: 10px 0 6px; }
+    .sets-header span { font-size: 10px; font-weight: 700; color: #444; text-transform: uppercase; text-align: center; letter-spacing: 0.5px; }
+    .set-row { display: grid; grid-template-columns: 28px 1fr 1fr 36px; gap: 8px; margin-bottom: 8px; align-items: center; }
+    .set-num { font-size: 12px; color: #444; font-weight: 700; text-align: center; }
+    .set-input { background: #222; border: none; border-radius: 8px; color: #fff; padding: 9px 6px; font-size: 14px; outline: none; text-align: center; width: 100%; font-weight: 600; }
+    .set-input::placeholder { color: #333; }
+    .set-input:focus { background: #2a2a2a; }
+    .set-check-btn { width: 34px; height: 34px; border-radius: 8px; border: none; background: #222; color: #444; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+    .set-check-btn.done { background: #1a3a1a; color: #4ade80; }
+    .rest-day-msg { text-align: center; padding: 60px 20px; }
+    .rest-day-icon { font-size: 56px; margin-bottom: 18px; }
+    .rest-day-title { font-size: 22px; font-weight: 800; color: #fff; margin-bottom: 8px; }
+    .rest-day-sub { font-size: 13px; color: #444; font-weight: 500; line-height: 1.8; }
+
+    /* ── MODAL ── */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 200; display: flex; align-items: flex-end; justify-content: center; }
+    .modal { background: #1a1a1a; border-radius: 24px 24px 0 0; padding: 24px 20px; width: 100%; max-width: 540px; max-height: 92vh; overflow-y: auto; padding-bottom: max(24px, calc(24px + env(safe-area-inset-bottom))); }
+    .modal-handle { width: 36px; height: 4px; background: #333; border-radius: 2px; margin: 0 auto 20px; }
+    .modal-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+    .modal-title { font-size: 20px; font-weight: 800; color: #fff; }
+    .modal-close { background: #252525; border: none; color: #888; font-size: 18px; cursor: pointer; line-height: 1; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+    .upload-area { border: 2px dashed #2a2a2a; border-radius: 16px; padding: 40px 20px; text-align: center; cursor: pointer; margin-bottom: 14px; }
+    .upload-area:active { border-color: #444; }
+    .upload-icon { font-size: 40px; margin-bottom: 12px; }
+    .upload-title { font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+    .upload-sub { font-size: 13px; color: #555; }
+    .preview-img { width: 100%; border-radius: 12px; max-height: 200px; object-fit: contain; background: #111; margin-bottom: 10px; }
+    .change-img-btn { background: none; border: 1px solid #2a2a2a; border-radius: 10px; color: #555; padding: 8px 12px; font-size: 13px; cursor: pointer; width: 100%; margin-bottom: 12px; }
+    .scan-api-btn { width: 100%; padding: 14px; background: #fff; border: none; border-radius: 12px; color: #000; font-size: 15px; font-weight: 700; cursor: pointer; margin-bottom: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    .scan-api-btn:disabled { background: #222; color: #444; cursor: not-allowed; }
+    .spin { display: inline-block; animation: spin 1s linear infinite; }
+    .error-box { background: #2a1010; border-radius: 12px; padding: 12px 14px; margin-bottom: 12px; font-size: 13px; color: #ff6b6b; font-weight: 500; }
+    .result-box { background: #111; border-radius: 16px; padding: 16px; margin-bottom: 14px; }
+    .result-name { font-weight: 800; color: #fff; font-size: 16px; margin-bottom: 3px; }
+    .result-serving { font-size: 12px; color: #555; font-weight: 600; margin-bottom: 14px; }
+    .result-macros { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+    .result-macro { text-align: center; background: #1a1a1a; border-radius: 10px; padding: 10px 4px; }
+    .result-macro-val { font-size: 15px; font-weight: 800; color: #fff; }
+    .result-macro-label { font-size: 10px; color: #555; margin-top: 2px; font-weight: 600; }
+    .confirm-btn { width: 100%; padding: 14px; background: #fff; border: none; border-radius: 12px; color: #000; font-size: 15px; font-weight: 700; cursor: pointer; }
+    .saving-dot { display: inline-block; width: 6px; height: 6px; background: #4a9eff; border-radius: 50%; margin-left: 8px; animation: pulse 1s ease infinite; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  </style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const WORKOUT_PLAN = [
+  { day:"Day 1", name:"Upper — Push", type:"training", exercises:[
+    {id:"d1e1",name:"Barbell Bench Press",sets:4,reps:"6-8"},
+    {id:"d1e2",name:"Incline Dumbbell Press",sets:3,reps:"8-10"},
+    {id:"d1e3",name:"Overhead Press",sets:3,reps:"8-10"},
+    {id:"d1e4",name:"Cable Lateral Raises",sets:3,reps:"12-15"},
+    {id:"d1e5",name:"Tricep Pushdowns",sets:3,reps:"10-12"},
+  ]},
+  { day:"Day 2", name:"Lower — Quads", type:"training", exercises:[
+    {id:"d2e1",name:"Barbell Back Squat",sets:4,reps:"6-8"},
+    {id:"d2e2",name:"Romanian Deadlift",sets:3,reps:"8-10"},
+    {id:"d2e3",name:"Leg Press",sets:3,reps:"10-12"},
+    {id:"d2e4",name:"Walking Lunges",sets:3,reps:"12 each"},
+    {id:"d2e5",name:"Leg Curl",sets:3,reps:"12-15"},
+  ]},
+  { day:"Day 3", name:"Rest Day", type:"rest", exercises:[] },
+  { day:"Day 4", name:"Upper — Pull", type:"training", exercises:[
+    {id:"d4e1",name:"Barbell Row",sets:4,reps:"6-8"},
+    {id:"d4e2",name:"Weighted Pull-Ups / Lat Pulldown",sets:3,reps:"8-10"},
+    {id:"d4e3",name:"Seated Cable Row",sets:3,reps:"10-12"},
+    {id:"d4e4",name:"Face Pulls",sets:3,reps:"15"},
+    {id:"d4e5",name:"Dumbbell Curl",sets:3,reps:"10-12"},
+  ]},
+  { day:"Day 5", name:"Lower — Glutes", type:"training", exercises:[
+    {id:"d5e1",name:"Conventional Deadlift",sets:4,reps:"5"},
+    {id:"d5e2",name:"Bulgarian Split Squat",sets:3,reps:"8-10 each"},
+    {id:"d5e3",name:"Hip Thrust",sets:3,reps:"10-12"},
+    {id:"d5e4",name:"Leg Extension",sets:3,reps:"12-15"},
+    {id:"d5e5",name:"Standing Calf Raise",sets:4,reps:"15"},
+  ]},
+  { day:"Day 6", name:"Arms & Weak Points", type:"training", exercises:[
+    {id:"d6e1",name:"Barbell Curl",sets:3,reps:"10-12"},
+    {id:"d6e2",name:"Hammer Curl",sets:3,reps:"10-12"},
+    {id:"d6e3",name:"Skull Crushers",sets:3,reps:"10-12"},
+    {id:"d6e4",name:"Overhead Tricep Extension",sets:3,reps:"10-12"},
+    {id:"d6e5",name:"Cable Curl",sets:3,reps:"12-15"},
+  ]},
+  { day:"Day 7", name:"Rest Day", type:"rest", exercises:[] },
+];
+
+const TARGETS = {calories:2800,protein:172,carbs:330,fat:80};
+const FOODS = [
+  {name:"Eggs (1 whole)",calories:78,protein:6,carbs:0.6,fat:5},
+  {name:"Ground Beef (100g)",calories:254,protein:26,carbs:0,fat:17},
+  {name:"Chicken Breast (100g)",calories:165,protein:31,carbs:0,fat:3.6},
+  {name:"White Rice, cooked (1 cup)",calories:206,protein:4,carbs:45,fat:0.4},
+  {name:"Potato, medium (150g)",calories:130,protein:3,carbs:30,fat:0.1},
+  {name:"Carrots (100g)",calories:41,protein:0.9,carbs:10,fat:0.2},
+  {name:"Asparagus (100g)",calories:20,protein:2.2,carbs:3.7,fat:0.1},
+];
+const MEALS = ["Breakfast","Lunch","Pre-Workout","Dinner","Evening Snack"];
+
+// Macro Factor colours
+const MC = {
+  protein: { stroke:"#4a9eff", text:"#4a9eff", bg:"rgba(74,158,255,0.15)", dot:"#4a9eff" },
+  carbs:   { stroke:"#fbbf24", text:"#fbbf24", bg:"rgba(251,191,36,0.15)",  dot:"#fbbf24" },
+  fat:     { stroke:"#f472b6", text:"#f472b6", bg:"rgba(244,114,182,0.15)", dot:"#f472b6" },
+};
+
+const todayStr = () => new Date().toISOString().split("T")[0];
+let S = {
+  logs:{}, activeDate:todayStr(), selectedMeal:"Breakfast",
+  selectedFood:FOODS[0].name, quantity:1, view:"log", saving:false,
+  scanMode:false, scanImage:null, scanBase64:null, scanType:"image/jpeg",
+  scanning:false, scanResult:null, scanError:null, scanMeal:"Breakfast", scanServings:1,
+  activeWorkoutDay:0, expandedExercise:null, workoutLogs:{},
+};
+
+function ss(p){Object.assign(S,p);render();}
+function load(k,d){try{return JSON.parse(localStorage.getItem(k))??d;}catch{return d;}}
+function save(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
+function fmtDate(d){return new Date(d+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"short",day:"numeric"});}
+function fmtDateShort(d){return new Date(d+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});}
+function pct(v,t){return Math.min(100,Math.round(v/t*100));}
+function tots(es){return es.reduce((a,e)=>({calories:a.calories+e.calories,protein:a.protein+e.protein,carbs:a.carbs+e.carbs,fat:a.fat+e.fat}),{calories:0,protein:0,carbs:0,fat:0});}
+function r1(n){return Math.round(n*10)/10;}
+function wKey(date,di){return date+"_"+di;}
+function getExLog(date,di,exId){return((S.workoutLogs[wKey(date,di)]||{})[exId])||{done:false,sets:[]};}
+function initSets(ex){return Array.from({length:ex.sets},()=>({weight:"",reps:"",done:false}));}
+
+// SVG ring helper
+function ring(val, target, colorClass, r=28){
+  const circ = 2 * Math.PI * r;
+  const p = Math.min(1, val/target);
+  const offset = circ - p * circ;
+  return `<svg class="ring-svg" viewBox="0 0 72 72">
+    <circle class="ring-track" cx="36" cy="36" r="${r}"/>
+    <circle class="ring-fill ${colorClass}" cx="36" cy="36" r="${r}"
+      stroke-dasharray="${circ}" stroke-dashoffset="${offset}" />
+  </svg>`;
+}
+
+function toggleExDone(di,exId){
+  const k=wKey(todayStr(),di),wl={...S.workoutLogs},day={...(wl[k]||{})};
+  const ex=WORKOUT_PLAN[di].exercises.find(e=>e.id===exId);
+  const cur=day[exId]||{done:false,sets:initSets(ex)};
+  day[exId]={...cur,done:!cur.done}; wl[k]=day; save("wlogs",wl); ss({workoutLogs:wl});
+}
+function updateSet(di,exId,si,field,value){
+  const k=wKey(todayStr(),di),wl={...S.workoutLogs},day={...(wl[k]||{})};
+  const ex=WORKOUT_PLAN[di].exercises.find(e=>e.id===exId);
+  const cur=day[exId]||{done:false,sets:initSets(ex)};
+  const sets=cur.sets.map((s,i)=>i===si?{...s,[field]:value}:s);
+  day[exId]={...cur,sets}; wl[k]=day; save("wlogs",wl); ss({workoutLogs:wl});
+}
+function toggleSetDone(di,exId,si){
+  const k=wKey(todayStr(),di),wl={...S.workoutLogs},day={...(wl[k]||{})};
+  const ex=WORKOUT_PLAN[di].exercises.find(e=>e.id===exId);
+  const cur=day[exId]||{done:false,sets:initSets(ex)};
+  const sets=cur.sets.map((s,i)=>i===si?{...s,done:!s.done}:s);
+  day[exId]={...cur,sets,done:sets.every(s=>s.done)}; wl[k]=day; save("wlogs",wl); ss({workoutLogs:wl});
+}
+function addEntry(){
+  const food=FOODS.find(f=>f.name===S.selectedFood); if(!food)return;
+  const q=S.quantity;
+  const entry={id:Date.now(),meal:S.selectedMeal,food:food.name,qty:q,
+    calories:Math.round(food.calories*q),protein:r1(food.protein*q),carbs:r1(food.carbs*q),fat:r1(food.fat*q)};
+  const logs={...S.logs,[S.activeDate]:[...(S.logs[S.activeDate]||[]),entry]};
+  save("mlogs",logs); ss({logs,saving:true}); setTimeout(()=>ss({saving:false}),800);
+}
+function removeEntry(id){
+  const logs={...S.logs,[S.activeDate]:(S.logs[S.activeDate]||[]).filter(e=>e.id!==id)};
+  save("mlogs",logs); ss({logs});
+}
+function addScannedEntry(){
+  const r=S.scanResult,s=S.scanServings;
+  const entry={id:Date.now(),meal:S.scanMeal,food:r.name,qty:s,
+    calories:Math.round(r.calories*s),protein:r1(r.protein*s),carbs:r1(r.carbs*s),fat:r1(r.fat*s)};
+  const logs={...S.logs,[S.activeDate]:[...(S.logs[S.activeDate]||[]),entry]};
+  save("mlogs",logs); ss({logs,scanMode:false,scanImage:null,scanBase64:null,scanResult:null,scanError:null,scanServings:1,saving:true});
+  setTimeout(()=>ss({saving:false}),800);
+}
+function changeDate(d){
+  const dt=new Date(S.activeDate+"T12:00:00"); dt.setDate(dt.getDate()+d);
+  const next=dt.toISOString().split("T")[0]; if(next<=todayStr())ss({activeDate:next});
+}
+async function scanLabel(){
+  if(!S.scanBase64)return; ss({scanning:true,scanError:null,scanResult:null});
+  try{
+    const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:[
+        {type:"image",source:{type:"base64",media_type:S.scanType,data:S.scanBase64}},
+        {type:"text",text:'Read this nutrition label and respond ONLY with JSON:\n{"name":"product name","serving_size":"e.g. 1 cup","calories":number,"protein":number,"carbs":number,"fat":number}\nIf unreadable: {"error":"message"}'}
+      ]}]})});
+    const data=await res.json();
+    const text=(data.content?.find(b=>b.type==="text")?.text||"").replace(/```json|```/g,"").trim();
+    const parsed=JSON.parse(text);
+    if(parsed.error)ss({scanning:false,scanError:parsed.error});
+    else ss({scanning:false,scanResult:parsed});
+  }catch{ss({scanning:false,scanError:"Could not read the label. Please try again."});}
+}
+
+function renderWorkout(){
+  const di=S.activeWorkoutDay,plan=WORKOUT_PLAN[di],date=todayStr();
+  const wl=S.workoutLogs[wKey(date,di)]||{};
+  const totalEx=plan.exercises.length;
+  const doneEx=plan.exercises.filter(ex=>(wl[ex.id]||{}).done).length;
+  const allDone=totalEx>0&&doneEx===totalEx;
+  return `
+    <div class="workout-day-picker">
+      ${WORKOUT_PLAN.map((p,i)=>`<button class="day-chip${i===di?" active":""}${p.type==="rest"?" rest":""}" onclick="ss({activeWorkoutDay:${i},expandedExercise:null})">${p.day}</button>`).join("")}
+    </div>
+    <div class="workout-day-header">
+      <div>
+        <div class="workout-day-title">${plan.name}</div>
+        ${plan.type==="training"?`<div class="workout-day-sub">${totalEx} exercises · ${plan.exercises.reduce((a,e)=>a+e.sets,0)} sets</div>`:""}
+      </div>
+      ${allDone?`<div class="complete-badge">✓ Done</div>`:""}
+    </div>
+    ${plan.type==="rest"?`
+      <div class="rest-day-msg">
+        <div class="rest-day-icon">😴</div>
+        <div class="rest-day-title">Rest & Recover</div>
+        <div class="rest-day-sub">Growth happens outside the gym.<br>Eat your macros and sleep well.</div>
+      </div>
+    `:`
+      <div class="workout-progress">
+        <div class="workout-progress-top">
+          <span class="workout-progress-label">Progress</span>
+          <span class="workout-progress-val">${doneEx} / ${totalEx}</span>
+        </div>
+        <div class="prog-bar-bg"><div class="prog-bar" style="width:${totalEx>0?Math.round(doneEx/totalEx*100):0}%"></div></div>
+      </div>
+      ${plan.exercises.map(ex=>{
+        const exLog=getExLog(date,di,ex.id);
+        const sets=exLog.sets.length===ex.sets?exLog.sets:initSets(ex);
+        const isOpen=S.expandedExercise===ex.id,isDone=exLog.done;
+        return `<div class="exercise-card${isDone?" done":""}">
+          <div class="exercise-header" onclick="ss({expandedExercise:${isOpen?null:`'${ex.id}'`}})">
+            <div class="ex-check${isDone?" checked":""}" onclick="event.stopPropagation();toggleExDone(${di},'${ex.id}')">${isDone?"✓":""}</div>
+            <div class="exercise-info">
+              <div class="exercise-name${isDone?" done":""}">${ex.name}</div>
+              <div class="exercise-sets-label">${ex.sets} sets × ${ex.reps} reps</div>
+            </div>
+            <div class="expand-arrow${isOpen?" open":""}">▾</div>
+          </div>
+          ${isOpen?`<div class="exercise-body">
+            <div class="sets-header"><span>Set</span><span>Weight</span><span>Reps</span><span>✓</span></div>
+            ${sets.map((set,si)=>`<div class="set-row">
+              <div class="set-num">${si+1}</div>
+              <input class="set-input" type="number" placeholder="lbs" value="${set.weight}" oninput="updateSet(${di},'${ex.id}',${si},'weight',this.value)" />
+              <input class="set-input" type="number" placeholder="—" value="${set.reps}" oninput="updateSet(${di},'${ex.id}',${si},'reps',this.value)" />
+              <button class="set-check-btn${set.done?" done":""}" onclick="toggleSetDone(${di},'${ex.id}',${si})">✓</button>
+            </div>`).join("")}
+          </div>`:""}
+        </div>`;
+      }).join("")}
+    `}`;
+}
+
+function render(){
+  const s=S;
+  const dayLogs=s.logs[s.activeDate]||[];
+  const t=tots(dayLogs);
+  const allDates=Object.keys(s.logs).sort((a,b)=>b.localeCompare(a));
+  const food=FOODS.find(f=>f.name===s.selectedFood);
+  const calOver=t.calories>TARGETS.calories;
+  const calRemain=TARGETS.calories-Math.round(t.calories);
+
+  document.getElementById("app").innerHTML=`
+  <div class="app">
+    <div class="header">
+      <div class="header-inner">
+        <div class="header-row">
+          <div class="header-title">Macro Log${s.saving?`<span class="saving-dot"></span>`:""}</div>
+          <div class="header-date">${fmtDate(s.view==="log"?s.activeDate:todayStr())}</div>
+        </div>
+        <div class="nav">
+          <button class="nav-btn${s.view==="log"?" active":""}" onclick="ss({view:'log'})">Log</button>
+          <button class="nav-btn${s.view==="workout"?" active":""}" onclick="ss({view:'workout'})">Workout</button>
+          <button class="nav-btn${s.view==="history"?" active":""}" onclick="ss({view:'history'})">History</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="content">
+
+      ${s.view==="log"?`
+        <!-- Date nav -->
+        <div class="date-nav">
+          <button class="date-nav-btn" onclick="changeDate(-1)">‹</button>
+          <div class="date-label">${s.activeDate===todayStr()?"Today":fmtDateShort(s.activeDate)}</div>
+          <button class="date-nav-btn" onclick="changeDate(1)"${s.activeDate===todayStr()?" disabled":""}>›</button>
+        </div>
+
+        <!-- Calorie hero -->
+        <div class="calorie-hero">
+          <div class="calorie-hero-label">Calories</div>
+          <div class="calorie-hero-num${calOver?" over":""}">${Math.round(t.calories)}</div>
+          <div class="calorie-hero-sub">
+            ${calOver
+              ? `<span style="color:#ff4f4f">${Math.abs(calRemain)} over</span> your ${TARGETS.calories} goal`
+              : `<span>${calRemain}</span> remaining of ${TARGETS.calories}`}
+          </div>
+        </div>
+
+        <!-- Macro rings -->
+        <div class="macro-rings">
+          ${[
+            {key:"protein",label:"Protein",unit:"g",target:TARGETS.protein,stroke:"protein-stroke"},
+            {key:"carbs",  label:"Carbs",  unit:"g",target:TARGETS.carbs,  stroke:"carbs-stroke"},
+            {key:"fat",    label:"Fat",    unit:"g",target:TARGETS.fat,    stroke:"fat-stroke"},
+          ].map(({key,label,unit,target,stroke})=>{
+            const val=t[key],p=pct(val,target),remain=Math.max(0,target-Math.round(val));
+            return `<div class="ring-card">
+              <div class="ring-wrap">
+                ${ring(val,target,stroke)}
+                <div class="ring-center">
+                  <div class="ring-val" style="color:${MC[key].text}">${Math.round(val)}</div>
+                  <div class="ring-unit">${unit}</div>
+                </div>
+              </div>
+              <div class="ring-label" style="color:${MC[key].text}">${label}</div>
+              <div class="ring-remaining">${remain}${unit} left</div>
+            </div>`;
+          }).join("")}
+        </div>
+
+        <!-- Add food -->
+        <div class="add-panel">
+          <div class="add-panel-top">
+            <div class="section-title">Add Food</div>
+            <button class="scan-btn" onclick="ss({scanMode:true,scanMeal:S.selectedMeal})">📷 Scan Label</button>
+          </div>
+          <div class="row2">
+            <select class="field" onchange="ss({selectedMeal:this.value})">${MEALS.map(m=>`<option${m===s.selectedMeal?" selected":""}>${m}</option>`).join("")}</select>
+            <div class="qty-row"><span class="qty-label">Qty</span><input class="field" type="number" min="0.25" max="10" step="0.25" value="${s.quantity}" oninput="ss({quantity:parseFloat(this.value)||1})" /></div>
+          </div>
+          <select class="field" style="margin-bottom:12px" onchange="ss({selectedFood:this.value})">${FOODS.map(f=>`<option${f.name===s.selectedFood?" selected":""}>${f.name}</option>`).join("")}</select>
+          ${food?`<div class="macro-preview">
+            <span class="preview-chip" style="background:rgba(255,255,255,0.08);color:#888">Cal: ${Math.round(food.calories*s.quantity)}</span>
+            <span class="preview-chip" style="background:${MC.protein.bg};color:${MC.protein.text}">P ${r1(food.protein*s.quantity)}g</span>
+            <span class="preview-chip" style="background:${MC.carbs.bg};color:${MC.carbs.text}">C ${r1(food.carbs*s.quantity)}g</span>
+            <span class="preview-chip" style="background:${MC.fat.bg};color:${MC.fat.text}">F ${r1(food.fat*s.quantity)}g</span>
+          </div>`:""}
+          <button class="add-btn" onclick="addEntry()">Add to Log</button>
+        </div>
+
+        <!-- Log entries -->
+        ${MEALS.map(meal=>{
+          const entries=dayLogs.filter(e=>e.meal===meal); if(!entries.length)return"";
+          return `<div class="meal-section">
+            <div class="meal-header">${meal}</div>
+            ${entries.map(e=>`<div class="entry">
+              <div class="entry-dot" style="background:#333"></div>
+              <div class="entry-info">
+                <div class="entry-name">${e.qty!==1?`${e.qty}× `:""}${e.food}</div>
+                <div class="entry-macros">
+                  <span class="entry-cal">${e.calories} cal</span>
+                  <span style="color:${MC.protein.text}">P ${e.protein}g</span>
+                  <span style="color:${MC.carbs.text}">C ${e.carbs}g</span>
+                  <span style="color:${MC.fat.text}">F ${e.fat}g</span>
+                </div>
+              </div>
+              <button class="del-btn" onclick="removeEntry(${e.id})">×</button>
+            </div>`).join("")}
+          </div>`;
+        }).join("")}
+        ${dayLogs.length===0?`<div class="empty">Nothing logged yet.<br>Add a food above or scan a label.</div>`:""}
+      `:""}
+
+      ${s.view==="workout"?renderWorkout():""}
+
+      ${s.view==="history"?`
+        <div class="section-title">Past Logs</div>
+        ${allDates.length===0?`<div class="empty">No history yet.<br>Start logging today!</div>`:""}
+        ${allDates.map(date=>{
+          const entries=s.logs[date]||[],ht=tots(entries),over=ht.calories>TARGETS.calories;
+          return `<div class="history-card" onclick="ss({activeDate:'${date}',view:'log'})">
+            <div class="history-top">
+              <span class="history-date">${date===todayStr()?"Today":fmtDateShort(date)}</span>
+              <span class="history-cal${over?" over":""}">${Math.round(ht.calories)}<span>kcal</span></span>
+            </div>
+            <div class="history-macros">
+              ${[{key:"protein",l:"Protein",target:TARGETS.protein},{key:"carbs",l:"Carbs",target:TARGETS.carbs},{key:"fat",l:"Fat",target:TARGETS.fat}].map(({key,l,target})=>{
+                const v=ht[key],p=pct(v,target);
+                return `<div class="hm-item">
+                  <div class="hm-label">
+                    <span class="hm-name" style="color:${MC[key].text}">${l}</span>
+                    <span class="hm-val">${Math.round(v)}g</span>
+                  </div>
+                  <div class="hm-bar-bg"><div class="hm-bar" style="width:${p}%;background:${MC[key].stroke}"></div></div>
+                </div>`;
+              }).join("")}
+            </div>
+          </div>`;
+        }).join("")}
+      `:""}
+
+    </div>
+  </div>
+
+  ${s.scanMode?`
+  <div class="modal-overlay">
+    <div class="modal">
+      <div class="modal-handle"></div>
+      <div class="modal-header">
+        <div class="modal-title">Scan Food Label</div>
+        <button class="modal-close" onclick="ss({scanMode:false,scanImage:null,scanBase64:null,scanResult:null,scanError:null})">×</button>
+      </div>
+      ${!s.scanImage?`
+        <div class="upload-area" onclick="document.getElementById('fi').click()">
+          <div class="upload-icon">📷</div>
+          <div class="upload-title">Take or upload a photo</div>
+          <div class="upload-sub">AI will read the nutrition label instantly</div>
+        </div>
+        <input id="fi" type="file" accept="image/*" capture="environment" style="display:none" onchange="handleFile(this)" />
+      `:`
+        <img class="preview-img" src="${s.scanImage}" />
+        <button class="change-img-btn" onclick="ss({scanImage:null,scanBase64:null,scanResult:null,scanError:null});document.getElementById('fi2').click()">Choose different image</button>
+        <input id="fi2" type="file" accept="image/*" capture="environment" style="display:none" onchange="handleFile(this)" />
+      `}
+      ${s.scanImage&&!s.scanResult?`<button class="scan-api-btn" onclick="scanLabel()"${s.scanning?" disabled":""}>${s.scanning?`<span class="spin">⟳</span> Reading label…`:"🔍 Scan with AI"}</button>`:``}
+      ${s.scanError?`<div class="error-box">${s.scanError}</div>`:""}
+      ${s.scanResult?`<div class="result-box">
+        <div class="result-name">${s.scanResult.name}</div>
+        <div class="result-serving">Per serving · ${s.scanResult.serving_size}</div>
+        <div class="result-macros">
+          ${[{l:"Cal",v:Math.round(s.scanResult.calories*s.scanServings),u:"",c:"#fff"},
+             {l:"Protein",v:r1(s.scanResult.protein*s.scanServings),u:"g",c:MC.protein.text},
+             {l:"Carbs",v:r1(s.scanResult.carbs*s.scanServings),u:"g",c:MC.carbs.text},
+             {l:"Fat",v:r1(s.scanResult.fat*s.scanServings),u:"g",c:MC.fat.text}].map(({l,v,u,c})=>`
+            <div class="result-macro">
+              <div class="result-macro-val" style="color:${c}">${v}${u}</div>
+              <div class="result-macro-label">${l}</div>
+            </div>`).join("")}
+        </div>
+        <div class="row2" style="margin-bottom:14px">
+          <div>
+            <div style="font-size:11px;color:#555;font-weight:600;margin-bottom:6px">Meal</div>
+            <select class="field" onchange="ss({scanMeal:this.value})">${MEALS.map(m=>`<option${m===s.scanMeal?" selected":""}>${m}</option>`).join("")}</select>
+          </div>
+          <div>
+            <div style="font-size:11px;color:#555;font-weight:600;margin-bottom:6px">Servings</div>
+            <input class="field" type="number" min="0.25" max="20" step="0.25" value="${s.scanServings}" oninput="ss({scanServings:parseFloat(this.value)||1})" />
+          </div>
+        </div>
+        <button class="confirm-btn" onclick="addScannedEntry()">Add to Log</button>
+      </div>`:""}
+    </div>
+  </div>`:""}`;
+}
+
+function handleFile(input){
+  const file=input.files[0]; if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>ss({scanImage:ev.target.result,scanBase64:ev.target.result.split(",")[1],scanType:file.type||"image/jpeg",scanResult:null,scanError:null});
+  reader.readAsDataURL(file);
+}
+
+S.logs=load("mlogs",{});
+S.workoutLogs=load("wlogs",{});
+render();
+if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+</script>
+</body>
+</html>
