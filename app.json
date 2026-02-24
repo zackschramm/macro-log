@@ -1,30 +1,54 @@
 {
   "expo": {
     "name": "MacroLog",
-    "slug": "MacroLog",
+    "slug": "macro-log",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#121212"
     },
     "ios": {
-      "supportsTablet": true
+      "bundleIdentifier": "com.zackschramm.macrolog",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "MacroLog uses your camera to scan food barcodes and take photos of meals.",
+        "NSPhotoLibraryUsageDescription": "MacroLog uses your photo library to attach progress photos and food images.",
+        "NSUserNotificationsUsageDescription": "MacroLog sends daily reminders to log your meals, water, and workouts.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "package": "com.zackschramm.macrolog",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    }
+    "plugins": [
+      "expo-image-picker",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "MacroLog uses your camera to scan food barcodes and take photos of meals."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#121212"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "d47c3758-3b67-47fa-a584-9353dfd02ce0"
+      }
+    },
+    "owner": "zackschramm"
   }
 }

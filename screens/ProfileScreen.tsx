@@ -1,0 +1,235 @@
+import React, { useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { supabase } from '../constants/supabase';
+import { useAuth } from '../hooks/useAuth';
+import { calculateTargets, MC } from '../constants/data';
+
+const ACTIVITY_OPTIONS = [
+  { key: 'sedentary', label: 'Sedentary' },
+  { key: 'light', label: 'Lightly Active' },
+  { key: 'moderate', label: 'Moderate' },
+  { key: 'active', label: 'Very Active' },
+  { key: 'very_active', label: 'Athlete' },
+];
+const GOAL_OPTIONS = [
+  { key: 'lose', label: 'Lose Fat' },
+  { key: 'maintain', label: 'Maintain' },
+  { key: 'gain', label: 'Build Muscle' },
+];
+
+export default function ProfileScreen({ profile, onUpdate }: { profile: any; onUpdate: (p: any) => void }) {
+  const { user, signOut } = useAuth();
+  const [name, setName] = useState(profile.name || '');
+  const [age, setAge] = useState(String(profile.age || ''));
+  const [weight, setWeight] = useState(String(profile.weight_lbs || ''));
+  const ftVal = Math.floor((profile.height_in || 0) / 12);
+  const inVal = (profile.height_in || 0) % 12;
+  const [heightFt, setHeightFt] = useState(String(ftVal || ''));
+  const [heightIn, setHeightIn] = useState(String(inVal || ''));
+  const [sex, setSex] = useState(profile.sex || 'male');
+  const [activity, setActivity] = useState(profile.activity || 'moderate');
+  const [goal, setGoal] = useState(profile.goal || 'gain');
+  const [loading, setLoading] = useState(false);
+  const [customGoals, setCustomGoals] = useState(!!profile.custom_goals);
+  const [customCal, setCustomCal] = useState(profile.custom_goals ? String(profile.calories || '') : '');
+  const [customProtein, setCustomProtein] = useState(profile.custom_goals ? String(profile.protein || '') : '');
+  const [customCarbs, setCustomCarbs] = useState(profile.custom_goals ? String(profile.carbs || '') : '');
+  const [customFat, setCustomFat] = useState(profile.custom_goals ? String(profile.fat || '') : '');
+  const [saved, setSaved] = useState(false);
+
+  const totalHeightIn = (parseInt(heightFt) || 0) * 12 + (parseInt(heightIn) || 0);
+
+  const handleSave = async () => {
+    setLoading(true);
+    const profileData = {
+      weight_lbs: parseFloat(weight), height_in: totalHeightIn,
+      age: parseInt(age), sex, activity, goal,
+    };
+    const targets = customGoals ? {
+      calories: parseInt(customCal) || calculateTargets(profileData).calories,
+      protein: parseInt(customProtein) || calculateTargets(profileData).protein,
+      carbs: parseInt(customCarbs) || calculateTargets(profileData).carbs,
+      fat: parseInt(customFat) || calculateTargets(profileData).fat,
+    } : calculateTargets(profileData);
+    const updated = { id: user!.id, name, ...profileData, ...targets, custom_goals: customGoals, updated_at: new Date().toISOString() };
+    const { error } = await supabase.from('profiles').upsert(updated);
+    if (error) { Alert.alert('Error', error.message); }
+    else { onUpdate(updated); setSaved(true); setTimeout(() => setSaved(false), 2000); }
+    setLoading(false);
+  };
+
+  // Always show what's actually saved in the profile
+  const targets = {
+    calories: profile.calories,
+    protein: profile.protein,
+    carbs: profile.carbs,
+    fat: profile.fat,
+  };
+
+  const autoTargets = calculateTargets({
+    weight_lbs: parseFloat(weight) || profile.weight_lbs,
+    height_in: totalHeightIn || profile.height_in,
+    age: parseInt(age) || profile.age,
+    sex, activity, goal,
+  });
+
+  return (
+    <SafeAreaView style={s.safe} edges={['top']}>
+      <View style={s.header}>
+        <Text style={s.title}>Profile</Text>
+        <Text style={s.email}>{user?.email}</Text>
+      </View>
+      <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+
+        {/* Live macro preview */}
+        <View style={s.targetsCard}>
+          <Text style={s.targetsTitle}>YOUR TARGETS</Text>
+          <View style={s.targetsRow}>
+            <View style={s.targetItem}>
+              <Text style={s.targetVal}>{targets.calories}</Text>
+              <Text style={s.targetLabel}>Calories</Text>
+            </View>
+            <View style={s.targetItem}>
+              <Text style={[s.targetVal, { color: MC.protein.color }]}>{targets.protein}g</Text>
+              <Text style={s.targetLabel}>Protein</Text>
+            </View>
+            <View style={s.targetItem}>
+              <Text style={[s.targetVal, { color: MC.carbs.color }]}>{targets.carbs}g</Text>
+              <Text style={s.targetLabel}>Carbs</Text>
+            </View>
+            <View style={s.targetItem}>
+              <Text style={[s.targetVal, { color: MC.fat.color }]}>{targets.fat}g</Text>
+              <Text style={s.targetLabel}>Fat</Text>
+            </View>
+          </View>
+        </View>
+
+        <Text style={s.label}>Name</Text>
+        <TextInput style={s.input} value={name} onChangeText={setName} placeholder="Your name" placeholderTextColor="#444" />
+
+        <Text style={s.label}>Sex</Text>
+        <View style={s.row}>
+          {['male', 'female'].map(v => (
+            <TouchableOpacity key={v} style={[s.optBtn, sex === v && s.optBtnActive, { flex: 1 }]} onPress={() => setSex(v)}>
+              <Text style={[s.optBtnText, sex === v && s.optBtnTextActive]}>{v === 'male' ? '♂ Male' : '♀ Female'}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={s.label}>Age</Text>
+        <TextInput style={s.input} value={age} onChangeText={setAge} placeholder="25" placeholderTextColor="#444" keyboardType="number-pad" />
+
+        <Text style={s.label}>Height</Text>
+        <View style={s.row}>
+          <TextInput style={[s.input, { flex: 1 }]} value={heightFt} onChangeText={setHeightFt} placeholder="ft" placeholderTextColor="#444" keyboardType="number-pad" />
+          <TextInput style={[s.input, { flex: 1 }]} value={heightIn} onChangeText={setHeightIn} placeholder="in" placeholderTextColor="#444" keyboardType="number-pad" />
+        </View>
+
+        <Text style={s.label}>Weight (lbs)</Text>
+        <TextInput style={s.input} value={weight} onChangeText={setWeight} placeholder="172" placeholderTextColor="#444" keyboardType="decimal-pad" />
+
+        <Text style={s.label}>Activity Level</Text>
+        <View style={s.optRow}>
+          {ACTIVITY_OPTIONS.map(o => (
+            <TouchableOpacity key={o.key} style={[s.optBtn, activity === o.key && s.optBtnActive]} onPress={() => setActivity(o.key)}>
+              <Text style={[s.optBtnText, activity === o.key && s.optBtnTextActive]}>{o.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={s.label}>Goal</Text>
+        <View style={s.optRow}>
+          {GOAL_OPTIONS.map(o => (
+            <TouchableOpacity key={o.key} style={[s.optBtn, goal === o.key && s.optBtnActive]} onPress={() => setGoal(o.key)}>
+              <Text style={[s.optBtnText, goal === o.key && s.optBtnTextActive]}>{o.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Custom Goals Toggle */}
+        <View style={s.customGoalsCard}>
+          <View style={s.customGoalsHeader}>
+            <View>
+              <Text style={s.customGoalsTitle}>Custom Macro Goals</Text>
+              <Text style={s.customGoalsSub}>Override auto-calculated targets</Text>
+            </View>
+            <TouchableOpacity style={[s.toggle, customGoals && s.toggleOn]} onPress={() => setCustomGoals(!customGoals)}>
+              <View style={[s.toggleThumb, customGoals && s.toggleThumbOn]} />
+            </TouchableOpacity>
+          </View>
+          {customGoals && (
+            <View style={s.customGoalsForm}>
+              <View style={s.customGoalsRow}>
+                <View style={s.customGoalItem}>
+                  <Text style={s.fieldLabel}>Calories</Text>
+                  <TextInput style={s.input} value={customCal} onChangeText={setCustomCal} keyboardType='number-pad' placeholder={String(autoTargets.calories)} placeholderTextColor='#444' />
+                </View>
+                <View style={s.customGoalItem}>
+                  <Text style={[s.fieldLabel, { color: '#4a9eff' }]}>Protein (g)</Text>
+                  <TextInput style={s.input} value={customProtein} onChangeText={setCustomProtein} keyboardType='number-pad' placeholder={String(autoTargets.protein)} placeholderTextColor='#444' />
+                </View>
+              </View>
+              <View style={s.customGoalsRow}>
+                <View style={s.customGoalItem}>
+                  <Text style={[s.fieldLabel, { color: '#fbbf24' }]}>Carbs (g)</Text>
+                  <TextInput style={s.input} value={customCarbs} onChangeText={setCustomCarbs} keyboardType='number-pad' placeholder={String(autoTargets.carbs)} placeholderTextColor='#444' />
+                </View>
+                <View style={s.customGoalItem}>
+                  <Text style={[s.fieldLabel, { color: '#f472b6' }]}>Fat (g)</Text>
+                  <TextInput style={s.input} value={customFat} onChangeText={setCustomFat} keyboardType='number-pad' placeholder={String(autoTargets.fat)} placeholderTextColor='#444' />
+                </View>
+              </View>
+            </View>
+          )}
+        </View>
+
+        <TouchableOpacity style={s.saveBtn} onPress={handleSave} disabled={loading} activeOpacity={0.8}>
+          {loading ? <ActivityIndicator color="#000" /> : <Text style={s.saveBtnText}>{saved ? '✓ Saved!' : 'Save & Recalculate'}</Text>}
+        </TouchableOpacity>
+
+        <TouchableOpacity style={s.signOutBtn} onPress={() => Alert.alert('Sign Out', 'Are you sure?', [{ text: 'Cancel' }, { text: 'Sign Out', style: 'destructive', onPress: signOut }])}>
+          <Text style={s.signOutText}>Sign Out</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: '#121212' },
+  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
+  title: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: -0.5 },
+  email: { fontSize: 13, color: '#555', fontWeight: '500', marginTop: 2 },
+  scroll: { flex: 1 },
+  content: { padding: 20, paddingBottom: 60 },
+  targetsCard: { backgroundColor: '#1a1a1a', borderRadius: 16, padding: 16, marginBottom: 24 },
+  targetsTitle: { fontSize: 10, fontWeight: '700', color: '#444', letterSpacing: 1.5, marginBottom: 14 },
+  targetsRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  targetItem: { alignItems: 'center' },
+  targetVal: { fontSize: 20, fontWeight: '900', color: '#fff', letterSpacing: -0.5 },
+  targetLabel: { fontSize: 10, color: '#555', fontWeight: '600', marginTop: 2 },
+  label: { fontSize: 11, fontWeight: '700', color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  input: { backgroundColor: '#1e1e1e', borderRadius: 12, color: '#fff', padding: 14, fontSize: 16, marginBottom: 16 },
+  row: { flexDirection: 'row', gap: 10, marginBottom: 16 },
+  optRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  optBtn: { backgroundColor: '#1e1e1e', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 },
+  optBtnActive: { backgroundColor: '#fff' },
+  optBtnText: { color: '#555', fontSize: 13, fontWeight: '700' },
+  optBtnTextActive: { color: '#000' },
+  saveBtn: { backgroundColor: '#fff', borderRadius: 12, padding: 16, alignItems: 'center', marginBottom: 12 },
+  saveBtnText: { color: '#000', fontSize: 15, fontWeight: '800' },
+  signOutBtn: { backgroundColor: '#1e1e1e', borderRadius: 12, padding: 16, alignItems: 'center' },
+  signOutText: { color: '#ff4f4f', fontSize: 15, fontWeight: '700' },
+  customGoalsCard: { backgroundColor: '#1e1e1e', borderRadius: 16, padding: 16, marginBottom: 16 },
+  customGoalsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  customGoalsTitle: { fontSize: 15, fontWeight: '700', color: '#fff', marginBottom: 2 },
+  customGoalsSub: { fontSize: 12, color: '#555', fontWeight: '500' },
+  toggle: { width: 48, height: 28, borderRadius: 14, backgroundColor: '#333', padding: 2, justifyContent: 'center' },
+  toggleOn: { backgroundColor: '#4ade80' },
+  toggleThumb: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#fff', alignSelf: 'flex-start' },
+  toggleThumbOn: { alignSelf: 'flex-end' },
+  customGoalsForm: { marginTop: 16 },
+  customGoalsRow: { flexDirection: 'row', gap: 10 },
+  customGoalItem: { flex: 1 },
+});
