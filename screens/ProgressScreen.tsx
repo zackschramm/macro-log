@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
+import { useHealthKit } from '../hooks/useHealthKit';
 
 const { width } = Dimensions.get('window');
 
@@ -21,32 +22,6 @@ const MEASUREMENTS = [
 const todayStr = () => new Date().toISOString().split('T')[0];
 const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-function MiniChart({ data, color }: { data: number[]; color: string }) {
-  if (data.length < 2) return null;
-  const min = Math.min(...data);
-  const max = Math.max(...data);
-  const range = max - min || 1;
-  const W = width - 64;
-  const H = 48;
-  const pts = data.map((v, i) => ({
-    x: (i / (data.length - 1)) * W,
-    y: H - ((v - min) / range) * H,
-  }));
-  const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-
-  return (
-    <View style={{ height: H + 8, marginTop: 8 }}>
-      <svg width={W} height={H} style={{ overflow: 'visible' }}>
-        <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        {pts.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r="3" fill={color} />
-        ))}
-      </svg>
-    </View>
-  );
-}
-
-// Simple bar-based chart since SVG isn't available in RN without a lib
 function SimpleChart({ data, color, unit }: { data: { date: string; value: number }[]; color: string; unit: string }) {
   if (data.length < 2) return <Text style={{ color: '#444', fontSize: 12, marginTop: 8 }}>Log more entries to see your trend</Text>;
   const values = data.map(d => d.value);
@@ -97,6 +72,7 @@ const ch = StyleSheet.create({
 
 export default function ProgressScreen({ profile }: { profile: any }) {
   const { user } = useAuth();
+  const health = useHealthKit();
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -118,6 +94,12 @@ export default function ProgressScreen({ profile }: { profile: any }) {
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
+  useEffect(() => {
+    if (health.isAvailable && !health.isAuthorized) {
+      health.requestPermissions();
+    }
+  }, [health.isAvailable]);
+
   const handleSave = async () => {
     if (!form.weight_lbs && !form.chest_in && !form.waist_in) {
       Alert.alert('Please enter at least weight or one measurement'); return;
@@ -128,6 +110,11 @@ export default function ProgressScreen({ profile }: { profile: any }) {
     if (form.body_fat) payload.body_fat = parseFloat(form.body_fat);
     MEASUREMENTS.forEach(m => { if ((form as any)[m.key]) payload[m.key] = parseFloat((form as any)[m.key]); });
     await supabase.from('progress_logs').upsert(payload, { onConflict: 'user_id,date' });
+
+    if (form.weight_lbs && health.isAuthorized) {
+      await health.saveWeight(parseFloat(form.weight_lbs));
+    }
+
     await fetchLogs();
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setModalVisible(false);
@@ -135,8 +122,24 @@ export default function ProgressScreen({ profile }: { profile: any }) {
     setForm({ weight_lbs: '', body_fat: '', chest_in: '', waist_in: '', hips_in: '', arms_in: '', thighs_in: '', notes: '' });
   };
 
+  const importFromHealth = async () => {
+    if (!health.isAuthorized) {
+      const granted = await health.requestPermissions();
+      if (!granted) {
+        Alert.alert('Health Access', 'Please allow access to Apple Health in Settings.');
+        return;
+      }
+    }
+    const weight = await health.getLatestWeight();
+    if (weight) {
+      setForm(f => ({ ...f, weight_lbs: weight.toFixed(1) }));
+      Alert.alert('Imported!', `Latest weight from Health: ${weight.toFixed(1)} lbs`);
+    } else {
+      Alert.alert('No Data', 'No weight data found in Apple Health.');
+    }
+  };
+
   const weightData = logs.filter(l => l.weight_lbs).map(l => ({ date: l.date, value: l.weight_lbs }));
-  const latest = logs[logs.length - 1];
   const startWeight = logs.find(l => l.weight_lbs)?.weight_lbs;
   const currentWeight = [...logs].reverse().find(l => l.weight_lbs)?.weight_lbs;
   const weightChange = startWeight && currentWeight ? currentWeight - startWeight : null;
@@ -154,8 +157,6 @@ export default function ProgressScreen({ profile }: { profile: any }) {
         <View style={s.center}><ActivityIndicator color="#fff" /></View>
       ) : (
         <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-
-          {/* Weight card */}
           <View style={s.card}>
             <View style={s.cardHeader}>
               <Text style={s.cardTitle}>WEIGHT</Text>
@@ -171,7 +172,6 @@ export default function ProgressScreen({ profile }: { profile: any }) {
               : <Text style={s.emptyChart}>Log your weight to see your trend 📈</Text>}
           </View>
 
-          {/* Stats row */}
           {profile && (
             <View style={s.statsRow}>
               <View style={s.statCard}>
@@ -191,7 +191,6 @@ export default function ProgressScreen({ profile }: { profile: any }) {
             </View>
           )}
 
-          {/* Measurements */}
           <Text style={s.sectionTitle}>MEASUREMENTS</Text>
           {MEASUREMENTS.map(m => {
             const mData = logs.filter(l => l[m.key]).map(l => ({ date: l.date, value: l[m.key] }));
@@ -209,7 +208,6 @@ export default function ProgressScreen({ profile }: { profile: any }) {
             );
           })}
 
-          {/* Log history */}
           <Text style={s.sectionTitle}>HISTORY</Text>
           {logs.length === 0 && <Text style={s.emptyText}>No entries yet.{'\n'}Tap "+ Log" to get started!</Text>}
           {[...logs].reverse().map((log, i) => (
@@ -231,7 +229,6 @@ export default function ProgressScreen({ profile }: { profile: any }) {
         </ScrollView>
       )}
 
-      {/* Log Modal */}
       <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setModalVisible(false)}>
         <SafeAreaView style={s.modalSafe} edges={['top', 'bottom']}>
           <View style={s.handle} />
@@ -253,6 +250,12 @@ export default function ProgressScreen({ profile }: { profile: any }) {
           <ScrollView style={s.modalScroll} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
             {activeTab === 'weight' ? (
               <>
+                {health.isAvailable && (
+                  <TouchableOpacity style={s.healthBtn} onPress={importFromHealth}>
+                    <Text style={s.healthBtnIcon}>❤️</Text>
+                    <Text style={s.healthBtnText}>Import from Apple Health</Text>
+                  </TouchableOpacity>
+                )}
                 <Text style={s.fieldLabel}>Weight (lbs)</Text>
                 <TextInput style={s.input} value={form.weight_lbs} onChangeText={v => setForm(f => ({ ...f, weight_lbs: v }))} placeholder={String(profile?.weight_lbs || '172')} placeholderTextColor="#444" keyboardType="decimal-pad" />
                 <Text style={s.fieldLabel}>Body Fat %</Text>
@@ -329,4 +332,7 @@ const s = StyleSheet.create({
   input: { backgroundColor: '#252525', borderRadius: 12, color: '#fff', padding: 14, fontSize: 15, marginBottom: 16 },
   saveBtn: { backgroundColor: '#fff', borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 8 },
   saveBtnText: { color: '#000', fontSize: 15, fontWeight: '800' },
+  healthBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#1f1520', borderRadius: 12, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: '#3a1a2a' },
+  healthBtnIcon: { fontSize: 18 },
+  healthBtnText: { color: '#ff6b9d', fontSize: 14, fontWeight: '700' },
 });

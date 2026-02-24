@@ -15,6 +15,8 @@
         "NSCameraUsageDescription": "MacroLog uses your camera to scan food barcodes and take photos of meals.",
         "NSPhotoLibraryUsageDescription": "MacroLog uses your photo library to attach progress photos and food images.",
         "NSUserNotificationsUsageDescription": "MacroLog sends daily reminders to log your meals, water, and workouts.",
+        "NSHealthShareUsageDescription": "Fuelog reads your weight from Apple Health to make logging easier.",
+        "NSHealthUpdateUsageDescription": "Fuelog writes your weight, nutrition, and workouts to Apple Health.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -42,7 +44,8 @@
           "icon": "./assets/notification-icon.png",
           "color": "#121212"
         }
-      ]
+      ],
+      "react-native-health"
     ],
     "extra": {
       "eas": {
