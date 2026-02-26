@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { MC } from '../constants/data';
+import { callAI } from '../constants/ai';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
@@ -82,42 +83,19 @@ Output ONLY a raw JSON array (no markdown). Each day: 4 meals (Breakfast, Lunch,
 Format: [{"day":"Monday","meals":[{"meal":"Breakfast","items":[{"name":"Oats","serving":"1 cup dry","calories":300,"protein":10,"carbs":54,"fat":6}],"totals":{"calories":300,"protein":10,"carbs":54,"fat":6}}],"totals":{"calories":${targets.calories},"protein":${targets.protein},"carbs":${targets.carbs},"fat":${targets.fat}}}]
 Complete all 7 days. Valid JSON only.`;
 
-      console.log('API KEY:', process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ? 'present' : 'MISSING');
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': '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', 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 16000,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      });
+      const rawText = await callAI([{ role: 'user', content: prompt }]);
+      console.log('AI response:', rawText.slice(0, 300));
 
-      console.log('API status:', res.status);
-      const data = await res.json();
-      console.log('API data:', JSON.stringify(data).slice(0, 300));
-      const rawText = (data.content?.find((b: any) => b.type === 'text')?.text || '');
-      console.log('API response:', rawText.slice(0, 500));
-      
-      // Extract JSON array from anywhere in the response
       const match = rawText.match(/\[\s*\{[\s\S]*\}/);
-      if (!match) {
-        console.log('No JSON array found in response');
-        throw new Error('Could not parse meal plan response');
-      }
-      
-      // Try to find valid JSON by progressively trimming
+      if (!match) throw new Error('Could not parse meal plan response');
       let text = match[0];
-      // Ensure it ends with ']'
-      if (!text.trimEnd().endsWith(']')) {
-        text = text + ']';
-      }
-      
+      if (!text.trimEnd().endsWith(']')) text = text + ']';
+
       let parsed: DayPlan[];
       try {
         parsed = JSON.parse(text);
       } catch (e) {
-        console.log('Parse error:', e, 'Text:', text.slice(-200));
+        console.log('Parse error:', e);
         throw new Error('Could not parse meal plan response');
       }
 
