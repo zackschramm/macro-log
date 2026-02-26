@@ -85,7 +85,7 @@ Complete all 7 days. Valid JSON only.`;
       console.log('API KEY:', process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ? 'present' : 'MISSING');
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || '', 'anthropic-version': '2023-06-01' },
+        headers: { 'Content-Type': 'application/json', 'x-api-key': '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', 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 16000,
