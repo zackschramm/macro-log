@@ -180,7 +180,9 @@ Day name is: "${dayName}"
 Return ONLY a valid JSON array with 5-6 exercises. No markdown, no explanation, just the array.
 Format: [{"name":"Exercise Name","sets":3,"reps":"8-10"}]
 Every exercise MUST target ONLY the specified muscles above.`;
+      console.log('Sending prompt:', prompt.slice(0, 200));
       const response = await callAI([{ role: 'user', content: prompt }], undefined, 1000);
+      console.log('AI response:', response.slice(0, 500));
       const cleaned = response.replace(/```json|```/g, '').trim();
       const match = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
       if (!match) throw new Error('Could not parse response');
