@@ -94,15 +94,27 @@ Complete all 7 days. Valid JSON only.`;
 
       const data = await res.json();
       const rawText = (data.content?.find((b: any) => b.type === 'text')?.text || '');
+      console.log('API response:', rawText.slice(0, 500));
+      
       // Extract JSON array from anywhere in the response
-      const match = rawText.match(/\[\s*\{[\s\S]*\}\s*\]/);
-      if (!match) throw new Error('Could not parse meal plan response');
-      const text = match[0];
-
+      const match = rawText.match(/\[\s*\{[\s\S]*\}/);
+      if (!match) {
+        console.log('No JSON array found in response');
+        throw new Error('Could not parse meal plan response');
+      }
+      
+      // Try to find valid JSON by progressively trimming
+      let text = match[0];
+      // Ensure it ends with ']'
+      if (!text.trimEnd().endsWith(']')) {
+        text = text + ']';
+      }
+      
       let parsed: DayPlan[];
       try {
         parsed = JSON.parse(text);
-      } catch {
+      } catch (e) {
+        console.log('Parse error:', e, 'Text:', text.slice(-200));
         throw new Error('Could not parse meal plan response');
       }
 
