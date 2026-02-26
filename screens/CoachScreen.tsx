@@ -4,6 +4,7 @@ import {
   KeyboardAvoidingView, Platform, ActivityIndicator, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { callAI } from '../constants/ai';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -71,19 +72,12 @@ export default function CoachScreen({ initialExercise }: { initialExercise?: str
     scrollRef.current?.scrollToEnd({ animated: true });
 
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system: SYSTEM_PROMPT,
-          messages: newMessages.map(m => ({ role: m.role, content: m.content })),
-        }),
-      });
-      const data = await res.json();
-      const reply = data.content?.find((b: any) => b.type === 'text')?.text || 'Sorry, I could not get a response.';
-      setMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+      const reply = await callAI(
+        newMessages.map(m => ({ role: m.role, content: m.content })),
+        SYSTEM_PROMPT,
+        1000
+      );
+      setMessages(prev => [...prev, { role: 'assistant', content: reply || 'Sorry, I could not get a response.' }]);
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: 'Connection error — please try again.' }]);
     } finally {
@@ -124,7 +118,7 @@ export default function CoachScreen({ initialExercise }: { initialExercise?: str
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
         <Text style={s.title}>AI Coach</Text>
-        <Text style={s.subtitle}>Powered by Claude</Text>
+        <Text style={s.subtitle}>Powered by AI</Text>
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.flex} keyboardVerticalOffset={0}>
