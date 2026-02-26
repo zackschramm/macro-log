@@ -21,16 +21,18 @@ serve(async (req) => {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: max_tokens || 1000,
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: max_tokens || 8192,
         system,
         messages,
       }),
     })
 
     const data = await response.json()
+    console.log('Anthropic response:', JSON.stringify(data).slice(0, 300))
+    const text = data.content?.find((b: any) => b.type === 'text')?.text || ''
 
-    return new Response(JSON.stringify(data), {
+    return new Response(JSON.stringify({ content: [{ type: 'text', text }] }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   } catch (err) {
