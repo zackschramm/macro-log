@@ -9,6 +9,7 @@ import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { PRESET_PROGRAMS } from '../constants/programs';
 import CoachScreen from './CoachScreen';
+import { callAI } from '../constants/ai';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 function initSets(ex: any) { return Array.from({ length: ex.sets }, () => ({ weight: '', reps: '', done: false })); }
@@ -36,6 +37,7 @@ export default function WorkoutScreen() {
   ]);
   const [builderDayIndex, setBuilderDayIndex] = useState(0);
   const [savingWorkout, setSavingWorkout] = useState(false);
+  const [generatingWorkout, setGeneratingWorkout] = useState(false);
   const [exName, setExName] = useState('');
   const [exSets, setExSets] = useState('3');
   const [exReps, setExReps] = useState('10');
@@ -119,6 +121,33 @@ export default function WorkoutScreen() {
   const toggleDayRest = (i: number) => {
     const days = builderDays.map((d, di) => di === i ? { ...d, type: d.type === 'rest' ? 'training' : 'rest', exercises: d.type === 'rest' ? d.exercises : [] } : d);
     setBuilderDays(days);
+  };
+
+  const generateWorkoutDay = async () => {
+    setGeneratingWorkout(true);
+    try {
+      const dayName = builderDays[builderDayIndex].name;
+      const prompt = `Generate a workout for "${dayName}". Return ONLY a JSON array of exercises, no markdown. Format: [{"name":"Exercise Name","sets":3,"reps":"8-10"}]. Include 4-6 exercises appropriate for the day name/muscle group. Example for Push Day: bench press, shoulder press, tricep pushdowns, lateral raises, incline dumbbell press.`;
+      const response = await callAI([{ role: 'user', content: prompt }], undefined, 1000);
+      const cleaned = response.replace(/```json|```/g, '').trim();
+      const match = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
+      if (!match) throw new Error('Could not parse response');
+      const exercises = JSON.parse(match[0]);
+      const newExercises = exercises.map((ex: any, i: number) => ({
+        id: `ai_${Date.now()}_${i}`,
+        name: ex.name,
+        sets: ex.sets || 3,
+        reps: ex.reps || '10',
+      }));
+      const days = builderDays.map((d, i) =>
+        i === builderDayIndex ? { ...d, exercises: [...d.exercises, ...newExercises] } : d
+      );
+      setBuilderDays(days);
+    } catch (e) {
+      Alert.alert('Error', 'Could not generate workout. Try again.');
+    } finally {
+      setGeneratingWorkout(false);
+    }
   };
 
   const saveCustomWorkout = async () => {
@@ -230,7 +259,12 @@ export default function WorkoutScreen() {
                   </View>
                 ))}
                 <View style={s.addExForm}>
-                  <Text style={s.fieldLabel}>Add Exercise</Text>
+                  <View style={s.aiRow}>
+                    <Text style={s.fieldLabel}>Add Exercise</Text>
+                    <TouchableOpacity style={s.aiGenBtn} onPress={generateWorkoutDay} disabled={generatingWorkout}>
+                      {generatingWorkout ? <ActivityIndicator color="#000" size="small" /> : <Text style={s.aiGenBtnText}>✨ AI Fill</Text>}
+                    </TouchableOpacity>
+                  </View>
                   <TextInput style={s.input} value={exName} onChangeText={setExName} placeholder="Exercise name" placeholderTextColor="#444" />
                   <View style={s.row}>
                     <View style={{ flex: 1 }}>
@@ -449,6 +483,9 @@ const s = StyleSheet.create({
   removeEx: { color: '#333', fontSize: 20, paddingLeft: 12 },
   addExForm: { borderTopWidth: 1, borderTopColor: '#222', marginTop: 8, paddingTop: 16 },
   addExBtn: { backgroundColor: '#fff', borderRadius: 12, padding: 14, alignItems: 'center' },
+  aiRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  aiGenBtn: { backgroundColor: '#fff', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6 },
+  aiGenBtnText: { color: '#000', fontSize: 12, fontWeight: '800' },
   addExBtnText: { color: '#000', fontSize: 14, fontWeight: '800' },
   modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#222' },
   modalHeaderTitle: { fontSize: 17, fontWeight: '800', color: '#fff' },
