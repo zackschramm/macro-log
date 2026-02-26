@@ -82,6 +82,7 @@ Output ONLY a raw JSON array (no markdown). Each day: 4 meals (Breakfast, Lunch,
 Format: [{"day":"Monday","meals":[{"meal":"Breakfast","items":[{"name":"Oats","serving":"1 cup dry","calories":300,"protein":10,"carbs":54,"fat":6}],"totals":{"calories":300,"protein":10,"carbs":54,"fat":6}}],"totals":{"calories":${targets.calories},"protein":${targets.protein},"carbs":${targets.carbs},"fat":${targets.fat}}}]
 Complete all 7 days. Valid JSON only.`;
 
+      console.log('API KEY:', process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY ? 'present' : 'MISSING');
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY || '', 'anthropic-version': '2023-06-01' },
@@ -92,7 +93,9 @@ Complete all 7 days. Valid JSON only.`;
         }),
       });
 
+      console.log('API status:', res.status);
       const data = await res.json();
+      console.log('API data:', JSON.stringify(data).slice(0, 300));
       const rawText = (data.content?.find((b: any) => b.type === 'text')?.text || '');
       console.log('API response:', rawText.slice(0, 500));
       
