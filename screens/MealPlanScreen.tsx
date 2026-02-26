@@ -87,7 +87,9 @@ Complete all 7 days. Valid JSON only.`;
       const rawText = await callAI([{ role: 'user', content: prompt }]);
       console.log('AI response:', rawText.slice(0, 300));
 
-      const match = rawText.match(/\[\s*\{[\s\S]*\}/);
+      // Strip markdown code blocks
+      const cleaned = rawText.replace(/```json|```/g, '').trim();
+      const match = cleaned.match(/\[\s*\{[\s\S]*\}/);
       if (!match) throw new Error('Could not parse meal plan response');
       let text = match[0];
       if (!text.trimEnd().endsWith(']')) text = text + ']';
