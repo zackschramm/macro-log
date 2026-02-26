@@ -127,21 +127,46 @@ export default function WorkoutScreen() {
     setGeneratingWorkout(true);
     try {
       const dayName = builderDays[builderDayIndex].name;
-      const prompt = `You are a personal trainer. Generate a workout STRICTLY for the muscle group or training style indicated by this day name: "${dayName}".
+      const muscleKeywords: Record<string, string> = {
+        leg: 'legs and glutes (squats, leg press, lunges, leg curls, leg extensions, calf raises, RDLs, hip thrusts)',
+        legs: 'legs and glutes (squats, leg press, lunges, leg curls, leg extensions, calf raises, RDLs, hip thrusts)',
+        lower: 'legs and glutes (squats, leg press, lunges, leg curls, leg extensions, calf raises, RDLs, hip thrusts)',
+        push: 'chest, shoulders, and triceps (bench press, shoulder press, incline press, lateral raises, tricep pushdowns, dips)',
+        pull: 'back and biceps (pull-ups, rows, lat pulldowns, face pulls, bicep curls, hammer curls)',
+        chest: 'chest (bench press, incline press, cable flies, dips, push-ups)',
+        back: 'back (pull-ups, lat pulldowns, bent over rows, seated rows, face pulls, deadlifts)',
+        bicep: 'biceps (barbell curls, dumbbell curls, hammer curls, preacher curls, cable curls)',
+        biceps: 'biceps (barbell curls, dumbbell curls, hammer curls, preacher curls, cable curls)',
+        tricep: 'triceps (tricep pushdowns, skull crushers, overhead extensions, dips, close grip bench)',
+        triceps: 'triceps (tricep pushdowns, skull crushers, overhead extensions, dips, close grip bench)',
+        shoulder: 'shoulders (overhead press, lateral raises, front raises, rear delt flies, upright rows, shrugs)',
+        shoulders: 'shoulders (overhead press, lateral raises, front raises, rear delt flies, upright rows, shrugs)',
+        arm: 'arms - biceps and triceps (curls, hammer curls, pushdowns, skull crushers, dips)',
+        arms: 'arms - biceps and triceps (curls, hammer curls, pushdowns, skull crushers, dips)',
+        'full body': 'full body (squat, deadlift, bench press, rows, shoulder press, lunges)',
+        core: 'core and abs (planks, crunches, leg raises, cable crunches, russian twists, dead bugs)',
+        abs: 'core and abs (planks, crunches, leg raises, cable crunches, russian twists, dead bugs)',
+        glute: 'glutes (hip thrusts, glute bridges, Romanian deadlifts, cable kickbacks, sumo squats)',
+        glutes: 'glutes (hip thrusts, glute bridges, Romanian deadlifts, cable kickbacks, sumo squats)',
+      };
 
-RULES:
-- ONLY include exercises that directly target the muscles in the day name
-- If day name contains "leg", "legs", "lower": squats, leg press, lunges, leg curls, calf raises, RDLs ONLY
-- If day name contains "push": chest, shoulders, triceps ONLY  
-- If day name contains "pull": back, biceps ONLY
-- If day name contains "chest": chest exercises ONLY
-- If day name contains "back": back exercises ONLY
-- If day name contains "shoulder": shoulder exercises ONLY
-- If day name contains "arm": biceps and triceps ONLY
-- If day name contains "full body": mix of all muscle groups
-- Otherwise: use your best judgment based on the day name
+      const dayLower = dayName.toLowerCase();
+      const matchedMuscles: string[] = [];
+      for (const [keyword, muscles] of Object.entries(muscleKeywords)) {
+        if (dayLower.includes(keyword)) {
+          matchedMuscles.push(muscles);
+        }
+      }
+      const muscleDesc = matchedMuscles.length > 0
+        ? matchedMuscles.join(' AND ')
+        : `muscles appropriate for "${dayName}"`;
 
-Return ONLY a JSON array, no markdown, no explanation. Format: [{"name":"Exercise Name","sets":3,"reps":"8-10"}]. Include 5-6 exercises.`;
+      const prompt = `You are a personal trainer. Generate a workout for: ${muscleDesc}.
+Day name is: "${dayName}"
+
+Return ONLY a valid JSON array with 5-6 exercises. No markdown, no explanation, just the array.
+Format: [{"name":"Exercise Name","sets":3,"reps":"8-10"}]
+Every exercise MUST target ONLY the specified muscles above.`;
       const response = await callAI([{ role: 'user', content: prompt }], undefined, 1000);
       const cleaned = response.replace(/```json|```/g, '').trim();
       const match = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
