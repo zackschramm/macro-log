@@ -101,11 +101,12 @@ Complete all 7 days. Valid JSON only.`;
       }
 
       // Save to Supabase
-      await supabase.from('meal_plans').upsert({
+      const { error: saveError } = await supabase.from('meal_plans').upsert({
         user_id: user!.id,
         week_start: weekStart,
         plan: parsed,
       }, { onConflict: 'user_id,week_start' });
+      console.log('Save result:', saveError?.message || 'success');
 
       setPlan(parsed);
     } catch (e) {
