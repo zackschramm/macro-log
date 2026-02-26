@@ -294,9 +294,8 @@ Every exercise MUST target ONLY the specified muscles above.`;
           </ScrollView>
           <View style={s.builderDayCard}>
             <View style={s.builderDayHeader}>
-              <TextInput style={s.dayNameInput} value={currentDay.name} onChangeText={v => { const days = builderDays.map((d, i) => i === builderDayIndex ? { ...d, name: v } : d); setBuilderDays(days); }} placeholderTextColor="#444" />
               <TouchableOpacity style={[s.restToggle, currentDay.type === 'rest' && s.restToggleActive]} onPress={() => toggleDayRest(builderDayIndex)}>
-                <Text style={[s.restToggleText, currentDay.type === 'rest' && s.restToggleTextActive]}>😴 Rest</Text>
+                <Text style={[s.restToggleText, currentDay.type === 'rest' && s.restToggleTextActive]}>😴 Rest Day</Text>
               </TouchableOpacity>
             </View>
             {currentDay.type === 'training' && (
