@@ -126,60 +126,23 @@ export default function WorkoutScreen() {
   const generateWorkoutDay = async () => {
     setGeneratingWorkout(true);
     try {
-      const dayName = builderDays[builderDayIndex].name;
-      const muscleKeywords: Record<string, string> = {
-        leg: 'legs and glutes (squats, leg press, lunges, leg curls, leg extensions, calf raises, RDLs, hip thrusts)',
-        legs: 'legs and glutes (squats, leg press, lunges, leg curls, leg extensions, calf raises, RDLs, hip thrusts)',
-        lower: 'legs and glutes (squats, leg press, lunges, leg curls, leg extensions, calf raises, RDLs, hip thrusts)',
-        push: 'chest, shoulders, and triceps (bench press, shoulder press, incline press, lateral raises, tricep pushdowns, dips)',
-        pull: 'back and biceps (pull-ups, rows, lat pulldowns, face pulls, bicep curls, hammer curls)',
-        chest: 'chest (bench press, incline press, cable flies, dips, push-ups)',
-        back: 'back (pull-ups, lat pulldowns, bent over rows, seated rows, face pulls, deadlifts)',
-        bicep: 'biceps - use a variety of curl exercises such as: barbell curls, dumbbell curls, hammer curls, preacher curls, incline dumbbell curls, concentration curls, cable curls, spider curls, reverse curls. Pick 3-4 of these.',
-        biceps: 'biceps - use a variety of curl exercises such as: barbell curls, dumbbell curls, hammer curls, preacher curls, incline dumbbell curls, concentration curls, cable curls, spider curls, reverse curls. Pick 3-4 of these.',
-        tricep: 'triceps (tricep pushdowns, skull crushers, overhead extensions, dips, close grip bench)',
-        triceps: 'triceps (tricep pushdowns, skull crushers, overhead extensions, dips, close grip bench)',
-        shoulder: 'shoulders (overhead press, lateral raises, front raises, rear delt flies, upright rows, shrugs)',
-        shoulders: 'shoulders (overhead press, lateral raises, front raises, rear delt flies, upright rows, shrugs)',
-        arm: 'arms - biceps and triceps (curls, hammer curls, pushdowns, skull crushers, dips)',
-        arms: 'arms - biceps and triceps (curls, hammer curls, pushdowns, skull crushers, dips)',
-        'full body': 'full body (squat, deadlift, bench press, rows, shoulder press, lunges)',
-        core: 'core and abs (planks, crunches, leg raises, cable crunches, russian twists, dead bugs)',
-        abs: 'core and abs (planks, crunches, leg raises, cable crunches, russian twists, dead bugs)',
-        glute: 'glutes (hip thrusts, glute bridges, Romanian deadlifts, cable kickbacks, sumo squats)',
-        glutes: 'glutes (hip thrusts, glute bridges, Romanian deadlifts, cable kickbacks, sumo squats)',
-      };
+      const prompt = `Generate 5-6 gym exercises for a workout called "${builderName}".
 
-      // Normalize abbreviations
-      const normalized = dayName.toLowerCase()
-        .replace(/\bbi['']?s\b/g, 'biceps')
-        .replace(/\btri['']?s\b/g, 'triceps')
-        .replace(/\bshoulders?\b/g, 'shoulders')
-        .replace(/\bquads?\b/g, 'legs')
-        .replace(/\bhams?\b/g, 'legs')
-        .replace(/\bhamstrings?\b/g, 'legs')
-        .replace(/\bdelts?\b/g, 'shoulders')
-        .replace(/\blats?\b/g, 'back')
-        .replace(/\bglutes?\b/g, 'glutes')
-        .replace(/[&+,]/g, ' ');
+Only include exercises for the muscles indicated by the name "${builderName}".
+Common abbreviations: Bi's = Biceps, Tri's = Triceps, Delts = Shoulders, Lats = Back, Quads/Hams = Legs.
 
-      const dayLower = normalized;
-      const matchedMuscles: string[] = [];
-      for (const [keyword, muscles] of Object.entries(muscleKeywords)) {
-        if (dayLower.includes(keyword)) {
-          matchedMuscles.push(muscles);
-        }
-      }
-      const muscleDesc = matchedMuscles.length > 0
-        ? matchedMuscles.join(' AND ')
-        : `muscles appropriate for "${dayName}"`;
+Examples:
+- "Leg Day" → squats, leg press, leg curls, leg extensions, calf raises, RDLs
+- "Back & Biceps" → pull-ups, lat pulldowns, bent over rows, barbell curls, hammer curls, preacher curls
+- "Push Day" → bench press, incline press, shoulder press, lateral raises, tricep pushdowns, dips
+- "Chest" → bench press, incline dumbbell press, cable flys, dips, push-ups
+- "Biceps" → barbell curl, dumbbell curl, hammer curl, preacher curl, incline curl, concentration curl
+- "Shoulders" → overhead press, lateral raises, front raises, rear delt flys, upright rows, face pulls
+- Generic names → balanced full body workout
 
-      const prompt = `You are a personal trainer. Generate a workout for: ${muscleDesc}.
-Day name is: "${dayName}"
+Return ONLY a JSON array, nothing else:
+[{"name":"Exercise Name","sets":3,"reps":"8-12"}]`;
 
-Return ONLY a valid JSON array with 5-6 exercises. No markdown, no explanation, just the array.
-Format: [{"name":"Exercise Name","sets":3,"reps":"8-10"}]
-Every exercise MUST target ONLY the specified muscles above.`;
       console.log('Sending prompt:', prompt.slice(0, 200));
       const response = await callAI([{ role: 'user', content: prompt }], undefined, 1000);
       console.log('AI response:', response.slice(0, 500));
