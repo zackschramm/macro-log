@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
+import { Platform } from 'react-native';
 import AppleHealthKit, {
   HealthKitPermissions,
   HealthValue,
 } from 'react-native-health';
-import { Platform } from 'react-native';
 
 const isHealthAvailable = Platform.OS === 'ios' && AppleHealthKit && typeof AppleHealthKit.isAvailable === 'function';
-import { Platform } from 'react-native';
 
 const PERMISSIONS: HealthKitPermissions = {
   permissions: {
