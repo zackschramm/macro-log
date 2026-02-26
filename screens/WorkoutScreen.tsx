@@ -150,7 +150,20 @@ export default function WorkoutScreen() {
         glutes: 'glutes (hip thrusts, glute bridges, Romanian deadlifts, cable kickbacks, sumo squats)',
       };
 
-      const dayLower = dayName.toLowerCase();
+      // Normalize abbreviations
+      const normalized = dayName.toLowerCase()
+        .replace(/\bbi['']?s\b/g, 'biceps')
+        .replace(/\btri['']?s\b/g, 'triceps')
+        .replace(/\bshoulders?\b/g, 'shoulders')
+        .replace(/\bquads?\b/g, 'legs')
+        .replace(/\bhams?\b/g, 'legs')
+        .replace(/\bhamstrings?\b/g, 'legs')
+        .replace(/\bdelts?\b/g, 'shoulders')
+        .replace(/\blats?\b/g, 'back')
+        .replace(/\bglutes?\b/g, 'glutes')
+        .replace(/[&+,]/g, ' ');
+
+      const dayLower = normalized;
       const matchedMuscles: string[] = [];
       for (const [keyword, muscles] of Object.entries(muscleKeywords)) {
         if (dayLower.includes(keyword)) {
