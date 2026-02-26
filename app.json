@@ -52,6 +52,7 @@
         "projectId": "d47c3758-3b67-47fa-a584-9353dfd02ce0"
       }
     },
-    "owner": "zackschramm"
+    "owner": "zackschramm",
+    "jsEngine": "hermes"
   }
 }
