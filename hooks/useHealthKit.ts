@@ -5,6 +5,9 @@ import AppleHealthKit, {
 } from 'react-native-health';
 import { Platform } from 'react-native';
 
+const isHealthAvailable = Platform.OS === 'ios' && AppleHealthKit && typeof AppleHealthKit.isAvailable === 'function';
+import { Platform } from 'react-native';
+
 const PERMISSIONS: HealthKitPermissions = {
   permissions: {
     read: [
@@ -29,7 +32,7 @@ export function useHealthKit() {
   const [isAuthorized, setIsAuthorized] = useState(false);
 
   useEffect(() => {
-    if (Platform.OS !== 'ios') return;
+    if (!isHealthAvailable) return;
     AppleHealthKit.isAvailable((err, available) => {
       if (!err && available) setIsAvailable(true);
     });
@@ -37,7 +40,7 @@ export function useHealthKit() {
 
   const requestPermissions = (): Promise<boolean> => {
     return new Promise((resolve) => {
-      if (Platform.OS !== 'ios') return resolve(false);
+      if (!isHealthAvailable) return resolve(false);
       AppleHealthKit.initHealthKit(PERMISSIONS, (err) => {
         if (err) { resolve(false); return; }
         setIsAuthorized(true);
