@@ -127,7 +127,21 @@ export default function WorkoutScreen() {
     setGeneratingWorkout(true);
     try {
       const dayName = builderDays[builderDayIndex].name;
-      const prompt = `Generate a workout for "${dayName}". Return ONLY a JSON array of exercises, no markdown. Format: [{"name":"Exercise Name","sets":3,"reps":"8-10"}]. Include 4-6 exercises appropriate for the day name/muscle group. Example for Push Day: bench press, shoulder press, tricep pushdowns, lateral raises, incline dumbbell press.`;
+      const prompt = `You are a personal trainer. Generate a workout STRICTLY for the muscle group or training style indicated by this day name: "${dayName}".
+
+RULES:
+- ONLY include exercises that directly target the muscles in the day name
+- If day name contains "leg", "legs", "lower": squats, leg press, lunges, leg curls, calf raises, RDLs ONLY
+- If day name contains "push": chest, shoulders, triceps ONLY  
+- If day name contains "pull": back, biceps ONLY
+- If day name contains "chest": chest exercises ONLY
+- If day name contains "back": back exercises ONLY
+- If day name contains "shoulder": shoulder exercises ONLY
+- If day name contains "arm": biceps and triceps ONLY
+- If day name contains "full body": mix of all muscle groups
+- Otherwise: use your best judgment based on the day name
+
+Return ONLY a JSON array, no markdown, no explanation. Format: [{"name":"Exercise Name","sets":3,"reps":"8-10"}]. Include 5-6 exercises.`;
       const response = await callAI([{ role: 'user', content: prompt }], undefined, 1000);
       const cleaned = response.replace(/```json|```/g, '').trim();
       const match = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
