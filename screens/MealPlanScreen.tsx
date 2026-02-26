@@ -58,9 +58,9 @@ export default function MealPlanScreen({ targets, profile }: {
     if (!user) return;
     const { data, error } = await supabase.from('meal_plans')
       .select('*').eq('user_id', user.id).eq('week_start', weekStart)
-      .order('created_at', { ascending: false }).limit(1).single();
-    console.log('fetchExisting:', JSON.stringify({ data: data?.plan ? 'has plan' : 'no plan', error: error?.message, weekStart }));
-    if (data?.plan) setPlan(data.plan);
+      .order('created_at', { ascending: false }).limit(1);
+    console.log('fetchExisting:', JSON.stringify({ count: data?.length, error: error?.message, weekStart }));
+    if (data?.[0]?.plan) setPlan(data[0].plan);
     setLoadingExisting(false);
   }, [user, weekStart]);
 
