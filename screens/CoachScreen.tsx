@@ -104,7 +104,7 @@ export default function CoachScreen({ initialExercise }: { initialExercise?: str
             )}
           </Text>
           {links.map((link, li) => (
-            <TouchableOpacity key={li} style={s.ytLink} onPress={() => Linking.openURL(link.url)}>
+            <TouchableOpacity key={li} style={s.ytLink} onPress={() => Linking.openURL(`https://www.youtube.com/results?search_query=${encodeURIComponent(link.title)}`)}>
               <Text style={s.ytIcon}>▶</Text>
               <Text style={s.ytTitle} numberOfLines={1}>{link.title}</Text>
             </TouchableOpacity>
