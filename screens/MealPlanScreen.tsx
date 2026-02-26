@@ -93,28 +93,17 @@ Complete all 7 days. Valid JSON only.`;
       });
 
       const data = await res.json();
-      const text = (data.content?.find((b: any) => b.type === 'text')?.text || '')
-        .replace(/```json|```/g, '').trim();
+      const rawText = (data.content?.find((b: any) => b.type === 'text')?.text || '');
+      // Extract JSON array from anywhere in the response
+      const match = rawText.match(/\[\s*\{[\s\S]*\}\s*\]/);
+      if (!match) throw new Error('Could not parse meal plan response');
+      const text = match[0];
 
       let parsed: DayPlan[];
       try {
         parsed = JSON.parse(text);
-      } catch (parseErr) {
-        const lastTotals = text.lastIndexOf('"totals"');
-        if (lastTotals > 0) {
-          const closeIdx = text.indexOf('}}', lastTotals);
-          if (closeIdx > 0) {
-            try {
-              parsed = JSON.parse(text.slice(0, closeIdx + 2) + ']');
-            } catch {
-              throw new Error('Could not parse meal plan response');
-            }
-          } else {
-            throw new Error('Could not parse meal plan response');
-          }
-        } else {
-          throw new Error('Could not parse meal plan response');
-        }
+      } catch {
+        throw new Error('Could not parse meal plan response');
       }
 
       // Save to Supabase
