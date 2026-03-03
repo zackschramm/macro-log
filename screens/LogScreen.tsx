@@ -72,29 +72,7 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
   };
 
   const addEntry = async () => {
-    const addManualEntry = async () => {
-    if (!manualName.trim() || !manualCalories) {
-      Alert.alert('Please enter at least a name and calories.');
-      return;
-    }
-    setManualSaving(true);
-    await supabase.from('macro_logs').insert({
-      user_id: user!.id, date: activeDate, meal: manualMeal, food: manualName.trim(),
-      qty: 1,
-      calories: Math.round(parseFloat(manualCalories) || 0),
-      protein: r1(parseFloat(manualProtein) || 0),
-      carbs: r1(parseFloat(manualCarbs) || 0),
-      fat: r1(parseFloat(manualFat) || 0),
-    });
-    await fetchLogs();
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setManualSaving(false);
-    setManualVisible(false);
-    setManualName(''); setManualCalories(''); setManualProtein('');
-    setManualCarbs(''); setManualFat('');
-  };
-
-  const food = userFoods.find(f => f.name === selectedFood); if (!food) return;
+    const food = userFoods.find(f => f.name === selectedFood); if (!food) return;
     const q = parseFloat(quantity) || 1;
     setSaving(true);
     await supabase.from('macro_logs').insert({
