@@ -130,9 +130,9 @@ export default function NotificationsScreen() {
     try {
       await Notifications.scheduleNotificationAsync({
         content: { title: '🔔 MacroLog', body: 'Notifications are working!', sound: true },
-        trigger: null,
+        trigger: { seconds: 2 } as any,
       });
-      Alert.alert('Test Sent', 'Notification fired immediately!');
+      Alert.alert('Test Sent', "You'll get a notification in 2 seconds.");
     } catch (e: any) {
       Alert.alert('Error', e.message);
     }
