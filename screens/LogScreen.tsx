@@ -39,6 +39,14 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanMeal, setScanMeal] = useState('Breakfast');
   const [scanServings, setScanServings] = useState('1');
+  const [manualVisible, setManualVisible] = useState(false);
+  const [manualMeal, setManualMeal] = useState('Breakfast');
+  const [manualName, setManualName] = useState('');
+  const [manualCalories, setManualCalories] = useState('');
+  const [manualProtein, setManualProtein] = useState('');
+  const [manualCarbs, setManualCarbs] = useState('');
+  const [manualFat, setManualFat] = useState('');
+  const [manualSaving, setManualSaving] = useState(false);
 
   const fetchLogs = useCallback(async () => {
     if (!user) return;
@@ -64,7 +72,29 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
   };
 
   const addEntry = async () => {
-    const food = userFoods.find(f => f.name === selectedFood); if (!food) return;
+    const addManualEntry = async () => {
+    if (!manualName.trim() || !manualCalories) {
+      Alert.alert('Please enter at least a name and calories.');
+      return;
+    }
+    setManualSaving(true);
+    await supabase.from('macro_logs').insert({
+      user_id: user!.id, date: activeDate, meal: manualMeal, food: manualName.trim(),
+      qty: 1,
+      calories: Math.round(parseFloat(manualCalories) || 0),
+      protein: r1(parseFloat(manualProtein) || 0),
+      carbs: r1(parseFloat(manualCarbs) || 0),
+      fat: r1(parseFloat(manualFat) || 0),
+    });
+    await fetchLogs();
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setManualSaving(false);
+    setManualVisible(false);
+    setManualName(''); setManualCalories(''); setManualProtein('');
+    setManualCarbs(''); setManualFat('');
+  };
+
+  const food = userFoods.find(f => f.name === selectedFood); if (!food) return;
     const q = parseFloat(quantity) || 1;
     setSaving(true);
     await supabase.from('macro_logs').insert({
@@ -181,9 +211,14 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
         <View style={s.panel}>
           <View style={s.panelTop}>
             <Text style={s.sectionTitle}>ADD FOOD</Text>
-            <TouchableOpacity style={s.scanBtn} onPress={() => { setScanVisible(true); setScanMeal(selectedMeal); }}>
-              <Text style={s.scanBtnText}>📷  Scan Label</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity style={s.scanBtn} onPress={() => { setManualVisible(true); setManualMeal(selectedMeal); }}>
+                <Text style={s.scanBtnText}>✏️  Manual</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.scanBtn} onPress={() => { setScanVisible(true); setScanMeal(selectedMeal); }}>
+                <Text style={s.scanBtnText}>📷  Scan</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.mealPicker}>
             {MEALS.map(m => (
@@ -316,6 +351,49 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
                   </TouchableOpacity>
                 </View>
               )}
+            </ScrollView>
+          </SafeAreaView>
+        </KeyboardAvoidingView>
+      </Modal>
+      {/* Manual Entry Modal */}
+      <Modal visible={manualVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setManualVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <SafeAreaView style={s.modalSafe} edges={['top', 'bottom']}>
+            <View style={s.handle} />
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>Manual Entry</Text>
+              <TouchableOpacity style={s.modalClose} onPress={() => setManualVisible(false)}>
+                <Text style={s.modalCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={s.modalScroll} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+              <Text style={s.fieldLabel}>Food Name</Text>
+              <TextInput style={s.input} value={manualName} onChangeText={setManualName} placeholder="e.g. Chicken Breast" placeholderTextColor="#444" />
+              
+              <Text style={s.fieldLabel}>Meal</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+                {MEALS.map(m => (
+                  <TouchableOpacity key={m} style={[s.chip, manualMeal === m && s.chipActive, { marginRight: 8 }]} onPress={() => setManualMeal(m)}>
+                    <Text style={[s.chipText, manualMeal === m && s.chipTextActive]}>{m}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <Text style={s.fieldLabel}>Calories</Text>
+              <TextInput style={s.input} value={manualCalories} onChangeText={setManualCalories} keyboardType="decimal-pad" placeholder="0" placeholderTextColor="#444" />
+
+              <Text style={s.fieldLabel}>Protein (g)</Text>
+              <TextInput style={s.input} value={manualProtein} onChangeText={setManualProtein} keyboardType="decimal-pad" placeholder="0" placeholderTextColor="#444" />
+
+              <Text style={s.fieldLabel}>Carbs (g)</Text>
+              <TextInput style={s.input} value={manualCarbs} onChangeText={setManualCarbs} keyboardType="decimal-pad" placeholder="0" placeholderTextColor="#444" />
+
+              <Text style={s.fieldLabel}>Fat (g)</Text>
+              <TextInput style={s.input} value={manualFat} onChangeText={setManualFat} keyboardType="decimal-pad" placeholder="0" placeholderTextColor="#444" />
+
+              <TouchableOpacity style={s.confirmBtn} onPress={addManualEntry} disabled={manualSaving}>
+                {manualSaving ? <ActivityIndicator color="#000" /> : <Text style={s.confirmBtnText}>Add to Log</Text>}
+              </TouchableOpacity>
             </ScrollView>
           </SafeAreaView>
         </KeyboardAvoidingView>
