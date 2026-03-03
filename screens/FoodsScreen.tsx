@@ -38,6 +38,46 @@ export default function FoodsScreen() {
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [imageMime, setImageMime] = useState('image/jpeg');
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [usdaQuery, setUsdaQuery] = useState('');
+  const [usdaResults, setUsdaResults] = useState<any[]>([]);
+  const [usdaSearching, setUsdaSearching] = useState(false);
+  const [usdaVisible, setUsdaVisible] = useState(false);
+
+  const searchUSDA = async () => {
+    if (!usdaQuery.trim()) return;
+    setUsdaSearching(true);
+    try {
+      const res = await fetch('https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy/food-search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDAyNzIyMDAsImV4cCI6MjA1NTg0ODIwMH0.BHiSHOKsHPaObq0RQJ-4DEiUFjVSQSJwSHRqcGpA8b4',
+        },
+        body: JSON.stringify({ query: usdaQuery }),
+      });
+      const data = await res.json();
+      setUsdaResults(data.foods || []);
+    } catch (e) {
+      Alert.alert('Search failed', 'Could not search food database.');
+    } finally {
+      setUsdaSearching(false);
+    }
+  };
+
+  const importUSDAFood = async (food: any) => {
+    await supabase.from('user_foods').insert({
+      user_id: user!.id,
+      name: food.name,
+      serving_size: food.serving_size,
+      calories: food.calories,
+      protein: food.protein,
+      carbs: food.carbs,
+      fat: food.fat,
+    });
+    await fetchFoods();
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Alert.alert('Added!', `"${food.name}" added to your foods.`);
+  };
 
   const fetchFoods = useCallback(async () => {
     if (!user) return;
@@ -171,9 +211,14 @@ export default function FoodsScreen() {
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
         <Text style={s.title}>My Foods</Text>
-        <TouchableOpacity style={s.addBtn} onPress={openAdd}>
-          <Text style={s.addBtnText}>+ Add</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity style={[s.addBtn, { backgroundColor: '#1e1e1e' }]} onPress={() => setUsdaVisible(true)}>
+            <Text style={[s.addBtnText, { color: '#fff' }]}>🔍 Search</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.addBtn} onPress={openAdd}>
+            <Text style={s.addBtnText}>+ Add</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={s.searchWrap}>
@@ -325,6 +370,69 @@ export default function FoodsScreen() {
           </SafeAreaView>
         </KeyboardAvoidingView>
       </Modal>
+      {/* USDA Search Modal */}
+      <Modal visible={usdaVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setUsdaVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <SafeAreaView style={s.modalSafe} edges={['top', 'bottom']}>
+            <View style={s.handle} />
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>Food Database</Text>
+              <TouchableOpacity style={s.modalClose} onPress={() => setUsdaVisible(false)}>
+                <Text style={s.modalCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ paddingHorizontal: 20, marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput
+                  style={[s.input, { flex: 1, marginBottom: 0 }]}
+                  value={usdaQuery}
+                  onChangeText={setUsdaQuery}
+                  placeholder="Search millions of foods..."
+                  placeholderTextColor="#444"
+                  onSubmitEditing={searchUSDA}
+                  returnKeyType="search"
+                />
+                <TouchableOpacity
+                  style={[s.saveBtn, { marginBottom: 0, paddingHorizontal: 16, paddingVertical: 14 }]}
+                  onPress={searchUSDA}
+                  disabled={usdaSearching}>
+                  {usdaSearching ? <ActivityIndicator color="#000" size="small" /> : <Text style={s.saveBtnText}>Go</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingTop: 0, paddingBottom: 40 }}>
+              {usdaResults.length === 0 && !usdaSearching && (
+                <View style={s.empty}>
+                  <Text style={s.emptyIcon}>🔍</Text>
+                  <Text style={s.emptyTitle}>Search Foods</Text>
+                  <Text style={s.emptySub}>Powered by the USDA food database</Text>
+                </View>
+              )}
+              {usdaResults.map((food, i) => (
+                <View key={i} style={[s.foodCard, { marginBottom: 8 }]}>
+                  <View style={s.foodInfo}>
+                    <Text style={s.foodName} numberOfLines={2}>{food.name}</Text>
+                    {food.brand && <Text style={s.foodServing}>{food.brand}</Text>}
+                    <Text style={s.foodServing}>per {food.serving_size}</Text>
+                    <View style={s.foodMacros}>
+                      <Text style={s.foodCal}>{food.calories} cal</Text>
+                      <Text style={[s.foodMacro, { color: MC.protein.color }]}>P {food.protein}g</Text>
+                      <Text style={[s.foodMacro, { color: MC.carbs.color }]}>C {food.carbs}g</Text>
+                      <Text style={[s.foodMacro, { color: MC.fat.color }]}>F {food.fat}g</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={{ backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}
+                    onPress={() => importUSDAFood(food)}>
+                    <Text style={{ color: '#000', fontWeight: '800', fontSize: 13 }}>+ Add</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          </SafeAreaView>
+        </KeyboardAvoidingView>
+      </Modal>
+
       <BarcodeScanner
         visible={scannerVisible}
         onClose={() => setScannerVisible(false)}

@@ -10,9 +10,37 @@ serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  const url = new URL(req.url)
+
+  // USDA food search
+  if (url.pathname.endsWith('/food-search')) {
+    const { query } = await req.json()
+    const apiKey = Deno.env.get('USDA_API_KEY') || ''
+    const res = await fetch(
+      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=10&api_key=${apiKey}`
+    )
+    const data = await res.json()
+    const foods = (data.foods || []).map((f: any) => {
+      const nutrients = f.foodNutrients || []
+      const get = (name: string) => nutrients.find((n: any) => n.nutrientName?.toLowerCase().includes(name))?.value || 0
+      return {
+        name: f.description,
+        brand: f.brandOwner || f.brandName || null,
+        serving_size: f.servingSize ? `${f.servingSize}${f.servingSizeUnit || 'g'}` : '100g',
+        calories: Math.round(get('energy') || get('calorie')),
+        protein: Math.round(get('protein') * 10) / 10,
+        carbs: Math.round(get('carbohydrate') * 10) / 10,
+        fat: Math.round(get('total lipid') * 10) / 10,
+      }
+    })
+    return new Response(JSON.stringify({ foods }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    })
+  }
+
+  // AI proxy
   try {
     const { messages, system, max_tokens } = await req.json()
-
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -27,11 +55,8 @@ serve(async (req) => {
         messages,
       }),
     })
-
     const data = await response.json()
-    console.log('Anthropic response:', JSON.stringify(data).slice(0, 300))
     const text = data.content?.find((b: any) => b.type === 'text')?.text || ''
-
     return new Response(JSON.stringify({ content: [{ type: 'text', text }] }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
