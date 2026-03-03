@@ -85,6 +85,26 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
     setSaving(false);
   };
 
+  const addManualEntry = async () => {
+    if (!manualName.trim() || !manualCalories) {
+      Alert.alert('Please enter at least a name and calories.');
+      return;
+    }
+    setManualSaving(true);
+    await supabase.from('macro_logs').insert({
+      user_id: user!.id, date: activeDate, meal: manualMeal, food: manualName.trim(), qty: 1,
+      calories: Math.round(parseFloat(manualCalories) || 0),
+      protein: r1(parseFloat(manualProtein) || 0),
+      carbs: r1(parseFloat(manualCarbs) || 0),
+      fat: r1(parseFloat(manualFat) || 0),
+    });
+    await fetchLogs();
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setManualSaving(false);
+    setManualVisible(false);
+    setManualName(''); setManualCalories(''); setManualProtein(''); setManualCarbs(''); setManualFat('');
+  };
+
   const removeEntry = async (id: number) => {
     await supabase.from('macro_logs').delete().eq('id', id);
     await fetchLogs();
