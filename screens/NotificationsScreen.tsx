@@ -123,12 +123,19 @@ export default function NotificationsScreen() {
   const testNotif = async () => {
     let granted = hasPermission;
     if (!granted) granted = await requestPermission();
-    if (!granted) return;
-    await Notifications.scheduleNotificationAsync({
-      content: { title: '🔔 MacroLog', body: 'Notifications are working!', sound: true },
-      trigger: { seconds: 2 } as any,
-    });
-    Alert.alert('Test Sent', 'You\'ll get a notification in 2 seconds.');
+    if (!granted) {
+      Alert.alert('No Permission', 'Notification permission was denied.');
+      return;
+    }
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: { title: '🔔 MacroLog', body: 'Notifications are working!', sound: true },
+        trigger: null,
+      });
+      Alert.alert('Test Sent', 'Notification fired immediately!');
+    } catch (e: any) {
+      Alert.alert('Error', e.message);
+    }
   };
 
   return (
