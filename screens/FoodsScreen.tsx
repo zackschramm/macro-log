@@ -42,10 +42,7 @@ export default function FoodsScreen() {
   const [usdaResults, setUsdaResults] = useState<any[]>([]);
   const [usdaSearching, setUsdaSearching] = useState(false);
   const [usdaVisible, setUsdaVisible] = useState(false);
-  const [usdaQuery, setUsdaQuery] = useState('');
-  const [usdaResults, setUsdaResults] = useState<any[]>([]);
-  const [usdaSearching, setUsdaSearching] = useState(false);
-  const [usdaVisible, setUsdaVisible] = useState(false);
+
 
   const searchUSDA = async () => {
     if (!usdaQuery.trim()) return;
@@ -83,26 +80,7 @@ export default function FoodsScreen() {
     Alert.alert('Added!', `"${food.name}" added to your foods.`);
   };
 
-  const searchUSDA = async () => {
-    if (!usdaQuery.trim()) return;
-    setUsdaSearching(true);
-    try {
-      const res = await fetch('https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy/food-search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDAyNzIyMDAsImV4cCI6MjA1NTg0ODIwMH0.BHiSHOKsHPaObq0RQJ-4DEiUFjVSQSJwSHRqcGpA8b4',
-        },
-        body: JSON.stringify({ query: usdaQuery }),
-      });
-      const data = await res.json();
-      setUsdaResults(data.foods || []);
-    } catch (e) {
-      Alert.alert('Search failed', 'Could not search food database.');
-    } finally {
-      setUsdaSearching(false);
-    }
-  };
+
 
   const importUSDAFood = async (food: any) => {
     await supabase.from('user_foods').insert({
