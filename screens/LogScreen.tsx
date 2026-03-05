@@ -142,12 +142,17 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
     if (!scanBase64) return;
     setScanning(true); setScanError(null); setScanResult(null);
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, messages: [{ role: 'user', content: [
-          { type: 'image', source: { type: 'base64', media_type: scanType, data: scanBase64 } },
-          { type: 'text', text: 'Read this nutrition label and respond ONLY with JSON:\n{"name":"product name","serving_size":"e.g. 1 cup","calories":number,"protein":number,"carbs":number,"fat":number}\nIf unreadable: {"error":"message"}' },
-        ]}] }),
+      const res = await fetch('https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDAyNzIyMDAsImV4cCI6MjA1NTg0ODIwMH0.BHiSHOKsHPaObq0RQJ-4DEiUFjVSQSJwSHRqcGpA8b4' },
+        body: JSON.stringify({
+          system: 'You are a nutrition label reader. Return only valid JSON, no explanation.',
+          messages: [{ role: 'user', content: [
+            { type: 'image', source: { type: 'base64', media_type: scanType, data: scanBase64 } },
+            { type: 'text', text: 'Read this nutrition label and respond ONLY with JSON:\n{"name":"product name","serving_size":"e.g. 1 cup","calories":number,"protein":number,"carbs":number,"fat":number}\nIf unreadable: {"error":"message"}' },
+          ]}],
+          max_tokens: 1000,
+        }),
       });
       const data = await res.json();
       const text = (data.content?.find((b: any) => b.type === 'text')?.text || '').replace(/```json|```/g, '').trim();
