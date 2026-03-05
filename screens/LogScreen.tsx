@@ -130,7 +130,8 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
   const pickImage = async (fromCamera: boolean) => {
     const fn = fromCamera ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
     const result = await fn({
- base64: true, quality: 0.5, allowsEditing: false, exif: false });
+ base64: true, quality: 0.5, allowsEditing: false, exif: false, allowsMultipleSelection: false });
+    // Force JPEG by re-encoding if needed
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
       setScanImage(asset.uri); setScanBase64(asset.base64 || null);
@@ -146,8 +147,8 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
     setScanning(true); setScanError(null); setScanResult(null);
     try {
       // Upload image to Supabase Storage first, then pass URL to AI
-      const imgResp = await fetch(scanImage);
-      const imgBlob = await imgResp.blob();
+      // Convert to JPEG blob via base64
+      const imgBlob = await fetch(`data:image/jpeg;base64,${scanBase64}`).then(r => r.blob());
       const fileName = `scan_${Date.now()}.jpg`;
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('scan-images')
