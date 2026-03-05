@@ -177,7 +177,8 @@ export default function ProgressScreen({ profile }: { profile: any }) {
     if (form.weight_lbs) payload.weight_lbs = parseFloat(form.weight_lbs);
     if (form.body_fat) payload.body_fat = parseFloat(form.body_fat);
     MEASUREMENTS.forEach(m => { if ((form as any)[m.key]) payload[m.key] = parseFloat((form as any)[m.key]); });
-    await supabase.from('progress_logs').upsert(payload, { onConflict: 'user_id,date' });
+    const { error: saveError } = await supabase.from('progress_logs').upsert(payload, { onConflict: 'user_id,date' });
+    console.log('Progress save:', saveError?.message || 'success', JSON.stringify(payload));
     if (form.weight_lbs && health.isAuthorized) await health.saveWeight(parseFloat(form.weight_lbs));
     await fetchLogs();
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
