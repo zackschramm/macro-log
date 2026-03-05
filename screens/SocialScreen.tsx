@@ -44,6 +44,12 @@ export default function SocialScreen({ profile }: { profile: any }) {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
   const [myPosts, setMyPosts] = useState<any[]>([]);
+  const [likes, setLikes] = useState<Record<number, { count: number; liked: boolean }>>({});
+  const [commentModal, setCommentModal] = useState<number | null>(null);
+  const [comments, setComments] = useState<any[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [postingComment, setPostingComment] = useState(false);
 
   const fetchFeed = useCallback(async () => {
     setLoading(true);
