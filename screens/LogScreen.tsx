@@ -95,7 +95,7 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
     try {
       const res = await fetch('https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDAyNzIyMDAsImV4cCI6MjA1NTg0ODIwMH0.BHiSHOKsHPaObq0RQJ-4DEiUFjVSQSJwSHRqcGpA8b4' },
+        headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE' },
         body: JSON.stringify({
           system: 'You are a nutrition expert. Return only valid JSON, no explanation.',
           messages: [{ role: 'user', content: 'Estimate micronutrients for: ' + manualName.trim() + ', ' + manualCalories + ' calories, ' + manualProtein + 'g protein, ' + manualCarbs + 'g carbs, ' + manualFat + 'g fat. Return ONLY a JSON object with these exact numeric keys: vitamin_a, vitamin_c, vitamin_d, vitamin_e, vitamin_k, vitamin_b1, vitamin_b2, vitamin_b3, vitamin_b5, vitamin_b6, vitamin_b7, vitamin_b9, vitamin_b12, calcium, iron, magnesium, phosphorus, potassium, sodium, zinc, copper, manganese, selenium, chromium, iodine, omega3.' }],
@@ -144,7 +144,7 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
     try {
       const res = await fetch('https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDAyNzIyMDAsImV4cCI6MjA1NTg0ODIwMH0.BHiSHOKsHPaObq0RQJ-4DEiUFjVSQSJwSHRqcGpA8b4', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDAyNzIyMDAsImV4cCI6MjA1NTg0ODIwMH0.BHiSHOKsHPaObq0RQJ-4DEiUFjVSQSJwSHRqcGpA8b4' },
+        headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE' },
         body: JSON.stringify({
           system: 'You are a nutrition label reader. Return only valid JSON, no explanation.',
           messages: [{ role: 'user', content: [
