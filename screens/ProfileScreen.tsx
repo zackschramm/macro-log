@@ -45,6 +45,45 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   const [profileTab, setProfileTab] = useState<'profile' | 'foods' | 'plan' | 'notifs' | 'minerals'>('profile');
   const [avatarUri, setAvatarUri] = useState(profile.avatar_url || null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [todayNutrients, setTodayNutrients] = useState<Record<string, number>>({});
+
+  React.useEffect(() => {
+    const fetchTodayNutrients = async () => {
+      const today = new Date().toISOString().split('T')[0];
+      const { data } = await supabase
+        .from('macro_logs')
+        .select('*')
+        .eq('user_id', user?.id)
+        .eq('date', today);
+      if (!data) return;
+      const totals: Record<string, number> = {};
+      data.forEach((row: any) => {
+        const fields = ['vitamin_a','vitamin_c','vitamin_d','vitamin_e','vitamin_k',
+          'vitamin_b1','vitamin_b2','vitamin_b3','vitamin_b5','vitamin_b6','vitamin_b7','vitamin_b9','vitamin_b12',
+          'calcium','iron','magnesium','phosphorus','potassium','sodium','zinc','copper',
+          'manganese','selenium','chromium','iodine','protein','fiber'];
+        fields.forEach(f => {
+          totals[f] = (totals[f] || 0) + (row[f] || 0);
+        });
+        // Map display names to keys
+        totals['vitamin a'] = totals['vitamin_a'] || 0;
+        totals['vitamin c'] = totals['vitamin_c'] || 0;
+        totals['vitamin d'] = totals['vitamin_d'] || 0;
+        totals['vitamin e'] = totals['vitamin_e'] || 0;
+        totals['vitamin k'] = totals['vitamin_k'] || 0;
+        totals['vitamin b1 (thiamine)'] = totals['vitamin_b1'] || 0;
+        totals['vitamin b2 (riboflavin)'] = totals['vitamin_b2'] || 0;
+        totals['vitamin b3 (niacin)'] = totals['vitamin_b3'] || 0;
+        totals['vitamin b5 (pantothenic acid)'] = totals['vitamin_b5'] || 0;
+        totals['vitamin b6'] = totals['vitamin_b6'] || 0;
+        totals['vitamin b7 (biotin)'] = totals['vitamin_b7'] || 0;
+        totals['vitamin b9 (folate)'] = totals['vitamin_b9'] || 0;
+        totals['vitamin b12'] = totals['vitamin_b12'] || 0;
+      });
+      setTodayNutrients(totals);
+    };
+    if (user?.id) fetchTodayNutrients();
+  }, [user?.id]);
 
   const totalHeightIn = (parseInt(heightFt) || 0) * 12 + (parseInt(heightIn) || 0);
 
@@ -125,7 +164,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
 
   if (profileTab === 'minerals') return (
     <View style={{ flex: 1 }}>
-      <MineralsScreen profile={profile} />
+      <MineralsScreen profile={profile} logged={todayNutrients} />
       <View style={pt.subBar}>
         {(['profile','foods','plan','minerals','notifs'] as const).map(t => (
           <TouchableOpacity key={t} style={[pt.subBtn, profileTab===t && pt.subBtnActive]} onPress={() => setProfileTab(t)}>
