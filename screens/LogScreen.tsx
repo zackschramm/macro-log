@@ -91,12 +91,29 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
       return;
     }
     setManualSaving(true);
+    let micros = {};
+    try {
+      const res = await fetch('https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDAyNzIyMDAsImV4cCI6MjA1NTg0ODIwMH0.BHiSHOKsHPaObq0RQJ-4DEiUFjVSQSJwSHRqcGpA8b4' },
+        body: JSON.stringify({
+          system: 'You are a nutrition expert. Return only valid JSON, no explanation.',
+          messages: [{ role: 'user', content: 'Estimate micronutrients for: ' + manualName.trim() + ', ' + manualCalories + ' calories, ' + manualProtein + 'g protein, ' + manualCarbs + 'g carbs, ' + manualFat + 'g fat. Return ONLY a JSON object with these exact numeric keys: vitamin_a, vitamin_c, vitamin_d, vitamin_e, vitamin_k, vitamin_b1, vitamin_b2, vitamin_b3, vitamin_b5, vitamin_b6, vitamin_b7, vitamin_b9, vitamin_b12, calcium, iron, magnesium, phosphorus, potassium, sodium, zinc, copper, manganese, selenium, chromium, iodine, omega3.' }],
+          max_tokens: 500,
+        }),
+      });
+      const data = await res.json();
+      const text = data.content?.[0]?.text || '';
+      const clean = text.replace(/```json|```/g, '').trim();
+      micros = JSON.parse(clean);
+    } catch(e) { console.log('Micro estimate failed:', e); }
     await supabase.from('macro_logs').insert({
       user_id: user!.id, date: activeDate, meal: manualMeal, food: manualName.trim(), qty: 1,
       calories: Math.round(parseFloat(manualCalories) || 0),
       protein: r1(parseFloat(manualProtein) || 0),
       carbs: r1(parseFloat(manualCarbs) || 0),
       fat: r1(parseFloat(manualFat) || 0),
+      ...micros,
     });
     await fetchLogs();
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
