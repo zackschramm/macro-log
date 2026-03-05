@@ -154,8 +154,11 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
           max_tokens: 1000,
         }),
       });
-      const data = await res.json();
+      const raw = await res.text();
+      console.log('Proxy raw response:', raw);
+      const data = JSON.parse(raw);
       const text = (data.content?.find((b: any) => b.type === 'text')?.text || '').replace(/```json|```/g, '').trim();
+      console.log('AI text response:', text);
       const parsed = JSON.parse(text);
       if (parsed.error) setScanError(parsed.error); else setScanResult(parsed);
     } catch (e: any) {
