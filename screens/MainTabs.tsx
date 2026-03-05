@@ -10,6 +10,7 @@ import MealPlanScreen from './MealPlanScreen';
 import ProgressScreen from './ProgressScreen';
 import NotificationsScreen from './NotificationsScreen';
 import SocialScreen from './SocialScreen';
+import FoodsScreen from './FoodsScreen';
 
 type Tab = {
   key: string;
@@ -24,6 +25,7 @@ const TABS: Tab[] = [
   { key: 'workout',  label: 'Train',    icon: 'barbell-outline',       iconActive: 'barbell'          },
   { key: 'progress', label: 'Stats',    icon: 'trending-up-outline',   iconActive: 'trending-up'      },
   { key: 'coach',    label: 'Coach',    icon: 'chatbubble-outline',    iconActive: 'chatbubble'       },
+  { key: 'foods',    label: 'Foods',    icon: 'nutrition-outline',     iconActive: 'nutrition'        },
   { key: 'social',   label: 'Social',   icon: 'people-outline',        iconActive: 'people'           },
   { key: 'notifs',   label: 'Alerts',   icon: 'notifications-outline', iconActive: 'notifications'    },
   { key: 'profile',  label: 'Me',       icon: 'person-outline',        iconActive: 'person'           },
@@ -45,6 +47,7 @@ export default function MainTabs({ profile, onProfileUpdate }: { profile: any; o
         {activeTab === 'workout'  && <WorkoutScreen />}
         {activeTab === 'progress' && <ProgressScreen profile={profile} />}
         {activeTab === 'coach'    && <CoachScreen />}
+        {activeTab === 'foods'    && <FoodsScreen />}
         {activeTab === 'social'   && <SocialScreen profile={profile} />}
         {activeTab === 'notifs'   && <NotificationsScreen />}
         {activeTab === 'profile'  && <ProfileScreen profile={profile} onUpdate={onProfileUpdate} />}
