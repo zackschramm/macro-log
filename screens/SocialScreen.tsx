@@ -27,7 +27,7 @@ const POST_TYPES: Record<string, { emoji: string; color: string }> = {
   milestone:      { emoji: '🏆', color: '#f472b6' },
 };
 
-type SocialView = 'feed' | 'leaderboard' | 'post';
+type SocialView = 'feed' | 'myposts' | 'leaderboard';
 
 export default function SocialScreen({ profile }: { profile: any }) {
   const { user } = useAuth();
@@ -43,6 +43,7 @@ export default function SocialScreen({ profile }: { profile: any }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
+  const [myPosts, setMyPosts] = useState<any[]>([]);
 
   const fetchFeed = useCallback(async () => {
     setLoading(true);
@@ -80,7 +81,8 @@ export default function SocialScreen({ profile }: { profile: any }) {
   useEffect(() => {
     fetchFeed();
     fetchLeaderboard();
-  }, [fetchFeed, fetchLeaderboard]);
+    fetchMyPosts();
+  }, [fetchFeed, fetchLeaderboard, fetchMyPosts]);
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -126,6 +128,7 @@ export default function SocialScreen({ profile }: { profile: any }) {
       { text: 'Delete', style: 'destructive', onPress: async () => {
         await supabase.from('social_posts').delete().eq('id', id);
         fetchFeed();
+        fetchMyPosts();
       }},
     ]);
   };
@@ -159,11 +162,13 @@ export default function SocialScreen({ profile }: { profile: any }) {
 
       {/* Sub tabs */}
       <View style={s.subTabs}>
-        {(['feed', 'leaderboard'] as SocialView[]).map(t => (
-          <TouchableOpacity key={t} style={[s.subTab, view === t && s.subTabActive]} onPress={() => setView(t)}>
-            <Text style={[s.subTabText, view === t && s.subTabTextActive]}>
-              {t === 'feed' ? '📣 Feed' : '🏆 Leaderboard'}
-            </Text>
+        {([
+          { key: 'feed', label: '📣 Feed' },
+          { key: 'myposts', label: '👤 My Posts' },
+          { key: 'leaderboard', label: '🏆 Board' },
+        ] as { key: SocialView; label: string }[]).map(t => (
+          <TouchableOpacity key={t.key} style={[s.subTab, view === t.key && s.subTabActive]} onPress={() => setView(t.key)}>
+            <Text style={[s.subTabText, view === t.key && s.subTabTextActive]}>{t.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -234,6 +239,60 @@ export default function SocialScreen({ profile }: { profile: any }) {
                 {post.content?.caption ? (
                   <Text style={s.postCaption}>{post.content.caption}</Text>
                 ) : null}
+              </View>
+            );
+          })}
+        </ScrollView>
+      )}
+
+      {/* My Posts */}
+      {view === 'myposts' && (
+        <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+          {myPosts.length === 0 && (
+            <View style={s.empty}>
+              <Text style={s.emptyIcon}>📸</Text>
+              <Text style={s.emptyTitle}>No posts yet</Text>
+              <Text style={s.emptySub}>Share your progress with the community!</Text>
+              <TouchableOpacity style={s.emptyBtn} onPress={() => setPostModal(true)}>
+                <Text style={s.emptyBtnText}>+ Share Something</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {myPosts.map((post: any) => {
+            const typeInfo = POST_TYPES[post.type] || POST_TYPES.milestone;
+            return (
+              <View key={post.id} style={s.postCard}>
+                <View style={s.postHeader}>
+                  <View style={s.avatar}>
+                    <Text style={s.avatarText}>{post.content?.name?.[0]?.toUpperCase() || '?'}</Text>
+                  </View>
+                  <View style={s.postMeta}>
+                    <Text style={s.postAuthor}>{post.content?.name || 'You'}</Text>
+                    <View style={s.postTypeRow}>
+                      <Text style={[s.postTypeBadge, { color: typeInfo.color }]}>{typeInfo.emoji} {post.type.replace('_', ' ')}</Text>
+                      <Text style={s.postTime}>{fmtTime(post.created_at)}</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity onPress={() => deletePost(post.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={s.deletePost}>×</Text>
+                  </TouchableOpacity>
+                </View>
+                {post.image_url && (
+                  <Image source={{ uri: post.image_url }} style={s.postImage} resizeMode="cover" />
+                )}
+                {post.content?.caption ? (
+                  <Text style={s.postCaption}>{post.content.caption}</Text>
+                ) : null}
+                <View style={s.postActions}>
+                  <TouchableOpacity style={s.actionBtn} onPress={() => toggleLike(post.id)}>
+                    <Text style={s.actionIcon}>{likes[post.id]?.liked ? '❤️' : '🤍'}</Text>
+                    <Text style={[s.actionText, likes[post.id]?.liked && s.actionTextLiked]}>{likes[post.id]?.count || 0}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={s.actionBtn} onPress={() => openComments(post.id)}>
+                    <Text style={s.actionIcon}>💬</Text>
+                    <Text style={s.actionText}>Comment</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             );
           })}
