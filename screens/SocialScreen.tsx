@@ -109,12 +109,13 @@ export default function SocialScreen({ profile }: { profile: any }) {
       }
     }
 
-    await supabase.from('social_posts').insert({
+    const { error: postError } = await supabase.from('social_posts').insert({
       user_id: user!.id,
       type: postType,
       content: { caption: postCaption.trim(), name: profile.name },
       image_url: imageUrl,
     });
+    console.log('Post save:', postError?.message || 'success');
 
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setPostModal(false);
