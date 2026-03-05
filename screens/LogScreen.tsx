@@ -202,12 +202,16 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
       const clean = text.replace(/```json|```/g, '').trim();
       scannedMicros = JSON.parse(clean);
     } catch(e) { console.log('Scanned micro estimate failed:', e); }
-    await supabase.from('macro_logs').insert({
+    console.log('Scanned micros to save:', JSON.stringify(scannedMicros));
+    const insertData = {
       user_id: user!.id, date: activeDate, meal: scanMeal, food: scanResult.name, qty: s,
       calories: Math.round(scanResult.calories * s), protein: r1(scanResult.protein * s),
       carbs: r1(scanResult.carbs * s), fat: r1(scanResult.fat * s),
       ...scannedMicros,
-    });
+    };
+    console.log('Inserting scan entry:', JSON.stringify(insertData).substring(0, 300));
+    const { error: insertError } = await supabase.from('macro_logs').insert(insertData);
+    if (insertError) console.log('Insert error:', insertError.message);
     await fetchLogs();
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setScanVisible(false); setScanImage(null); setScanBase64(null);
