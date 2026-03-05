@@ -5,10 +5,16 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+function getNutrient(nutrients: any[], ...names: string[]) {
+  for (const name of names) {
+    const found = nutrients.find((n: any) => n.nutrientName?.toLowerCase().includes(name.toLowerCase()));
+    if (found) return Math.round((found.value || 0) * 100) / 100;
   }
+  return 0;
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   const url = new URL(req.url)
 
@@ -21,16 +27,41 @@ serve(async (req) => {
     )
     const data = await res.json()
     const foods = (data.foods || []).map((f: any) => {
-      const nutrients = f.foodNutrients || []
-      const get = (name: string) => nutrients.find((n: any) => n.nutrientName?.toLowerCase().includes(name))?.value || 0
+      const n = f.foodNutrients || []
       return {
         name: f.description,
         brand: f.brandOwner || f.brandName || null,
         serving_size: f.servingSize ? `${f.servingSize}${f.servingSizeUnit || 'g'}` : '100g',
-        calories: Math.round(get('energy') || get('calorie')),
-        protein: Math.round(get('protein') * 10) / 10,
-        carbs: Math.round(get('carbohydrate') * 10) / 10,
-        fat: Math.round(get('total lipid') * 10) / 10,
+        calories: Math.round(getNutrient(n, 'energy', 'calorie')),
+        protein: getNutrient(n, 'protein'),
+        carbs: getNutrient(n, 'carbohydrate'),
+        fat: getNutrient(n, 'total lipid'),
+        vitamin_a: getNutrient(n, 'vitamin a'),
+        vitamin_c: getNutrient(n, 'vitamin c'),
+        vitamin_d: getNutrient(n, 'vitamin d'),
+        vitamin_e: getNutrient(n, 'vitamin e'),
+        vitamin_k: getNutrient(n, 'vitamin k'),
+        vitamin_b1: getNutrient(n, 'thiamin'),
+        vitamin_b2: getNutrient(n, 'riboflavin'),
+        vitamin_b3: getNutrient(n, 'niacin'),
+        vitamin_b5: getNutrient(n, 'pantothenic'),
+        vitamin_b6: getNutrient(n, 'vitamin b-6'),
+        vitamin_b7: getNutrient(n, 'biotin'),
+        vitamin_b9: getNutrient(n, 'folate', 'folic'),
+        vitamin_b12: getNutrient(n, 'vitamin b-12'),
+        calcium: getNutrient(n, 'calcium'),
+        iron: getNutrient(n, 'iron'),
+        magnesium: getNutrient(n, 'magnesium'),
+        phosphorus: getNutrient(n, 'phosphorus'),
+        potassium: getNutrient(n, 'potassium'),
+        sodium: getNutrient(n, 'sodium'),
+        zinc: getNutrient(n, 'zinc'),
+        copper: getNutrient(n, 'copper'),
+        manganese: getNutrient(n, 'manganese'),
+        selenium: getNutrient(n, 'selenium'),
+        chromium: getNutrient(n, 'chromium'),
+        iodine: getNutrient(n, 'iodine'),
+        omega3: getNutrient(n, 'omega-3', 'epa', 'dha'),
       }
     })
     return new Response(JSON.stringify({ foods }), {
