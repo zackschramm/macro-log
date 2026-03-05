@@ -6,6 +6,7 @@ import * as ImagePicker from 'expo-image-picker';
 import FoodsScreen from './FoodsScreen';
 import MealPlanScreen from './MealPlanScreen';
 import NotificationsScreen from './NotificationsScreen';
+import MineralsScreen from './MineralsScreen';
 import { useAuth } from '../hooks/useAuth';
 import { calculateTargets, MC } from '../constants/data';
 
@@ -41,7 +42,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   const [customCarbs, setCustomCarbs] = useState(profile.custom_goals ? String(profile.carbs || '') : '');
   const [customFat, setCustomFat] = useState(profile.custom_goals ? String(profile.fat || '') : '');
   const [saved, setSaved] = useState(false);
-  const [profileTab, setProfileTab] = useState<'profile' | 'foods' | 'plan' | 'notifs'>('profile');
+  const [profileTab, setProfileTab] = useState<'profile' | 'foods' | 'plan' | 'notifs' | 'minerals'>('profile');
   const [avatarUri, setAvatarUri] = useState(profile.avatar_url || null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
@@ -98,10 +99,10 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
     <View style={{ flex: 1 }}>
       <FoodsScreen />
       <View style={pt.subBar}>
-        {(['profile','foods','plan','notifs'] as const).map(t => (
+        {(['profile','foods','plan','minerals','notifs'] as const).map(t => (
           <TouchableOpacity key={t} style={[pt.subBtn, profileTab===t && pt.subBtnActive]} onPress={() => setProfileTab(t)}>
-            <Text style={[pt.subBtnText, profileTab===t && pt.subBtnTextActive]}>{t==='profile'?'👤':t==='foods'?'🥗':t==='plan'?'📅':'🔔'}</Text>
-            <Text style={[pt.subLabel, profileTab===t && pt.subLabelActive]}>{t==='profile'?'Profile':t==='foods'?'Foods':t==='plan'?'Plan':'Alerts'}</Text>
+            <Text style={[pt.subBtnText, profileTab===t && pt.subBtnTextActive]}>{t==='profile'?'👤':t==='foods'?'🥗':t==='plan'?'📅':t==='minerals'?'💊':'🔔'}</Text>
+            <Text style={[pt.subLabel, profileTab===t && pt.subLabelActive]}>{t==='profile'?'Profile':t==='foods'?'Foods':t==='plan'?'Plan':t==='minerals'?'Nutrients':'Alerts'}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -112,12 +113,26 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
     <View style={{ flex: 1 }}>
       <MealPlanScreen targets={targets} profile={profile} />
       <View style={pt.subBar}>
-        {(['profile','foods','plan','notifs'] as const).map(t => (
+        {(['profile','foods','plan','minerals','notifs'] as const).map(t => (
           <TouchableOpacity key={t} style={[pt.subBtn, profileTab===t && pt.subBtnActive]} onPress={() => setProfileTab(t)}>
-            <Text style={[pt.subBtnText, profileTab===t && pt.subBtnTextActive]}>{t==='profile'?'👤':t==='foods'?'🥗':t==='plan'?'📅':'🔔'}</Text>
-            <Text style={[pt.subLabel, profileTab===t && pt.subLabelActive]}>{t==='profile'?'Profile':t==='foods'?'Foods':t==='plan'?'Plan':'Alerts'}</Text>
+            <Text style={[pt.subBtnText, profileTab===t && pt.subBtnTextActive]}>{t==='profile'?'👤':t==='foods'?'🥗':t==='plan'?'📅':t==='minerals'?'💊':'🔔'}</Text>
+            <Text style={[pt.subLabel, profileTab===t && pt.subLabelActive]}>{t==='profile'?'Profile':t==='foods'?'Foods':t==='plan'?'Plan':t==='minerals'?'Nutrients':'Alerts'}</Text>
           </TouchableOpacity>
         ))}
+      </View>
+    </View>
+  );
+
+  if (profileTab === 'minerals') return (
+    <View style={{ flex: 1 }}>
+      <MineralsScreen profile={profile} />
+      <View style={pt.subBar}>
+        (['profile','foods','plan','minerals','notifs'] as const).map(t => (
+          <TouchableOpacity key={t} style={[pt.subBtn, profileTab===t && pt.subBtnActive]} onPress={() => setProfileTab(t)}>
+            <Text style={[pt.subBtnText, profileTab===t && pt.subBtnTextActive]}>{t==='profile'?'👤':t==='foods'?'🥗':t==='plan'?'📅':t==='minerals'?'💊':'🔔'}</Text>
+            <Text style={[pt.subLabel, profileTab===t && pt.subLabelActive]}>{t==='profile'?'Profile':t==='foods'?'Foods':t==='plan'?'Plan':t==='minerals'?'Nutrients':'Alerts'}</Text>
+          </TouchableOpacity>
+        ))
       </View>
     </View>
   );
@@ -126,10 +141,10 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
     <View style={{ flex: 1 }}>
       <NotificationsScreen />
       <View style={pt.subBar}>
-        {(['profile','foods','plan','notifs'] as const).map(t => (
+        {(['profile','foods','plan','minerals','notifs'] as const).map(t => (
           <TouchableOpacity key={t} style={[pt.subBtn, profileTab===t && pt.subBtnActive]} onPress={() => setProfileTab(t)}>
-            <Text style={[pt.subBtnText, profileTab===t && pt.subBtnTextActive]}>{t==='profile'?'👤':t==='foods'?'🥗':t==='plan'?'📅':'🔔'}</Text>
-            <Text style={[pt.subLabel, profileTab===t && pt.subLabelActive]}>{t==='profile'?'Profile':t==='foods'?'Foods':t==='plan'?'Plan':'Alerts'}</Text>
+            <Text style={[pt.subBtnText, profileTab===t && pt.subBtnTextActive]}>{t==='profile'?'👤':t==='foods'?'🥗':t==='plan'?'📅':t==='minerals'?'💊':'🔔'}</Text>
+            <Text style={[pt.subLabel, profileTab===t && pt.subLabelActive]}>{t==='profile'?'Profile':t==='foods'?'Foods':t==='plan'?'Plan':t==='minerals'?'Nutrients':'Alerts'}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -269,10 +284,10 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
         </TouchableOpacity>
       </ScrollView>
       <View style={pt.subBar}>
-        {(['profile','foods','plan','notifs'] as const).map(t => (
+        {(['profile','foods','plan','minerals','notifs'] as const).map(t => (
           <TouchableOpacity key={t} style={[pt.subBtn, profileTab===t && pt.subBtnActive]} onPress={() => setProfileTab(t)}>
-            <Text style={[pt.subBtnText, profileTab===t && pt.subBtnTextActive]}>{t==='profile'?'👤':t==='foods'?'🥗':t==='plan'?'📅':'🔔'}</Text>
-            <Text style={[pt.subLabel, profileTab===t && pt.subLabelActive]}>{t==='profile'?'Profile':t==='foods'?'Foods':t==='plan'?'Plan':'Alerts'}</Text>
+            <Text style={[pt.subBtnText, profileTab===t && pt.subBtnTextActive]}>{t==='profile'?'👤':t==='foods'?'🥗':t==='plan'?'📅':t==='minerals'?'💊':'🔔'}</Text>
+            <Text style={[pt.subLabel, profileTab===t && pt.subLabelActive]}>{t==='profile'?'Profile':t==='foods'?'Foods':t==='plan'?'Plan':t==='minerals'?'Nutrients':'Alerts'}</Text>
           </TouchableOpacity>
         ))}
       </View>
