@@ -55,6 +55,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
         .select('*')
         .eq('user_id', user?.id)
         .eq('date', today);
+      console.log('Fetched macro_logs rows:', data?.length, JSON.stringify(data?.[0]).substring(0, 200));
       if (!data) return;
       const totals: Record<string, number> = {};
       data.forEach((row: any) => {
@@ -83,7 +84,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
       setTodayNutrients(totals);
     };
     if (user?.id) fetchTodayNutrients();
-  }, [user?.id]);
+  }, [user?.id, profileTab]);
 
   const totalHeightIn = (parseInt(heightFt) || 0) * 12 + (parseInt(heightIn) || 0);
 
