@@ -107,6 +107,7 @@ export default function SocialScreen({ profile }: { profile: any }) {
       if (uploadData) {
         const { data: urlData } = supabase.storage.from('socialimages').getPublicUrl(filename);
         imageUrl = urlData.publicUrl;
+        console.log('Image URL:', imageUrl);
       }
     }
 
