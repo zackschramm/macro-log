@@ -8,7 +8,7 @@ export const FOODS = [
   { name: 'Asparagus (100g)', calories: 20, protein: 2.2, carbs: 3.7, fat: 0.1 },
 ];
 
-export const MEALS = ['Breakfast', 'Lunch', 'Pre-Workout', 'Drink Mix', 'Dinner', 'Evening Snack'];
+export const MEALS = ['Breakfast', 'Lunch', 'Pre-Workout', 'Drink Mix', 'Supplements', 'Dinner', 'Evening Snack'];
 
 export const MC = {
   protein: { color: '#4a9eff', bg: 'rgba(74,158,255,0.15)' },
