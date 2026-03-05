@@ -57,6 +57,14 @@ export default function SocialScreen({ profile }: { profile: any }) {
     setLoading(false);
   }, []);
 
+  const fetchMyPosts = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase.from('social_posts')
+      .select('*').eq('user_id', user.id)
+      .order('created_at', { ascending: false });
+    setMyPosts(data || []);
+  }, [user]);
+
   const fetchLeaderboard = useCallback(async () => {
     // Leaderboard: most macro logs in last 7 days
     const since = new Date();
