@@ -43,13 +43,10 @@ export default function MainTabs({ profile, onProfileUpdate }: { profile: any; o
     <View style={{ flex: 1, backgroundColor: '#121212' }}>
       <View style={{ flex: 1 }}>
         {activeTab === 'log'      && <LogScreen targets={targets} />}
-        {activeTab === 'plan'     && <MealPlanScreen targets={targets} profile={profile} />}
         {activeTab === 'workout'  && <WorkoutScreen />}
         {activeTab === 'progress' && <ProgressScreen profile={profile} />}
         {activeTab === 'coach'    && <CoachScreen />}
-        {activeTab === 'foods'    && <FoodsScreen />}
         {activeTab === 'social'   && <SocialScreen profile={profile} />}
-        {activeTab === 'notifs'   && <NotificationsScreen />}
         {activeTab === 'profile'  && <ProfileScreen profile={profile} onUpdate={onProfileUpdate} />}
       </View>
 

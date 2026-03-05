@@ -3,6 +3,9 @@ import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../constants/supabase';
 import * as ImagePicker from 'expo-image-picker';
+import FoodsScreen from './FoodsScreen';
+import MealPlanScreen from './MealPlanScreen';
+import NotificationsScreen from './NotificationsScreen';
 import { useAuth } from '../hooks/useAuth';
 import { calculateTargets, MC } from '../constants/data';
 
@@ -38,6 +41,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   const [customCarbs, setCustomCarbs] = useState(profile.custom_goals ? String(profile.carbs || '') : '');
   const [customFat, setCustomFat] = useState(profile.custom_goals ? String(profile.fat || '') : '');
   const [saved, setSaved] = useState(false);
+  const [profileTab, setProfileTab] = useState<'profile' | 'foods' | 'plan' | 'notifs'>('profile');
   const [avatarUri, setAvatarUri] = useState(profile.avatar_url || null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
@@ -81,20 +85,56 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
     setLoading(false);
   };
 
-  // Always show what's actually saved in the profile
-  const targets = {
-    calories: profile.calories,
-    protein: profile.protein,
-    carbs: profile.carbs,
-    fat: profile.fat,
-  };
-
   const autoTargets = calculateTargets({
     weight_lbs: parseFloat(weight) || profile.weight_lbs,
     height_in: totalHeightIn || profile.height_in,
     age: parseInt(age) || profile.age,
     sex, activity, goal,
   });
+
+  const targets = { calories: profile.calories, protein: profile.protein, carbs: profile.carbs, fat: profile.fat };
+
+  if (profileTab === 'foods') return (
+    <View style={{ flex: 1 }}>
+      <FoodsScreen />
+      <View style={pt.subBar}>
+        {(['profile','foods','plan','notifs'] as const).map(t => (
+          <TouchableOpacity key={t} style={[pt.subBtn, profileTab===t && pt.subBtnActive]} onPress={() => setProfileTab(t)}>
+            <Text style={[pt.subBtnText, profileTab===t && pt.subBtnTextActive]}>{t==='profile'?'👤':t==='foods'?'🥗':t==='plan'?'📅':'🔔'}</Text>
+            <Text style={[pt.subLabel, profileTab===t && pt.subLabelActive]}>{t==='profile'?'Profile':t==='foods'?'Foods':t==='plan'?'Plan':'Alerts'}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+
+  if (profileTab === 'plan') return (
+    <View style={{ flex: 1 }}>
+      <MealPlanScreen targets={targets} profile={profile} />
+      <View style={pt.subBar}>
+        {(['profile','foods','plan','notifs'] as const).map(t => (
+          <TouchableOpacity key={t} style={[pt.subBtn, profileTab===t && pt.subBtnActive]} onPress={() => setProfileTab(t)}>
+            <Text style={[pt.subBtnText, profileTab===t && pt.subBtnTextActive]}>{t==='profile'?'👤':t==='foods'?'🥗':t==='plan'?'📅':'🔔'}</Text>
+            <Text style={[pt.subLabel, profileTab===t && pt.subLabelActive]}>{t==='profile'?'Profile':t==='foods'?'Foods':t==='plan'?'Plan':'Alerts'}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+
+  if (profileTab === 'notifs') return (
+    <View style={{ flex: 1 }}>
+      <NotificationsScreen />
+      <View style={pt.subBar}>
+        {(['profile','foods','plan','notifs'] as const).map(t => (
+          <TouchableOpacity key={t} style={[pt.subBtn, profileTab===t && pt.subBtnActive]} onPress={() => setProfileTab(t)}>
+            <Text style={[pt.subBtnText, profileTab===t && pt.subBtnTextActive]}>{t==='profile'?'👤':t==='foods'?'🥗':t==='plan'?'📅':'🔔'}</Text>
+            <Text style={[pt.subLabel, profileTab===t && pt.subLabelActive]}>{t==='profile'?'Profile':t==='foods'?'Foods':t==='plan'?'Plan':'Alerts'}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
@@ -228,9 +268,26 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
           <Text style={s.signOutText}>Sign Out</Text>
         </TouchableOpacity>
       </ScrollView>
+      <View style={pt.subBar}>
+        {(['profile','foods','plan','notifs'] as const).map(t => (
+          <TouchableOpacity key={t} style={[pt.subBtn, profileTab===t && pt.subBtnActive]} onPress={() => setProfileTab(t)}>
+            <Text style={[pt.subBtnText, profileTab===t && pt.subBtnTextActive]}>{t==='profile'?'👤':t==='foods'?'🥗':t==='plan'?'📅':'🔔'}</Text>
+            <Text style={[pt.subLabel, profileTab===t && pt.subLabelActive]}>{t==='profile'?'Profile':t==='foods'?'Foods':t==='plan'?'Plan':'Alerts'}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
     </SafeAreaView>
   );
 }
+
+const pt = StyleSheet.create({
+  subBar: { flexDirection: 'row', backgroundColor: '#0a0a0a', borderTopWidth: 1, borderTopColor: '#1e1e1e', paddingVertical: 8 },
+  subBtn: { flex: 1, alignItems: 'center', gap: 3, paddingVertical: 4 },
+  subBtnActive: {},
+  subBtnText: { fontSize: 20 },
+  subLabel: { fontSize: 10, color: '#3a3a3a', fontWeight: '600' },
+  subLabelActive: { color: '#fff', fontWeight: '800' },
+});
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#121212' },
