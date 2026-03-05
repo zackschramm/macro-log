@@ -107,6 +107,52 @@ export default function SocialScreen({ profile }: { profile: any }) {
     }
   };
 
+  const fetchLikes = async (postIds: number[]) => {
+    if (!postIds.length) return;
+    const { data: likeCounts } = await supabase.from('post_likes').select('post_id').in('post_id', postIds);
+    const { data: myLikes } = await supabase.from('post_likes').select('post_id').eq('user_id', user!.id).in('post_id', postIds);
+    const myLikeSet = new Set((myLikes || []).map((l: any) => l.post_id));
+    const counts: Record<number, number> = {};
+    (likeCounts || []).forEach((l: any) => { counts[l.post_id] = (counts[l.post_id] || 0) + 1; });
+    const newLikes: Record<number, { count: number; liked: boolean }> = {};
+    postIds.forEach(id => { newLikes[id] = { count: counts[id] || 0, liked: myLikeSet.has(id) }; });
+    setLikes(newLikes);
+  };
+
+  const toggleLike = async (postId: number) => {
+    const current = likes[postId] || { count: 0, liked: false };
+    if (current.liked) {
+      await supabase.from('post_likes').delete().eq('user_id', user!.id).eq('post_id', postId);
+      setLikes(prev => ({ ...prev, [postId]: { count: prev[postId].count - 1, liked: false } }));
+    } else {
+      await supabase.from('post_likes').insert({ user_id: user!.id, post_id: postId });
+      setLikes(prev => ({ ...prev, [postId]: { count: (prev[postId]?.count || 0) + 1, liked: true } }));
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
+
+  const openComments = async (postId: number) => {
+    setCommentModal(postId);
+    setLoadingComments(true);
+    const { data } = await supabase.from('post_comments').select('*').eq('post_id', postId).order('created_at');
+    setComments(data || []);
+    setLoadingComments(false);
+  };
+
+  const submitComment = async () => {
+    if (!commentText.trim() || !commentModal) return;
+    setPostingComment(true);
+    await supabase.from('post_comments').insert({
+      user_id: user!.id, post_id: commentModal,
+      content: commentText.trim(), author_name: profile.name,
+    });
+    setCommentText('');
+    const { data } = await supabase.from('post_comments').select('*').eq('post_id', commentModal).order('created_at');
+    setComments(data || []);
+    setPostingComment(false);
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
   const submitPost = async () => {
     if (!postCaption.trim() && !postImage) {
       Alert.alert('Add a caption or photo to share.'); return;
