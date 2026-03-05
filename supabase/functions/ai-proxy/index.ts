@@ -72,6 +72,13 @@ serve(async (req) => {
   // AI proxy
   try {
     const { messages, system, max_tokens } = await req.json()
+    const body = JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: max_tokens || 1000,
+        system,
+        messages,
+      });
+    console.log('Sending to Anthropic:', body.substring(0, 500));
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -79,14 +86,10 @@ serve(async (req) => {
         'x-api-key': Deno.env.get('ANTHROPIC_API_KEY') || '',
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: max_tokens || 1000,
-        system,
-        messages,
-      }),
+      body,
     })
     const data = await response.json()
+    console.log('Anthropic response:', JSON.stringify(data).substring(0, 500));
     const text = data.content?.find((b: any) => b.type === 'text')?.text || ''
     return new Response(JSON.stringify({ content: [{ type: 'text', text }] }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
