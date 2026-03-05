@@ -21,13 +21,10 @@ type Tab = {
 
 const TABS: Tab[] = [
   { key: 'log',      label: 'Log',      icon: 'restaurant-outline',    iconActive: 'restaurant'       },
-  { key: 'plan',     label: 'Plan',     icon: 'calendar-outline',      iconActive: 'calendar'         },
   { key: 'workout',  label: 'Train',    icon: 'barbell-outline',       iconActive: 'barbell'          },
   { key: 'progress', label: 'Stats',    icon: 'trending-up-outline',   iconActive: 'trending-up'      },
   { key: 'coach',    label: 'Coach',    icon: 'chatbubble-outline',    iconActive: 'chatbubble'       },
-  { key: 'foods',    label: 'Foods',    icon: 'nutrition-outline',     iconActive: 'nutrition'        },
   { key: 'social',   label: 'Social',   icon: 'people-outline',        iconActive: 'people'           },
-  { key: 'notifs',   label: 'Alerts',   icon: 'notifications-outline', iconActive: 'notifications'    },
   { key: 'profile',  label: 'Me',       icon: 'person-outline',        iconActive: 'person'           },
 ];
 
