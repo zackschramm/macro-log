@@ -134,7 +134,9 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
       setScanImage(asset.uri); setScanBase64(asset.base64 || null);
-      setScanType(asset.mimeType || 'image/jpeg'); setScanResult(null); setScanError(null);
+      const mime = asset.mimeType || 'image/jpeg';
+      const normalizedMime = mime === 'image/jpg' ? 'image/jpeg' : ((['image/jpeg','image/png','image/gif','image/webp'].includes(mime)) ? mime : 'image/jpeg');
+      setScanType(normalizedMime); setScanResult(null); setScanError(null);
     }
   };
 
