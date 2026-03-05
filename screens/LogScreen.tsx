@@ -164,7 +164,7 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
           system: 'You are a nutrition label reader. Return only valid JSON, no explanation.',
           messages: [{ role: 'user', content: [
             { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: scanBase64 } },
-            { type: 'text', text: 'Read this nutrition label and respond ONLY with JSON:\n{"name":"product name","serving_size":"e.g. 1 cup","calories":number,"protein":number,"carbs":number,"fat":number}\nIf unreadable: {"error":"message"}' },
+            { type: 'text', text: 'Read this nutrition label and respond ONLY with a single JSON object with no markdown. Include: name, serving_size, calories, protein, carbs, fat, and any of these micronutrients if present on the label: vitamin_a, vitamin_c, vitamin_d, vitamin_e, vitamin_k, vitamin_b1, vitamin_b2, vitamin_b3, vitamin_b5, vitamin_b6, vitamin_b7, vitamin_b9, vitamin_b12, calcium, iron, magnesium, phosphorus, potassium, sodium, zinc, copper, manganese, selenium, chromium, iodine. All values must be numbers. If a value is not on the label, omit that key. If unreadable respond with {"error":"message"}.' },
           ]}],
           max_tokens: 1000,
         }),
@@ -186,22 +186,13 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
   const addScannedEntry = async () => {
     if (!scanResult) return;
     const s = parseFloat(scanServings) || 1;
-    let scannedMicros = {};
-    try {
-      const res = await fetch('https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE' },
-        body: JSON.stringify({
-          system: 'You are a nutrition expert. Return only valid JSON, no explanation.',
-          messages: [{ role: 'user', content: 'Estimate micronutrients for: ' + scanResult.name + ', ' + scanResult.calories + ' calories, ' + scanResult.protein + 'g protein, ' + scanResult.carbs + 'g carbs, ' + scanResult.fat + 'g fat. Return ONLY a JSON object with these exact numeric keys: vitamin_a, vitamin_c, vitamin_d, vitamin_e, vitamin_k, vitamin_b1, vitamin_b2, vitamin_b3, vitamin_b5, vitamin_b6, vitamin_b7, vitamin_b9, vitamin_b12, calcium, iron, magnesium, phosphorus, potassium, sodium, zinc, copper, manganese, selenium, chromium, iodine, omega3.' }],
-          max_tokens: 500,
-        }),
-      });
-      const data = await res.json();
-      const text = data.content?.[0]?.text || '';
-      const clean = text.replace(/```json|```/g, '').trim();
-      scannedMicros = JSON.parse(clean);
-    } catch(e) { console.log('Scanned micro estimate failed:', e); }
+    // Extract micronutrients directly from scan result
+    const microKeys = ['vitamin_a','vitamin_c','vitamin_d','vitamin_e','vitamin_k',
+      'vitamin_b1','vitamin_b2','vitamin_b3','vitamin_b5','vitamin_b6','vitamin_b7','vitamin_b9','vitamin_b12',
+      'calcium','iron','magnesium','phosphorus','potassium','sodium','zinc','copper',
+      'manganese','selenium','chromium','iodine','omega3','fiber'];
+    const scannedMicros: Record<string,number> = {};
+    microKeys.forEach(k => { if (scanResult[k] != null) scannedMicros[k] = r1(scanResult[k] * s); });
     console.log('Scanned micros to save:', JSON.stringify(scannedMicros));
     const insertData = {
       user_id: user!.id, date: activeDate, meal: scanMeal, food: scanResult.name, qty: s,
