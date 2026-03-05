@@ -101,10 +101,10 @@ export default function SocialScreen({ profile }: { profile: any }) {
       const base64 = postImage.split(',')[1];
       const filename = `${user!.id}/${Date.now()}.jpg`;
       const { data: uploadData } = await supabase.storage
-        .from('social-images')
+        .from('socialimages')
         .upload(filename, decode(base64), { contentType: 'image/jpeg', upsert: true });
       if (uploadData) {
-        const { data: urlData } = supabase.storage.from('social-images').getPublicUrl(filename);
+        const { data: urlData } = supabase.storage.from('socialimages').getPublicUrl(filename);
         imageUrl = urlData.publicUrl;
       }
     }
