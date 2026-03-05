@@ -46,11 +46,12 @@ export default function SocialScreen({ profile }: { profile: any }) {
 
   const fetchFeed = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('social_posts')
-      .select('*, profiles:user_id(name)')
+      .select('*')
       .order('created_at', { ascending: false })
       .limit(50);
+    console.log('Feed fetch:', error?.message || `${data?.length} posts`);
     setPosts(data || []);
     setLoading(false);
   }, []);
