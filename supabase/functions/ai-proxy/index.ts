@@ -90,6 +90,12 @@ serve(async (req) => {
     })
     const data = await response.json()
     console.log('Anthropic response:', JSON.stringify(data).substring(0, 500));
+    if (data.type === 'error') {
+      return new Response(JSON.stringify({ error: data.error?.message || 'Anthropic error' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
     const text = data.content?.find((b: any) => b.type === 'text')?.text || ''
     return new Response(JSON.stringify({ content: [{ type: 'text', text }] }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
