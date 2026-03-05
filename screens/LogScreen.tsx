@@ -131,7 +131,7 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
     const fn = fromCamera ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
     const result = await fn({
       base64: true, quality: 0.5, allowsEditing: true, exif: false,
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
     });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
