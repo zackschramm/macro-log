@@ -141,17 +141,28 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
   };
 
   const scanLabel = async () => {
-    if (!scanBase64) return;
-    console.log('Image base64 size (chars):', scanBase64.length, 'type:', scanType);
+    if (!scanImage) return;
+    console.log('Uploading image for scan, uri:', scanImage);
     setScanning(true); setScanError(null); setScanResult(null);
     try {
+      // Upload image to Supabase Storage first, then pass URL to AI
+      const imgResp = await fetch(scanImage);
+      const imgBlob = await imgResp.blob();
+      const fileName = `scan_${Date.now()}.jpg`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('scan-images')
+        .upload(fileName, imgBlob, { contentType: 'image/jpeg', upsert: true });
+      if (uploadError) throw new Error('Upload failed: ' + uploadError.message);
+      const { data: urlData } = supabase.storage.from('scan-images').getPublicUrl(fileName);
+      const imageUrl = urlData.publicUrl;
+      console.log('Uploaded image URL:', imageUrl);
       const res = await fetch('https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE' },
         body: JSON.stringify({
           system: 'You are a nutrition label reader. Return only valid JSON, no explanation.',
           messages: [{ role: 'user', content: [
-            { type: 'image', source: { type: 'base64', media_type: scanType, data: scanBase64 } },
+            { type: 'image', source: { type: 'url', url: imageUrl } },
             { type: 'text', text: 'Read this nutrition label and respond ONLY with JSON:\n{"name":"product name","serving_size":"e.g. 1 cup","calories":number,"protein":number,"carbs":number,"fat":number}\nIf unreadable: {"error":"message"}' },
           ]}],
           max_tokens: 1000,
