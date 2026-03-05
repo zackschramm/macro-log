@@ -98,6 +98,7 @@ export default function SocialScreen({ profile }: { profile: any }) {
     setPosting(true);
 
     let imageUrl = null;
+    console.log('postImage present:', !!postImage);
     if (postImage) {
       const base64 = postImage.split(',')[1];
       const filename = `${user!.id}/${Date.now()}.jpg`;
