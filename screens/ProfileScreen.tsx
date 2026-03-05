@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, ActivityIndicator, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../constants/supabase';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../hooks/useAuth';
 import { calculateTargets, MC } from '../constants/data';
 
@@ -37,8 +38,29 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   const [customCarbs, setCustomCarbs] = useState(profile.custom_goals ? String(profile.carbs || '') : '');
   const [customFat, setCustomFat] = useState(profile.custom_goals ? String(profile.fat || '') : '');
   const [saved, setSaved] = useState(false);
+  const [avatarUri, setAvatarUri] = useState(profile.avatar_url || null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const totalHeightIn = (parseInt(heightFt) || 0) * 12 + (parseInt(heightIn) || 0);
+
+  const pickAvatar = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: true, aspect: [1, 1], quality: 0.6, base64: true,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setUploadingAvatar(true);
+      const asset = result.assets[0];
+      const ext = 'jpg';
+      const path = `${user!.id}/avatar.${ext}`;
+      const binary = Uint8Array.from(atob(asset.base64 || ''), c => c.charCodeAt(0));
+      await supabase.storage.from('avatars').upload(path, binary, { contentType: 'image/jpeg', upsert: true });
+      const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+      const url = data.publicUrl + '?t=' + Date.now();
+      setAvatarUri(url);
+      await supabase.from('profiles').update({ avatar_url: url }).eq('id', user!.id);
+      setUploadingAvatar(false);
+    }
+  };
 
   const handleSave = async () => {
     setLoading(true);
@@ -104,6 +126,20 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
             </View>
           </View>
         </View>
+
+        {/* Avatar */}
+        <TouchableOpacity style={s.avatarWrap} onPress={pickAvatar} activeOpacity={0.8}>
+          {avatarUri
+            ? <Image source={{ uri: avatarUri }} style={s.avatar} />
+            : <View style={s.avatarPlaceholder}>
+                <Text style={s.avatarInitial}>{name?.[0]?.toUpperCase() || '?'}</Text>
+              </View>
+          }
+          {uploadingAvatar
+            ? <View style={s.avatarOverlay}><ActivityIndicator color="#fff" /></View>
+            : <View style={s.avatarOverlay}><Text style={s.avatarOverlayText}>📷</Text></View>
+          }
+        </TouchableOpacity>
 
         <Text style={s.label}>Name</Text>
         <TextInput style={s.input} value={name} onChangeText={setName} placeholder="Your name" placeholderTextColor="#444" />
@@ -201,6 +237,12 @@ const s = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
   title: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: -0.5 },
   email: { fontSize: 13, color: '#555', fontWeight: '500', marginTop: 2 },
+  avatarWrap: { width: 90, height: 90, borderRadius: 45, alignSelf: 'center', marginBottom: 20, overflow: 'hidden' },
+  avatar: { width: 90, height: 90, borderRadius: 45 },
+  avatarPlaceholder: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#252525', alignItems: 'center', justifyContent: 'center' },
+  avatarInitial: { fontSize: 36, fontWeight: '900', color: '#fff' },
+  avatarOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 28, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+  avatarOverlayText: { fontSize: 14 },
   scroll: { flex: 1 },
   content: { padding: 20, paddingBottom: 60 },
   targetsCard: { backgroundColor: '#1a1a1a', borderRadius: 16, padding: 16, marginBottom: 24 },
