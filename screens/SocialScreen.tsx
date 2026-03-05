@@ -100,17 +100,8 @@ export default function SocialScreen({ profile }: { profile: any }) {
     let imageUrl = null;
     console.log('postImage present:', !!postImage);
     if (postImage) {
-      const base64 = postImage.split(',')[1];
-      const filename = `${user!.id}/${Date.now()}.jpg`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('socialimages')
-        .upload(filename, decode(base64), { contentType: 'image/jpeg', upsert: true });
-      console.log('Upload result:', uploadError?.message || 'success', uploadData?.path);
-      if (uploadData) {
-        const { data: urlData } = supabase.storage.from('socialimages').getPublicUrl(filename);
-        imageUrl = urlData.publicUrl;
-        console.log('Image URL:', imageUrl);
-      }
+      // Store as base64 data URL directly
+      imageUrl = postImage;
     }
 
     const { error: postError } = await supabase.from('social_posts').insert({
