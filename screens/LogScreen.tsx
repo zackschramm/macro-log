@@ -130,7 +130,7 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
   const pickImage = async (fromCamera: boolean) => {
     const fn = fromCamera ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
     const result = await fn({
- base64: true, quality: 0.2, allowsEditing: false });
+ base64: true, quality: 0.5, allowsEditing: false, exif: false });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
       setScanImage(asset.uri); setScanBase64(asset.base64 || null);
