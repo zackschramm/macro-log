@@ -130,14 +130,17 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
   const pickImage = async (fromCamera: boolean) => {
     const fn = fromCamera ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
     const result = await fn({
- base64: true, quality: 0.5, allowsEditing: false, exif: false, allowsMultipleSelection: false });
-    // Force JPEG by re-encoding if needed
+      base64: true, quality: 0.5, allowsEditing: true, exif: false,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
-      setScanImage(asset.uri); setScanBase64(asset.base64 || null);
-      const mime = asset.mimeType || 'image/jpeg';
-      const normalizedMime = mime === 'image/jpg' ? 'image/jpeg' : ((['image/jpeg','image/png','image/gif','image/webp'].includes(mime)) ? mime : 'image/jpeg');
-      setScanType(normalizedMime); setScanResult(null); setScanError(null);
+      // Always re-encode as JPEG via canvas to avoid HEIC issues
+      const jpegBase64 = asset.base64 || null;
+      setScanImage(asset.uri);
+      setScanBase64(jpegBase64);
+      setScanType('image/jpeg');
+      setScanResult(null); setScanError(null);
     }
   };
 
@@ -146,24 +149,14 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
     console.log('Uploading image for scan, uri:', scanImage);
     setScanning(true); setScanError(null); setScanResult(null);
     try {
-      // Upload image to Supabase Storage first, then pass URL to AI
-      // Convert to JPEG blob via base64
-      const imgBlob = await fetch(`data:image/jpeg;base64,${scanBase64}`).then(r => r.blob());
-      const fileName = `scan_${Date.now()}.jpg`;
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('scan-images')
-        .upload(fileName, imgBlob, { contentType: 'image/jpeg', upsert: true });
-      if (uploadError) throw new Error('Upload failed: ' + uploadError.message);
-      const { data: urlData } = supabase.storage.from('scan-images').getPublicUrl(fileName);
-      const imageUrl = urlData.publicUrl;
-      console.log('Uploaded image URL:', imageUrl);
+      if (!scanBase64) throw new Error('No image data');
       const res = await fetch('https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE', 'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE' },
         body: JSON.stringify({
           system: 'You are a nutrition label reader. Return only valid JSON, no explanation.',
           messages: [{ role: 'user', content: [
-            { type: 'image', source: { type: 'url', url: imageUrl } },
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: scanBase64 } },
             { type: 'text', text: 'Read this nutrition label and respond ONLY with JSON:\n{"name":"product name","serving_size":"e.g. 1 cup","calories":number,"protein":number,"carbs":number,"fat":number}\nIf unreadable: {"error":"message"}' },
           ]}],
           max_tokens: 1000,
