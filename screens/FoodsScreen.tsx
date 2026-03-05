@@ -43,6 +43,14 @@ export default function FoodsScreen() {
   const [usdaSearching, setUsdaSearching] = useState(false);
   const [usdaVisible, setUsdaVisible] = useState(false);
 
+  const fetchFoods = useCallback(async () => {
+    if (!user) return;
+    const { data } = await supabase.from('user_foods').select('*').eq('user_id', user.id).order('name');
+    setFoods(data || []);
+    setLoading(false);
+  }, [user]);
+
+  useEffect(() => { fetchFoods(); }, [fetchFoods]);
 
   const searchUSDA = async () => {
     if (!usdaQuery.trim()) return;
@@ -58,7 +66,7 @@ export default function FoodsScreen() {
       });
       const data = await res.json();
       setUsdaResults(data.foods || []);
-    } catch (e) {
+    } catch {
       Alert.alert('Search failed', 'Could not search food database.');
     } finally {
       setUsdaSearching(false);
@@ -79,36 +87,6 @@ export default function FoodsScreen() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     Alert.alert('Added!', `"${food.name}" added to your foods.`);
   };
-
-
-
-  const importUSDAFood = async (food: any) => {
-    await supabase.from('user_foods').insert({
-      user_id: user!.id,
-      name: food.name,
-      serving_size: food.serving_size,
-      calories: food.calories,
-      protein: food.protein,
-      carbs: food.carbs,
-      fat: food.fat,
-    });
-    await fetchFoods();
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Alert.alert('Added!', `"${food.name}" added to your foods.`);
-  };
-
-  const fetchFoods = useCallback(async () => {
-    if (!user) return;
-    const { data } = await supabase
-      .from('user_foods')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('name');
-    setFoods(data || []);
-    setLoading(false);
-  }, [user]);
-
-  useEffect(() => { fetchFoods(); }, [fetchFoods]);
 
   const openAdd = () => {
     setEditingFood(null);
@@ -134,22 +112,8 @@ export default function FoodsScreen() {
   };
 
   const pickImage = async (fromCamera: boolean) => {
-    if (fromCamera) {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Camera Permission', 'Please allow camera access in Settings to take photos.');
-        return;
-      }
-    }
-    const fn = fromCamera
-      ? ImagePicker.launchCameraAsync
-      : ImagePicker.launchImageLibraryAsync;
-    const result = await fn({
-      base64: true,
-      quality: 0.6,
-      allowsEditing: true,
-      aspect: [1, 1],
-    });
+    const fn = fromCamera ? ImagePicker.launchCameraAsync : ImagePicker.launchImageLibraryAsync;
+    const result = await fn({ base64: true, quality: 0.6, allowsEditing: true, aspect: [1, 1] });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
       setImageUri(asset.uri);
@@ -168,16 +132,14 @@ export default function FoodsScreen() {
   };
 
   const uploadImage = async (): Promise<string | null> => {
-    if (!imageBase64 || !user) return imageUri; // return existing URL if no new image
+    if (!imageBase64 || !user) return imageUri;
     setUploadingImage(true);
     try {
       const ext = imageMime === 'image/png' ? 'png' : 'jpg';
       const path = `${user.id}/${Date.now()}.${ext}`;
       const binary = Uint8Array.from(atob(imageBase64), c => c.charCodeAt(0));
-      const { error } = await supabase.storage
-        .from('food-images')
-        .upload(path, binary, { contentType: imageMime, upsert: true });
-      if (error) { console.error(error); return null; }
+      const { error } = await supabase.storage.from('food-images').upload(path, binary, { contentType: imageMime, upsert: true });
+      if (error) return null;
       const { data } = supabase.storage.from('food-images').getPublicUrl(path);
       return data.publicUrl;
     } finally {
@@ -214,12 +176,10 @@ export default function FoodsScreen() {
   const handleDelete = (food: Food) => {
     Alert.alert('Delete Food', `Remove "${food.name}" from your list?`, [
       { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete', style: 'destructive', onPress: async () => {
-          await supabase.from('user_foods').delete().eq('id', food.id);
-          await fetchFoods();
-        }
-      },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        await supabase.from('user_foods').delete().eq('id', food.id);
+        await fetchFoods();
+      }},
     ]);
   };
 
@@ -240,14 +200,8 @@ export default function FoodsScreen() {
       </View>
 
       <View style={s.searchWrap}>
-        <TextInput
-          style={s.searchInput}
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search foods…"
-          placeholderTextColor="#444"
-          clearButtonMode="while-editing"
-        />
+        <TextInput style={s.searchInput} value={search} onChangeText={setSearch}
+          placeholder="Search my foods…" placeholderTextColor="#444" clearButtonMode="while-editing" />
       </View>
 
       {loading ? (
@@ -258,7 +212,7 @@ export default function FoodsScreen() {
             <View style={s.empty}>
               <Text style={s.emptyIcon}>🥦</Text>
               <Text style={s.emptyTitle}>{search ? 'No results' : 'No foods yet'}</Text>
-              <Text style={s.emptySub}>{search ? 'Try a different search' : 'Tap "+ Add" to build your food list'}</Text>
+              <Text style={s.emptySub}>{search ? 'Try a different search' : 'Tap "🔍 Search" or "+ Add" to build your food list'}</Text>
             </View>
           )}
           {filtered.map(food => (
@@ -285,6 +239,69 @@ export default function FoodsScreen() {
         </ScrollView>
       )}
 
+      {/* USDA Search Modal */}
+      <Modal visible={usdaVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setUsdaVisible(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <SafeAreaView style={s.modalSafe} edges={['top', 'bottom']}>
+            <View style={s.handle} />
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>Food Database</Text>
+              <TouchableOpacity style={s.modalClose} onPress={() => setUsdaVisible(false)}>
+                <Text style={s.modalCloseText}>×</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ paddingHorizontal: 20, marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput
+                  style={[s.input, { flex: 1, marginBottom: 0 }]}
+                  value={usdaQuery}
+                  onChangeText={setUsdaQuery}
+                  placeholder="Search millions of foods..."
+                  placeholderTextColor="#444"
+                  onSubmitEditing={searchUSDA}
+                  returnKeyType="search"
+                />
+                <TouchableOpacity
+                  style={[s.saveBtn, { marginBottom: 0, paddingHorizontal: 20 }]}
+                  onPress={searchUSDA}
+                  disabled={usdaSearching}>
+                  {usdaSearching ? <ActivityIndicator color="#000" size="small" /> : <Text style={s.saveBtnText}>Go</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingTop: 8, paddingBottom: 40 }}>
+              {usdaResults.length === 0 && !usdaSearching && (
+                <View style={s.empty}>
+                  <Text style={s.emptyIcon}>🔍</Text>
+                  <Text style={s.emptyTitle}>Search Foods</Text>
+                  <Text style={s.emptySub}>Powered by the USDA food database</Text>
+                </View>
+              )}
+              {usdaResults.map((food, i) => (
+                <View key={i} style={[s.foodCard, { marginBottom: 8 }]}>
+                  <View style={s.foodInfo}>
+                    <Text style={s.foodName} numberOfLines={2}>{food.name}</Text>
+                    {food.brand && <Text style={s.foodServing}>{food.brand}</Text>}
+                    <Text style={s.foodServing}>per {food.serving_size}</Text>
+                    <View style={s.foodMacros}>
+                      <Text style={s.foodCal}>{food.calories} cal</Text>
+                      <Text style={[s.foodMacro, { color: MC.protein.color }]}>P {food.protein}g</Text>
+                      <Text style={[s.foodMacro, { color: MC.carbs.color }]}>C {food.carbs}g</Text>
+                      <Text style={[s.foodMacro, { color: MC.fat.color }]}>F {food.fat}g</Text>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={{ backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}
+                    onPress={() => importUSDAFood(food)}>
+                    <Text style={{ color: '#000', fontWeight: '800', fontSize: 13 }}>+ Add</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          </SafeAreaView>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* Add / Edit Modal */}
       <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setModalVisible(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
@@ -296,40 +313,25 @@ export default function FoodsScreen() {
                 <Text style={s.modalCloseText}>×</Text>
               </TouchableOpacity>
             </View>
-
             <ScrollView style={s.modalScroll} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
-
-              {/* Photo picker */}
               <TouchableOpacity style={s.photoPicker} onPress={showImagePicker} activeOpacity={0.8}>
                 {imageUri
                   ? <Image source={{ uri: imageUri }} style={s.photoPreview} />
-                  : (
-                    <View style={s.photoPlaceholder}>
+                  : <View style={s.photoPlaceholder}>
                       <Text style={s.photoPlaceholderIcon}>📷</Text>
                       <Text style={s.photoPlaceholderText}>Add Photo</Text>
-                      <Text style={s.photoPlaceholderSub}>Camera or library</Text>
                     </View>
-                  )
                 }
-                {imageUri && (
-                  <View style={s.photoOverlay}>
-                    <Text style={s.photoOverlayText}>Change Photo</Text>
-                  </View>
-                )}
               </TouchableOpacity>
-
               <Text style={s.fieldLabel}>Food Name *</Text>
               <TextInput style={s.input} value={form.name} onChangeText={v => setForm(f => ({ ...f, name: v }))}
-                placeholder="e.g. Chicken Breast" placeholderTextColor="#444" autoCorrect={false} />
-
+                placeholder="e.g. Chicken Breast" placeholderTextColor="#444" />
               <Text style={s.fieldLabel}>Serving Size</Text>
               <TextInput style={s.input} value={form.serving_size} onChangeText={v => setForm(f => ({ ...f, serving_size: v }))}
-                placeholder="e.g. 100g, 1 cup, 1 slice" placeholderTextColor="#444" />
-
+                placeholder="e.g. 100g, 1 cup" placeholderTextColor="#444" />
               <Text style={s.fieldLabel}>Calories *</Text>
               <TextInput style={s.input} value={form.calories} onChangeText={v => setForm(f => ({ ...f, calories: v }))}
                 placeholder="0" placeholderTextColor="#444" keyboardType="decimal-pad" />
-
               <View style={s.macroGrid}>
                 <View style={s.macroGridItem}>
                   <Text style={[s.fieldLabel, { color: MC.protein.color }]}>Protein (g)</Text>
@@ -347,38 +349,9 @@ export default function FoodsScreen() {
                     placeholder="0" placeholderTextColor="#444" keyboardType="decimal-pad" />
                 </View>
               </View>
-
-              {/* Live preview */}
-              {form.calories ? (
-                <View style={s.preview}>
-                  <Text style={s.previewTitle}>PREVIEW</Text>
-                  <View style={s.previewRow}>
-                    <View style={s.previewItem}>
-                      <Text style={s.previewVal}>{form.calories || 0}</Text>
-                      <Text style={s.previewLabel}>Cal</Text>
-                    </View>
-                    <View style={s.previewItem}>
-                      <Text style={[s.previewVal, { color: MC.protein.color }]}>{form.protein || 0}g</Text>
-                      <Text style={s.previewLabel}>Protein</Text>
-                    </View>
-                    <View style={s.previewItem}>
-                      <Text style={[s.previewVal, { color: MC.carbs.color }]}>{form.carbs || 0}g</Text>
-                      <Text style={s.previewLabel}>Carbs</Text>
-                    </View>
-                    <View style={s.previewItem}>
-                      <Text style={[s.previewVal, { color: MC.fat.color }]}>{form.fat || 0}g</Text>
-                      <Text style={s.previewLabel}>Fat</Text>
-                    </View>
-                  </View>
-                </View>
-              ) : null}
-
-              <TouchableOpacity style={s.saveBtn} onPress={handleSave} disabled={saving || uploadingImage} activeOpacity={0.8}>
-                {saving || uploadingImage
-                  ? <ActivityIndicator color="#000" />
-                  : <Text style={s.saveBtnText}>{editingFood ? 'Save Changes' : 'Add Food'}</Text>}
+              <TouchableOpacity style={s.saveBtn} onPress={handleSave} disabled={saving || uploadingImage}>
+                {saving || uploadingImage ? <ActivityIndicator color="#000" /> : <Text style={s.saveBtnText}>{editingFood ? 'Save Changes' : 'Add Food'}</Text>}
               </TouchableOpacity>
-
               {editingFood && (
                 <TouchableOpacity style={s.deleteModalBtn} onPress={() => { setModalVisible(false); handleDelete(editingFood); }}>
                   <Text style={s.deleteModalBtnText}>Delete Food</Text>
@@ -388,137 +361,12 @@ export default function FoodsScreen() {
           </SafeAreaView>
         </KeyboardAvoidingView>
       </Modal>
-      {/* USDA Search Modal */}
-      <Modal visible={usdaVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setUsdaVisible(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <SafeAreaView style={s.modalSafe} edges={['top', 'bottom']}>
-            <View style={s.handle} />
-            <View style={s.modalHeader}>
-              <Text style={s.modalTitle}>Food Database</Text>
-              <TouchableOpacity style={s.modalClose} onPress={() => setUsdaVisible(false)}>
-                <Text style={s.modalCloseText}>×</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={{ paddingHorizontal: 20, marginBottom: 12 }}>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TextInput
-                  style={[s.input, { flex: 1, marginBottom: 0 }]}
-                  value={usdaQuery}
-                  onChangeText={setUsdaQuery}
-                  placeholder="Search millions of foods..."
-                  placeholderTextColor="#444"
-                  onSubmitEditing={searchUSDA}
-                  returnKeyType="search"
-                />
-                <TouchableOpacity
-                  style={[s.saveBtn, { marginBottom: 0, paddingHorizontal: 16, paddingVertical: 14 }]}
-                  onPress={searchUSDA}
-                  disabled={usdaSearching}>
-                  {usdaSearching ? <ActivityIndicator color="#000" size="small" /> : <Text style={s.saveBtnText}>Go</Text>}
-                </TouchableOpacity>
-              </View>
-            </View>
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingTop: 0, paddingBottom: 40 }}>
-              {usdaResults.length === 0 && !usdaSearching && (
-                <View style={s.empty}>
-                  <Text style={s.emptyIcon}>🔍</Text>
-                  <Text style={s.emptyTitle}>Search Foods</Text>
-                  <Text style={s.emptySub}>Powered by the USDA food database</Text>
-                </View>
-              )}
-              {usdaResults.map((food, i) => (
-                <View key={i} style={[s.foodCard, { marginBottom: 8 }]}>
-                  <View style={s.foodInfo}>
-                    <Text style={s.foodName} numberOfLines={2}>{food.name}</Text>
-                    {food.brand && <Text style={s.foodServing}>{food.brand}</Text>}
-                    <Text style={s.foodServing}>per {food.serving_size}</Text>
-                    <View style={s.foodMacros}>
-                      <Text style={s.foodCal}>{food.calories} cal</Text>
-                      <Text style={[s.foodMacro, { color: MC.protein.color }]}>P {food.protein}g</Text>
-                      <Text style={[s.foodMacro, { color: MC.carbs.color }]}>C {food.carbs}g</Text>
-                      <Text style={[s.foodMacro, { color: MC.fat.color }]}>F {food.fat}g</Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    style={{ backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}
-                    onPress={() => importUSDAFood(food)}>
-                    <Text style={{ color: '#000', fontWeight: '800', fontSize: 13 }}>+ Add</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </ScrollView>
-          </SafeAreaView>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* USDA Search Modal */}
-      <Modal visible={usdaVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setUsdaVisible(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <SafeAreaView style={s.modalSafe} edges={['top', 'bottom']}>
-            <View style={s.handle} />
-            <View style={s.modalHeader}>
-              <Text style={s.modalTitle}>Food Database</Text>
-              <TouchableOpacity style={s.modalClose} onPress={() => setUsdaVisible(false)}>
-                <Text style={s.modalCloseText}>×</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={{ paddingHorizontal: 20, marginBottom: 12 }}>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TextInput
-                  style={[s.input, { flex: 1, marginBottom: 0 }]}
-                  value={usdaQuery}
-                  onChangeText={setUsdaQuery}
-                  placeholder="Search millions of foods..."
-                  placeholderTextColor="#444"
-                  onSubmitEditing={searchUSDA}
-                  returnKeyType="search"
-                />
-                <TouchableOpacity
-                  style={[s.saveBtn, { marginBottom: 0, paddingHorizontal: 16, paddingVertical: 14 }]}
-                  onPress={searchUSDA}
-                  disabled={usdaSearching}>
-                  {usdaSearching ? <ActivityIndicator color="#000" size="small" /> : <Text style={s.saveBtnText}>Go</Text>}
-                </TouchableOpacity>
-              </View>
-            </View>
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingTop: 0, paddingBottom: 40 }}>
-              {usdaResults.length === 0 && !usdaSearching && (
-                <View style={s.empty}>
-                  <Text style={s.emptyIcon}>🔍</Text>
-                  <Text style={s.emptyTitle}>Search Foods</Text>
-                  <Text style={s.emptySub}>Powered by the USDA food database</Text>
-                </View>
-              )}
-              {usdaResults.map((food, i) => (
-                <View key={i} style={[s.foodCard, { marginBottom: 8 }]}>
-                  <View style={s.foodInfo}>
-                    <Text style={s.foodName} numberOfLines={2}>{food.name}</Text>
-                    {food.brand && <Text style={s.foodServing}>{food.brand}</Text>}
-                    <Text style={s.foodServing}>per {food.serving_size}</Text>
-                    <View style={s.foodMacros}>
-                      <Text style={s.foodCal}>{food.calories} cal</Text>
-                      <Text style={[s.foodMacro, { color: MC.protein.color }]}>P {food.protein}g</Text>
-                      <Text style={[s.foodMacro, { color: MC.carbs.color }]}>C {food.carbs}g</Text>
-                      <Text style={[s.foodMacro, { color: MC.fat.color }]}>F {food.fat}g</Text>
-                    </View>
-                  </View>
-                  <TouchableOpacity
-                    style={{ backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}
-                    onPress={() => importUSDAFood(food)}>
-                    <Text style={{ color: '#000', fontWeight: '800', fontSize: 13 }}>+ Add</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </ScrollView>
-          </SafeAreaView>
-        </KeyboardAvoidingView>
-      </Modal>
 
       <BarcodeScanner
         visible={scannerVisible}
         onClose={() => setScannerVisible(false)}
         onResult={(r) => {
-          setForm({ name: r.name, serving_size: r.serving_size, calories: String(r.calories), protein: String(r.protein), carbs: String(r.carbs), fat: String(r.fat), image_url: '' });
+          setForm({ name: r.name, serving_size: r.serving_size, calories: String(r.calories), protein: String(r.protein), carbs: String(r.carbs), fat: String(r.fat) });
           setScannerVisible(false);
           setModalVisible(true);
         }}
@@ -541,7 +389,7 @@ const s = StyleSheet.create({
   empty: { alignItems: 'center', paddingVertical: 60 },
   emptyIcon: { fontSize: 48, marginBottom: 16 },
   emptyTitle: { fontSize: 18, fontWeight: '800', color: '#fff', marginBottom: 8 },
-  emptySub: { fontSize: 13, color: '#444', fontWeight: '500' },
+  emptySub: { fontSize: 13, color: '#444', fontWeight: '500', textAlign: 'center' },
   foodCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 14, padding: 12, marginBottom: 8, gap: 12 },
   foodThumb: { width: 52, height: 52, borderRadius: 10 },
   foodThumbPlaceholder: { width: 52, height: 52, borderRadius: 10, backgroundColor: '#252525', alignItems: 'center', justifyContent: 'center' },
@@ -565,19 +413,10 @@ const s = StyleSheet.create({
   photoPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
   photoPlaceholderIcon: { fontSize: 40 },
   photoPlaceholderText: { fontSize: 16, fontWeight: '700', color: '#fff' },
-  photoPlaceholderSub: { fontSize: 13, color: '#555', fontWeight: '500' },
-  photoOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.6)', padding: 10, alignItems: 'center' },
-  photoOverlayText: { color: '#fff', fontSize: 13, fontWeight: '700' },
   fieldLabel: { fontSize: 11, fontWeight: '700', color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   input: { backgroundColor: '#252525', borderRadius: 12, color: '#fff', padding: 14, fontSize: 15, marginBottom: 16 },
   macroGrid: { flexDirection: 'row', gap: 10 },
   macroGridItem: { flex: 1 },
-  preview: { backgroundColor: '#111', borderRadius: 14, padding: 16, marginBottom: 16 },
-  previewTitle: { fontSize: 10, fontWeight: '700', color: '#444', letterSpacing: 1.5, marginBottom: 12 },
-  previewRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  previewItem: { alignItems: 'center' },
-  previewVal: { fontSize: 18, fontWeight: '900', color: '#fff' },
-  previewLabel: { fontSize: 10, color: '#555', marginTop: 2, fontWeight: '600' },
   saveBtn: { backgroundColor: '#fff', borderRadius: 12, padding: 16, alignItems: 'center', marginBottom: 12 },
   saveBtnText: { color: '#000', fontSize: 15, fontWeight: '800' },
   deleteModalBtn: { backgroundColor: '#2a1010', borderRadius: 12, padding: 16, alignItems: 'center' },
