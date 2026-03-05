@@ -79,28 +79,28 @@ export default function MainTabs({ profile, onProfileUpdate }: { profile: any; o
 
 const s = StyleSheet.create({
   tabBar: {
-    backgroundColor: '#0e0e0e',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#2a2a2a',
+    backgroundColor: '#0a0a0a',
+    borderTopWidth: 1,
+    borderTopColor: '#1e1e1e',
     flexDirection: 'row',
-    paddingTop: 10,
-    paddingBottom: 2,
+    paddingTop: 8,
+    paddingBottom: 4,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
-    paddingVertical: 2,
+    gap: 4,
+    paddingVertical: 4,
   },
   label: {
-    fontSize: 9,
-    fontWeight: '500',
-    color: '#404040',
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#3a3a3a',
     letterSpacing: 0.2,
   },
   labelActive: {
     color: '#fff',
-    fontWeight: '700',
+    fontWeight: '800',
   },
 });
