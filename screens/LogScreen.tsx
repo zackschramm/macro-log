@@ -158,7 +158,10 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
       const text = (data.content?.find((b: any) => b.type === 'text')?.text || '').replace(/```json|```/g, '').trim();
       const parsed = JSON.parse(text);
       if (parsed.error) setScanError(parsed.error); else setScanResult(parsed);
-    } catch { setScanError('Could not read the label. Please try again.'); }
+    } catch (e: any) {
+      console.log('Scan error:', e);
+      setScanError('Error: ' + (e?.message || JSON.stringify(e)));
+    }
     finally { setScanning(false); }
   };
 
