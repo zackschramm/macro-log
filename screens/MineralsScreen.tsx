@@ -1,8 +1,11 @@
 import React, { useMemo, useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
+
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE';
 
 interface Props { profile: any; }
 
@@ -106,6 +109,9 @@ const todayStr = () => new Date().toISOString().split('T')[0];
 export default function MineralsScreen({ profile }: Props) {
   const { user } = useAuth();
   const [todayIntake, setTodayIntake] = useState<Record<string, number>>({});
+  const [bloodworkResults, setBloodworkResults] = useState<Record<string, number>>({});
+  const [analyzingBloodwork, setAnalyzingBloodwork] = useState(false);
+  const [bloodworkDate, setBloodworkDate] = useState<string | null>(null);
 
   const weightKg = (profile?.weight_lbs || 170) / 2.205;
   const weightLbs = profile?.weight_lbs || 170;
@@ -129,6 +135,58 @@ export default function MineralsScreen({ profile }: Props) {
 
   useEffect(() => { fetchTodayIntake(); }, [fetchTodayIntake]);
 
+  // Load saved bloodwork from Supabase
+  useEffect(() => {
+    const loadBloodwork = async () => {
+      if (!user) return;
+      const { data } = await supabase.from('bloodwork').select('*').eq('user_id', user.id).order('date', { ascending: false }).limit(1);
+      if (data?.[0]) {
+        setBloodworkResults(data[0].results || {});
+        setBloodworkDate(data[0].date);
+      }
+    };
+    loadBloodwork();
+  }, [user]);
+
+  const uploadBloodwork = useCallback(async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      base64: true, quality: 0.5, allowsEditing: false,
+      mediaTypes: ['images'],
+    });
+    if (result.canceled || !result.assets[0]?.base64) return;
+    setAnalyzingBloodwork(true);
+    try {
+      const base64 = result.assets[0].base64;
+      const res = await fetch('https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY, 'Authorization': `Bearer ${ANON_KEY}` },
+        body: JSON.stringify({
+          system: 'You are a medical lab results interpreter. Return only valid JSON, no explanation.',
+          messages: [{ role: 'user', content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+            { type: 'text', text: 'Read this blood test / lab results panel. Extract all nutrient, vitamin, and mineral values. Return ONLY a JSON object where keys match these exact names where applicable: vitamin_a, vitamin_b1, vitamin_b2, vitamin_b3, vitamin_b5, vitamin_b6, vitamin_b7, vitamin_b9, vitamin_b12, vitamin_c, vitamin_d, vitamin_d3, vitamin_e, vitamin_k, calcium, magnesium, phosphorus, potassium, sodium, iron, zinc, copper, manganese, selenium, chromium, iodine, omega3. Use the numeric value from the result (not reference range). Only include keys that are present in the lab results. If nothing is readable return {"error":"unreadable"}.' },
+          ]}],
+          max_tokens: 1000,
+        }),
+      });
+      const data = await res.json();
+      const text = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(text);
+      if (parsed.error) { Alert.alert('Could not read lab results', 'Please try a clearer image.'); return; }
+      // Save to Supabase
+      const today = new Date().toISOString().split('T')[0];
+      await supabase.from('bloodwork').upsert({ user_id: user!.id, date: today, results: parsed }, { onConflict: 'user_id,date' });
+      setBloodworkResults(parsed);
+      setBloodworkDate(today);
+      Alert.alert('✅ Blood work analyzed!', `Found ${Object.keys(parsed).length} nutrient markers.`);
+    } catch (e) {
+      Alert.alert('Error', 'Could not analyze blood work. Please try again.');
+      console.log('Bloodwork error:', e);
+    } finally {
+      setAnalyzingBloodwork(false);
+    }
+  }, [user]);
+
   const categories = useMemo(() => {
     const cats: Record<string, typeof NUTRIENTS> = {};
     NUTRIENTS.forEach(n => { if (!cats[n.category]) cats[n.category] = []; cats[n.category].push(n); });
@@ -142,6 +200,26 @@ export default function MineralsScreen({ profile }: Props) {
         <Text style={s.subtitle}>Daily targets · log foods to track progress</Text>
       </View>
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+        {/* Bloodwork Upload Banner */}
+        <TouchableOpacity style={s.bloodworkCard} onPress={uploadBloodwork} disabled={analyzingBloodwork}>
+          {analyzingBloodwork ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={s.bloodworkIcon}>🩸</Text>
+          )}
+          <View style={s.bloodworkText}>
+            <Text style={s.bloodworkTitle}>
+              {bloodworkDate ? `Blood Work · ${bloodworkDate}` : 'Upload Blood Work'}
+            </Text>
+            <Text style={s.bloodworkSub}>
+              {bloodworkDate
+                ? `${Object.keys(bloodworkResults).length} markers · tap to update`
+                : 'Tap to scan lab results for accurate baselines'}
+            </Text>
+          </View>
+          <Text style={s.bloodworkArrow}>›</Text>
+        </TouchableOpacity>
+
         <View style={s.statsRow}>
           <View style={s.statCard}>
             <Text style={s.statVal}>{weightLbs} lbs</Text>
@@ -170,7 +248,10 @@ export default function MineralsScreen({ profile }: Props) {
             {nutrients.map(n => {
               const rda = calcRDA(n, weightKg, age, sex);
               const intake = todayIntake[n.key] || 0;
-              const pct = rda > 0 ? Math.min(100, Math.round((intake / rda) * 100)) : 0;
+              const bloodVal = bloodworkResults[n.key];
+              // Use bloodwork value as baseline if available and higher than logged
+              const effectiveIntake = bloodVal != null ? Math.max(intake, bloodVal) : intake;
+              const pct = rda > 0 ? Math.min(100, Math.round((effectiveIntake / rda) * 100)) : 0;
               return (
                 <View key={n.key} style={s.row}>
                   <Text style={s.emoji}>{n.emoji}</Text>
@@ -182,9 +263,12 @@ export default function MineralsScreen({ profile }: Props) {
                       </Text>
                     </View>
                     <Text style={s.notes}>{n.notes}</Text>
-                    <ProgressBar value={intake} target={rda} color={CAT_COLORS[category]} />
+                    <ProgressBar value={effectiveIntake} target={rda} color={CAT_COLORS[category]} />
                     <View style={s.intakeRow}>
-                      <Text style={s.intakeText}>{intake > 0 ? `${Math.round(intake * 10) / 10} / ` : ''}{rda} {n.unit}</Text>
+                      <Text style={s.intakeText}>
+                        {effectiveIntake > 0 ? `${Math.round(effectiveIntake * 10) / 10} / ` : ''}{rda} {n.unit}
+                        {bloodVal != null ? ` 🩸` : ''}
+                      </Text>
                     </View>
                   </View>
                 </View>
@@ -226,6 +310,16 @@ const s = StyleSheet.create({
   notes: { fontSize: 11, color: '#555', fontWeight: '500', marginTop: 2 },
   intakeRow: { marginTop: 4 },
   intakeText: { fontSize: 10, color: '#444', fontWeight: '600' },
+  bloodworkCard: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1f2e',
+    borderRadius: 14, padding: 14, marginBottom: 16,
+    borderWidth: 1, borderColor: '#ff4f4f44',
+  },
+  bloodworkIcon: { fontSize: 28, marginRight: 12 },
+  bloodworkText: { flex: 1 },
+  bloodworkTitle: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  bloodworkSub: { color: '#888', fontSize: 12, marginTop: 2 },
+  bloodworkArrow: { color: '#888', fontSize: 22, marginLeft: 8 },
   disclaimer: { backgroundColor: '#1a1410', borderRadius: 12, padding: 14, marginTop: 8 },
   disclaimerText: { fontSize: 12, color: '#666', lineHeight: 18 },
 });
