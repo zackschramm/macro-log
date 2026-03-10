@@ -85,7 +85,8 @@ Format: [{"day":"Monday","meals":[{"meal":"Breakfast","items":[{"name":"Oats","s
 Complete all 7 days. Valid JSON only.`;
 
       const rawText = await callAI([{ role: 'user', content: prompt }]);
-      console.log('AI response:', rawText.slice(0, 300));
+      console.log('AI response length:', rawText.length);
+      console.log('AI response full:', rawText);
 
       // Strip markdown code blocks
       const cleaned = rawText.replace(/```json|```/g, '').trim();
