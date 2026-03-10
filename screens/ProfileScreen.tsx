@@ -21,8 +21,29 @@ const GOAL_OPTIONS = [
   { key: 'lose', label: 'Lose Fat' },
   { key: 'maintain', label: 'Maintain' },
   { key: 'gain', label: 'Build Muscle' },
+]; 
+const SPORT_OPTIONS = [
+  { key: 'none',         label: 'General',       emoji: '🏋️' },
+  { key: 'bodybuilding', label: 'Bodybuilding',   emoji: '💪' },
+  { key: 'powerlifting', label: 'Powerlifting',   emoji: '🏋️' },
+  { key: 'crossfit',     label: 'CrossFit',       emoji: '🔥' },
+  { key: 'running',      label: 'Running',        emoji: '🏃' },
+  { key: 'cycling',      label: 'Cycling',        emoji: '🚴' },
+  { key: 'swimming',     label: 'Swimming',       emoji: '🏊' },
+  { key: 'basketball',   label: 'Basketball',     emoji: '🏀' },
+  { key: 'soccer',       label: 'Soccer',         emoji: '⚽' },
+  { key: 'football',     label: 'Football',       emoji: '🏈' },
+  { key: 'baseball',     label: 'Baseball',       emoji: '⚾' },
+  { key: 'tennis',       label: 'Tennis',         emoji: '🎾' },
+  { key: 'wrestling',    label: 'Wrestling/MMA',  emoji: '🥊' },
+  { key: 'gymnastics',   label: 'Gymnastics',     emoji: '🤸' },
+  { key: 'volleyball',   label: 'Volleyball',     emoji: '🏐' },
+  { key: 'hockey',       label: 'Hockey',         emoji: '🏒' },
+  { key: 'golf',         label: 'Golf',           emoji: '⛳' },
+  { key: 'climbing',     label: 'Climbing',       emoji: '🧗' },
+  { key: 'yoga',         label: 'Yoga',           emoji: '🧘' },
+  { key: 'rowing',       label: 'Rowing',         emoji: '🚣' },
 ];
-
 export default function ProfileScreen({ profile, onUpdate }: { profile: any; onUpdate: (p: any) => void }) {
   const { user, signOut } = useAuth();
   const [name, setName] = useState(profile.name || '');
@@ -35,6 +56,15 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   const [sex, setSex] = useState(profile.sex || 'male');
   const [activity, setActivity] = useState(profile.activity || 'moderate');
   const [goal, setGoal] = useState(profile.goal || 'gain');
+<Text style={s.label}>Sport / Training Style</Text>
+        <View style={s.optRow}>
+          {SPORT_OPTIONS.map(o => (
+            <TouchableOpacity key={o.key} style={[s.optBtn, sport === o.key && s.optBtnActive]} onPress={() => setSport(o.key)}>
+              <Text style={[s.optBtnText, sport === o.key && s.optBtnTextActive]}>{o.emoji} {o.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+const [sport, setSport] = useState(profile.sport || 'none');
   const [loading, setLoading] = useState(false);
   const [customGoals, setCustomGoals] = useState(!!profile.custom_goals);
   const [customCal, setCustomCal] = useState(profile.custom_goals ? String(profile.calories || '') : '');
@@ -116,7 +146,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
     setLoading(true);
     const profileData = {
       weight_lbs: parseFloat(weight), height_in: totalHeightIn,
-      age: parseInt(age), sex, activity, goal,
+      age: parseInt(age), sex, activity, goal, sport,
     };
     const targets = customGoals ? {
       calories: parseInt(customCal) || calculateTargets(profileData).calories,
