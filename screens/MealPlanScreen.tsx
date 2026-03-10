@@ -82,7 +82,7 @@ Pantry: ${pantryList}
 Fill gaps with: chicken, rice, eggs, oats, Greek yogurt, vegetables, whey protein.
 Output ONLY a raw JSON array (no markdown). Each day: 4 meals (Breakfast, Lunch, Dinner, Snack). Max 3 items per meal. Short names. Hit macro targets.
 Format: [{"day":"Monday","meals":[{"meal":"Breakfast","items":[{"name":"Oats","serving":"1 cup dry","calories":300,"protein":10,"carbs":54,"fat":6}],"totals":{"calories":300,"protein":10,"carbs":54,"fat":6}}],"totals":{"calories":${targets.calories},"protein":${targets.protein},"carbs":${targets.carbs},"fat":${targets.fat}}}]
-Complete all 7 days. Valid JSON only.`;
+Complete all 7 days. Valid JSON only. ${profile?.sport && profile.sport !== 'none' ? ` The user is a ${profile.sport} athlete - optimize meal timing and food choices for ${profile.sport} performance and recovery.` : ''}`;
 
       const rawText = await callAI([{ role: 'user', content: prompt }]);
       console.log('AI response length:', rawText.length);

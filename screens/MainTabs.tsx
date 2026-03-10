@@ -40,9 +40,9 @@ export default function MainTabs({ profile, onProfileUpdate }: { profile: any; o
     <View style={{ flex: 1, backgroundColor: '#121212' }}>
       <View style={{ flex: 1 }}>
         {activeTab === 'log'      && <LogScreen targets={targets} />}
-        {activeTab === 'workout'  && <WorkoutScreen />}
+        {activeTab === 'workout'  && <WorkoutScreen profile={profile} />}
         {activeTab === 'progress' && <ProgressScreen profile={profile} />}
-        {activeTab === 'coach'    && <CoachScreen />}
+        {activeTab === 'coach'    && <CoachScreen profile={profile} />}
         {activeTab === 'social'   && <SocialScreen profile={profile} />}
         {activeTab === 'profile'  && <ProfileScreen profile={profile} onUpdate={onProfileUpdate} />}
       </View>

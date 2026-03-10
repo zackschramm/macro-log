@@ -40,9 +40,9 @@ When explaining exercises, always cover: setup/starting position, execution, com
 
 When relevant, include YouTube links to reputable coaches in markdown format like [Video Title](youtube_url). Use channels like Alan Thrall, Jeff Nippard, Renaissance Periodization, Athlean-X, or Starting Strength for reference videos. Only include real, well-known videos you're confident exist.
 
-Keep responses concise but thorough. Use short paragraphs. Be encouraging and practical.`;
+Keep responses concise but thorough. Use short paragraphs. Be encouraging and practical.${profile?.sport && profile.sport !== 'none' ? `\n\nThe user's primary sport is: ${profile?.sport}. Tailor all advice, exercise recommendations, and programming specifically for this sport.` : ''}`;`;
 
-export default function CoachScreen({ initialExercise }: { initialExercise?: string }) {
+export default function CoachScreen({ initialExercise, profile }: { initialExercise?: string; profile?: any }) {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
