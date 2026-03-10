@@ -74,7 +74,7 @@ serve(async (req) => {
     const { messages, system, max_tokens } = await req.json()
     const body = JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: max_tokens || 1000,
+        max_tokens: max_tokens || 8192,
         system,
         messages,
       });
