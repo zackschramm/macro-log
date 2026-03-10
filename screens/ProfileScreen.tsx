@@ -56,14 +56,6 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   const [sex, setSex] = useState(profile.sex || 'male');
   const [activity, setActivity] = useState(profile.activity || 'moderate');
   const [goal, setGoal] = useState(profile.goal || 'gain');
-<Text style={s.label}>Sport / Training Style</Text>
-        <View style={s.optRow}>
-          {SPORT_OPTIONS.map(o => (
-            <TouchableOpacity key={o.key} style={[s.optBtn, sport === o.key && s.optBtnActive]} onPress={() => setSport(o.key)}>
-              <Text style={[s.optBtnText, sport === o.key && s.optBtnTextActive]}>{o.emoji} {o.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
 const [sport, setSport] = useState(profile.sport || 'none');
   const [loading, setLoading] = useState(false);
   const [customGoals, setCustomGoals] = useState(!!profile.custom_goals);
@@ -316,7 +308,14 @@ const [sport, setSport] = useState(profile.sport || 'none');
             </TouchableOpacity>
           ))}
         </View>
-
+<Text style={s.label}>Sport / Training Style</Text>
+        <View style={s.optRow}>
+          {SPORT_OPTIONS.map(o => (
+            <TouchableOpacity key={o.key} style={[s.optBtn, sport === o.key && s.optBtnActive]} onPress={() => setSport(o.key)}>
+              <Text style={[s.optBtnText, sport === o.key && s.optBtnTextActive]}>{o.emoji} {o.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
         {/* Custom Goals Toggle */}
         <View style={s.customGoalsCard}>
           <View style={s.customGoalsHeader}>
