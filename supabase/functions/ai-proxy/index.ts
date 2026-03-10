@@ -78,11 +78,12 @@ serve(async (req) => {
         system,
         messages,
       });
-    const imgContent = messages?.[0]?.content?.find((b: any) => b.type === 'image');
-    console.log('Image media_type:', imgContent?.source?.media_type);
-    console.log('Image data length:', imgContent?.source?.data?.length);
-    console.log('Image data start:', imgContent?.source?.data?.substring(0, 50));
-    console.log('Sending to Anthropic:', body.substring(0, 200));
+    const firstContent = messages?.[0]?.content;
+    const imgContent = Array.isArray(firstContent) ? firstContent.find((b: any) => b.type === 'image') : null;
+    if (imgContent) {
+      console.log('Image media_type:', imgContent?.source?.media_type);
+      console.log('Image data length:', imgContent?.source?.data?.length);
+    }
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
