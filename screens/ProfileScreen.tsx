@@ -59,10 +59,15 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
       if (!data) return;
       const totals: Record<string, number> = {};
       data.forEach((row: any) => {
-        const fields = ['vitamin_a','vitamin_c','vitamin_d','vitamin_e','vitamin_k',
-          'vitamin_b1','vitamin_b2','vitamin_b3','vitamin_b5','vitamin_b6','vitamin_b7','vitamin_b9','vitamin_b12',
-          'calcium','iron','magnesium','phosphorus','potassium','sodium','zinc','copper',
-          'manganese','selenium','chromium','iodine','protein','fiber'];
+        const fields = [
+          'vitamin_a','vitamin_b1','vitamin_b2','vitamin_b3','vitamin_b5','vitamin_b6','vitamin_b7','vitamin_b9','vitamin_b12',
+          'vitamin_c','vitamin_d','vitamin_d3','vitamin_e','vitamin_k','vitamin_k2',
+          'calcium','magnesium','phosphorus','potassium','sodium','iron','zinc','copper',
+          'manganese','selenium','chromium','iodine','molybdenum','boron','silica',
+          'omega3','omega6','fiber','creatine','beta_alanine','caffeine','l_glutamine',
+          'l_citrulline','bcaa','coq10','ashwagandha','turmeric','probiotics','collagen',
+          'melatonin','electrolytes','protein',
+        ];
         fields.forEach(f => {
           totals[f] = (totals[f] || 0) + (row[f] || 0);
         });
