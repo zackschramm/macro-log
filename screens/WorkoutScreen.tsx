@@ -30,6 +30,7 @@ export default function WorkoutScreen() {
   const [customWorkouts, setCustomWorkouts] = useState<any[]>([]);
   const [loadingCustom, setLoadingCustom] = useState(true);
   const [coachExercise, setCoachExercise] = useState<string | null>(null);
+  const [lastSession, setLastSession] = useState<Record<string, { sets: any[]; date: string }>>({});
 
   const [builderName, setBuilderName] = useState('My Workout');
   const [builderDays, setBuilderDays] = useState<any[]>([
@@ -64,6 +65,26 @@ export default function WorkoutScreen() {
   }, [user, activeProgram, activeDay, date]);
 
   useEffect(() => { fetchLog(); }, [fetchLog]);
+
+  const fetchLastSessions = useCallback(async () => {
+    if (!user || !plan?.exercises?.length) return;
+    const ids = plan.exercises.map((e: any) => e.id);
+    const { data } = await supabase
+      .from('workout_logs')
+      .select('exercise_id, sets, date')
+      .eq('user_id', user.id)
+      .eq('done', true)
+      .in('exercise_id', ids)
+      .neq('date', date)
+      .order('date', { ascending: false });
+    const last: Record<string, { sets: any[]; date: string }> = {};
+    for (const row of (data || [])) {
+      if (!last[row.exercise_id]) last[row.exercise_id] = { sets: row.sets, date: row.date };
+    }
+    setLastSession(last);
+  }, [user, plan, date]);
+
+  useEffect(() => { fetchLastSessions(); }, [fetchLastSessions]);
 
   const upsertEx = async (exId: string, done: boolean, sets: any[]) => {
     await supabase.from('workout_logs').upsert({
@@ -184,6 +205,22 @@ Return ONLY a JSON array, nothing else:
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => { await supabase.from('custom_workouts').delete().eq('id', id); await fetchCustomWorkouts(); } },
     ]);
+  };
+
+  const getProgressiveOverloadSuggestion = (ex: any, lastSets: any[]): string | null => {
+    if (!lastSets?.length) return null;
+    const allCompleted = lastSets.every((s: any) => s.done);
+    if (!allCompleted) return null;
+    const repsStr = ex.reps?.toString() || '';
+    const match = repsStr.match(/(\d+)(?:-(\d+))?/);
+    if (!match) return null;
+    const targetMax = parseInt(match[2] || match[1]);
+    const firstSetReps = parseFloat(lastSets[0]?.reps);
+    if (isNaN(firstSetReps) || firstSetReps < targetMax) return null;
+    const lastWeight = parseFloat(lastSets[0]?.weight);
+    if (isNaN(lastWeight) || lastWeight <= 0) return null;
+    const increment = lastWeight >= 100 ? 5 : 2.5;
+    return `${lastWeight + increment}`;
   };
 
   if (view === 'select') {
@@ -372,22 +409,41 @@ Return ONLY a JSON array, nothing else:
                   </TouchableOpacity>
                   {isOpen && (
                     <View style={s.exBody}>
+                      {(() => {
+                        const prev = lastSession[ex.id];
+                        const suggestion = prev ? getProgressiveOverloadSuggestion(ex, prev.sets) : null;
+                        return (
+                          <>
+                            {suggestion && (
+                              <View style={s.poSuggestion}>
+                                <Text style={s.poSuggestionText}>↑ Try {suggestion} lbs — you hit your rep target last session</Text>
+                              </View>
+                            )}
+                            {prev && !suggestion && (
+                              <Text style={s.lastSessionLabel}>Last session: {prev.sets[0]?.weight || '—'} lbs × {prev.sets[0]?.reps || '—'} reps</Text>
+                            )}
+                          </>
+                        );
+                      })()}
                       <View style={s.setsHeader}>
                         <Text style={[s.setHText, { width: 28 }]}>Set</Text>
                         <Text style={[s.setHText, { flex: 1 }]}>Weight</Text>
                         <Text style={[s.setHText, { flex: 1 }]}>Reps</Text>
                         <Text style={[s.setHText, { width: 36 }]}>✓</Text>
                       </View>
-                      {sets.map((set: any, si: number) => (
-                        <View key={si} style={s.setRow}>
-                          <Text style={s.setNum}>{si + 1}</Text>
-                          <TextInput style={s.setInput} placeholder="lbs" placeholderTextColor="#333" value={set.weight} onChangeText={v => updateSet(ex.id, si, 'weight', v)} keyboardType="decimal-pad" selectTextOnFocus />
-                          <TextInput style={s.setInput} placeholder="—" placeholderTextColor="#333" value={set.reps} onChangeText={v => updateSet(ex.id, si, 'reps', v)} keyboardType="decimal-pad" selectTextOnFocus />
-                          <TouchableOpacity style={[s.setCheckBtn, set.done && s.setCheckBtnDone]} onPress={() => toggleSetDone(ex.id, si)}>
-                            <Text style={[s.setCheckText, set.done && s.setCheckTextDone]}>✓</Text>
-                          </TouchableOpacity>
-                        </View>
-                      ))}
+                      {sets.map((set: any, si: number) => {
+                        const prevSet = lastSession[ex.id]?.sets?.[si];
+                        return (
+                          <View key={si} style={s.setRow}>
+                            <Text style={s.setNum}>{si + 1}</Text>
+                            <TextInput style={s.setInput} placeholder={prevSet?.weight || 'lbs'} placeholderTextColor="#3a3a3a" value={set.weight} onChangeText={v => updateSet(ex.id, si, 'weight', v)} keyboardType="decimal-pad" selectTextOnFocus />
+                            <TextInput style={s.setInput} placeholder={prevSet?.reps || '—'} placeholderTextColor="#3a3a3a" value={set.reps} onChangeText={v => updateSet(ex.id, si, 'reps', v)} keyboardType="decimal-pad" selectTextOnFocus />
+                            <TouchableOpacity style={[s.setCheckBtn, set.done && s.setCheckBtnDone]} onPress={() => toggleSetDone(ex.id, si)}>
+                              <Text style={[s.setCheckText, set.done && s.setCheckTextDone]}>✓</Text>
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
                     </View>
                   )}
                 </View>
@@ -503,6 +559,9 @@ const s = StyleSheet.create({
   aiGenBtn: { backgroundColor: '#fff', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6 },
   aiGenBtnText: { color: '#000', fontSize: 12, fontWeight: '800' },
   addExBtnText: { color: '#000', fontSize: 14, fontWeight: '800' },
+  poSuggestion: { backgroundColor: '#1a3a1a', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 10 },
+  poSuggestionText: { color: '#4ade80', fontSize: 12, fontWeight: '700' },
+  lastSessionLabel: { fontSize: 11, color: '#3a3a3a', fontWeight: '600', marginBottom: 6 },
   modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#222' },
   modalHeaderTitle: { fontSize: 17, fontWeight: '800', color: '#fff' },
   modalCloseBtn: { backgroundColor: '#fff', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8 },
