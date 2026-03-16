@@ -10,7 +10,6 @@
     },
     "ios": {
       "bundleIdentifier": "com.zackschramm.macrolog",
-      "buildNumber": "1",
       "supportsTablet": false,
       "infoPlist": {
         "NSCameraUsageDescription": "MacroLog uses your camera to scan food barcodes and take photos of meals.",
