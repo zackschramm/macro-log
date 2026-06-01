@@ -8,6 +8,9 @@ import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { MC } from '../constants/data';
 import { callAI } from '../constants/ai';
+import { getSportProfile } from '../constants/sportProfiles';
+import { hasPro } from '../constants/purchases';
+import PaywallScreen from './PaywallScreen';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
@@ -52,6 +55,7 @@ export default function MealPlanScreen({ targets, profile }: {
   const [activeDay, setActiveDay] = useState(0);
   const [logModal, setLogModal] = useState<{ meal: string; items: MealItem[] } | null>(null);
   const [logging, setLogging] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
   const weekStart = getMonday();
 
   const fetchExisting = useCallback(async () => {
@@ -67,6 +71,9 @@ export default function MealPlanScreen({ targets, profile }: {
   useEffect(() => { fetchExisting(); }, [fetchExisting]);
 
   const generatePlan = async () => {
+    const isPro = await hasPro();
+    if (!isPro) { setShowPaywall(true); return; }
+
     setLoading(true);
     try {
       // Fetch user's pantry foods
@@ -77,12 +84,25 @@ export default function MealPlanScreen({ targets, profile }: {
         ? pantryFoods.map((f: any) => `${f.name} (${f.serving_size || 'per serving'}: ${f.calories}cal, P${f.protein}g, C${f.carbs}g, F${f.fat}g)`).join('\n')
         : 'No pantry foods — use common healthy foods';
 
+      const sport = getSportProfile(profile?.sport);
       const prompt = `Create a 7-day meal plan as a JSON array. Daily targets: ${targets.calories}cal, ${targets.protein}g protein, ${targets.carbs}g carbs, ${targets.fat}g fat.
+
+ATHLETE CONTEXT:
+- Sport: ${sport.label}
+- Nutrition focus: ${sport.nutritionFocus}
+- Meal timing guidance: ${sport.mealTiming}
+
 Pantry: ${pantryList}
 Fill gaps with: chicken, rice, eggs, oats, Greek yogurt, vegetables, whey protein.
-Output ONLY a raw JSON array (no markdown). Each day: 4 meals (Breakfast, Lunch, Dinner, Snack). Max 3 items per meal. Short names. Hit macro targets.
+
+RULES:
+- Apply sport-specific nutrition principles: ${sport.nutritionFocus}
+- Time meals appropriately: ${sport.mealTiming}
+- Choose foods that support ${sport.trainingFocus}
+- Output ONLY a raw JSON array (no markdown). Each day: 4 meals (Breakfast, Lunch, Dinner, Snack). Max 3 items per meal. Short names. Hit macro targets.
+
 Format: [{"day":"Monday","meals":[{"meal":"Breakfast","items":[{"name":"Oats","serving":"1 cup dry","calories":300,"protein":10,"carbs":54,"fat":6}],"totals":{"calories":300,"protein":10,"carbs":54,"fat":6}}],"totals":{"calories":${targets.calories},"protein":${targets.protein},"carbs":${targets.carbs},"fat":${targets.fat}}}]
-Complete all 7 days. Valid JSON only. ${profile?.sport && profile.sport !== 'none' ? ` The user is a ${profile.sport} athlete - optimize meal timing and food choices for ${profile.sport} performance and recovery.` : ''}`;
+Complete all 7 days. Valid JSON only.`;
 
       const rawText = await callAI([{ role: 'user', content: prompt }]);
       console.log('AI response length:', rawText.length);
@@ -153,6 +173,13 @@ Complete all 7 days. Valid JSON only. ${profile?.sport && profile.sport !== 'non
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
+      <Modal visible={showPaywall} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowPaywall(false)}>
+        <PaywallScreen
+          onClose={() => setShowPaywall(false)}
+          onUnlock={() => { setShowPaywall(false); generatePlan(); }}
+        />
+      </Modal>
+
       <View style={s.header}>
         <Text style={s.title}>Meal Plan</Text>
         <TouchableOpacity style={s.genBtn} onPress={generatePlan} disabled={loading}>

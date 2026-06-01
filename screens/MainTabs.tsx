@@ -9,7 +9,7 @@ import CoachScreen from './CoachScreen';
 import MealPlanScreen from './MealPlanScreen';
 import ProgressScreen from './ProgressScreen';
 import NotificationsScreen from './NotificationsScreen';
-import SocialScreen from './SocialScreen';
+import RecoveryScreen from './RecoveryScreen';
 import FoodsScreen from './FoodsScreen';
 
 type Tab = {
@@ -20,11 +20,11 @@ type Tab = {
 };
 
 const TABS: Tab[] = [
-  { key: 'log',      label: 'Log',      icon: 'restaurant-outline',    iconActive: 'restaurant'       },
+  { key: 'log',      label: 'Home',     icon: 'restaurant-outline',    iconActive: 'restaurant'       },
   { key: 'workout',  label: 'Train',    icon: 'barbell-outline',       iconActive: 'barbell'          },
   { key: 'progress', label: 'Stats',    icon: 'trending-up-outline',   iconActive: 'trending-up'      },
   { key: 'coach',    label: 'Coach',    icon: 'chatbubble-outline',    iconActive: 'chatbubble'       },
-  { key: 'social',   label: 'Social',   icon: 'people-outline',        iconActive: 'people'           },
+  { key: 'recovery', label: 'Recover',  icon: 'heart-outline',         iconActive: 'heart'            },
   { key: 'profile',  label: 'Me',       icon: 'person-outline',        iconActive: 'person'           },
 ];
 
@@ -43,7 +43,7 @@ export default function MainTabs({ profile, onProfileUpdate }: { profile: any; o
         {activeTab === 'workout'  && <WorkoutScreen profile={profile} />}
         {activeTab === 'progress' && <ProgressScreen profile={profile} />}
         {activeTab === 'coach'    && <CoachScreen profile={profile} />}
-        {activeTab === 'social'   && <SocialScreen profile={profile} />}
+        {activeTab === 'recovery' && <RecoveryScreen />}
         {activeTab === 'profile'  && <ProfileScreen profile={profile} onUpdate={onProfileUpdate} />}
       </View>
 

@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet, Alert, ActivityIndicator, Image } from 'react-native';
+import {
+  View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet,
+  Alert, ActivityIndicator, Image,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../constants/supabase';
 import * as ImagePicker from 'expo-image-picker';
 import FoodsScreen from './FoodsScreen';
@@ -12,7 +16,7 @@ import { calculateTargets, MC } from '../constants/data';
 
 const ACTIVITY_OPTIONS = [
   { key: 'sedentary', label: 'Sedentary' },
-  { key: 'light', label: 'Lightly Active' },
+  { key: 'light', label: 'Light' },
   { key: 'moderate', label: 'Moderate' },
   { key: 'active', label: 'Very Active' },
   { key: 'very_active', label: 'Athlete' },
@@ -21,29 +25,40 @@ const GOAL_OPTIONS = [
   { key: 'lose', label: 'Lose Fat' },
   { key: 'maintain', label: 'Maintain' },
   { key: 'gain', label: 'Build Muscle' },
-]; 
+];
 const SPORT_OPTIONS = [
   { key: 'none',         label: 'General',       emoji: '🏋️' },
-  { key: 'bodybuilding', label: 'Bodybuilding',   emoji: '💪' },
-  { key: 'powerlifting', label: 'Powerlifting',   emoji: '🏋️' },
-  { key: 'crossfit',     label: 'CrossFit',       emoji: '🔥' },
   { key: 'running',      label: 'Running',        emoji: '🏃' },
   { key: 'cycling',      label: 'Cycling',        emoji: '🚴' },
+  { key: 'triathlon',    label: 'Triathlon',      emoji: '🏅' },
   { key: 'swimming',     label: 'Swimming',       emoji: '🏊' },
-  { key: 'basketball',   label: 'Basketball',     emoji: '🏀' },
-  { key: 'soccer',       label: 'Soccer',         emoji: '⚽' },
-  { key: 'football',     label: 'Football',       emoji: '🏈' },
-  { key: 'baseball',     label: 'Baseball',       emoji: '⚾' },
-  { key: 'tennis',       label: 'Tennis',         emoji: '🎾' },
-  { key: 'wrestling',    label: 'Wrestling/MMA',  emoji: '🥊' },
-  { key: 'gymnastics',   label: 'Gymnastics',     emoji: '🤸' },
-  { key: 'volleyball',   label: 'Volleyball',     emoji: '🏐' },
-  { key: 'hockey',       label: 'Hockey',         emoji: '🏒' },
-  { key: 'golf',         label: 'Golf',           emoji: '⛳' },
-  { key: 'climbing',     label: 'Climbing',       emoji: '🧗' },
-  { key: 'yoga',         label: 'Yoga',           emoji: '🧘' },
+  { key: 'crossfit',     label: 'CrossFit',       emoji: '🔥' },
+  { key: 'powerlifting', label: 'Powerlifting',   emoji: '🏋️' },
+  { key: 'bodybuilding', label: 'Bodybuilding',   emoji: '💪' },
+  { key: 'hiking',       label: 'Hiking',         emoji: '🥾' },
   { key: 'rowing',       label: 'Rowing',         emoji: '🚣' },
+  { key: 'tennis',       label: 'Tennis',         emoji: '🎾' },
+  { key: 'golf',         label: 'Golf',           emoji: '⛳' },
+  { key: 'yoga',         label: 'Yoga',           emoji: '🧘' },
+  { key: 'climbing',     label: 'Climbing',       emoji: '🧗' },
+  { key: 'wrestling',    label: 'Wrestling/MMA',  emoji: '🥊' },
 ];
+
+type SubScreen = 'foods' | 'plan' | 'minerals' | 'notifs';
+
+function SubScreenHeader({ title, onBack }: { title: string; onBack: () => void }) {
+  return (
+    <View style={s.subHeader}>
+      <TouchableOpacity onPress={onBack} style={s.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <Ionicons name="chevron-back" size={20} color="#fff" />
+        <Text style={s.backLabel}>Me</Text>
+      </TouchableOpacity>
+      <Text style={s.subHeaderTitle}>{title}</Text>
+      <View style={{ width: 60 }} />
+    </View>
+  );
+}
+
 export default function ProfileScreen({ profile, onUpdate }: { profile: any; onUpdate: (p: any) => void }) {
   const { user, signOut } = useAuth();
   const [name, setName] = useState(profile.name || '');
@@ -56,7 +71,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   const [sex, setSex] = useState(profile.sex || 'male');
   const [activity, setActivity] = useState(profile.activity || 'moderate');
   const [goal, setGoal] = useState(profile.goal || 'gain');
-const [sport, setSport] = useState(profile.sport || 'none');
+  const [sport, setSport] = useState(profile.sport || 'none');
   const [loading, setLoading] = useState(false);
   const [customGoals, setCustomGoals] = useState(!!profile.custom_goals);
   const [customCal, setCustomCal] = useState(profile.custom_goals ? String(profile.calories || '') : '');
@@ -64,36 +79,29 @@ const [sport, setSport] = useState(profile.sport || 'none');
   const [customCarbs, setCustomCarbs] = useState(profile.custom_goals ? String(profile.carbs || '') : '');
   const [customFat, setCustomFat] = useState(profile.custom_goals ? String(profile.fat || '') : '');
   const [saved, setSaved] = useState(false);
-  const [profileTab, setProfileTab] = useState<'profile' | 'foods' | 'plan' | 'notifs' | 'minerals'>('profile');
+  const [subScreen, setSubScreen] = useState<SubScreen | null>(null);
   const [avatarUri, setAvatarUri] = useState(profile.avatar_url || null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [todayNutrients, setTodayNutrients] = useState<Record<string, number>>({});
 
   React.useEffect(() => {
-    const fetchTodayNutrients = async () => {
+    if (subScreen !== 'minerals' || !user?.id) return;
+    (async () => {
       const today = new Date().toISOString().split('T')[0];
-      const { data } = await supabase
-        .from('macro_logs')
-        .select('*')
-        .eq('user_id', user?.id)
-        .eq('date', today);
-      console.log('Fetched macro_logs rows:', data?.length, JSON.stringify(data?.[0]).substring(0, 200));
+      const { data } = await supabase.from('macro_logs').select('*').eq('user_id', user.id).eq('date', today);
       if (!data) return;
       const totals: Record<string, number> = {};
+      const fields = [
+        'vitamin_a','vitamin_b1','vitamin_b2','vitamin_b3','vitamin_b5','vitamin_b6','vitamin_b7','vitamin_b9','vitamin_b12',
+        'vitamin_c','vitamin_d','vitamin_d3','vitamin_e','vitamin_k','vitamin_k2',
+        'calcium','magnesium','phosphorus','potassium','sodium','iron','zinc','copper',
+        'manganese','selenium','chromium','iodine','molybdenum','boron','silica',
+        'omega3','omega6','fiber','creatine','beta_alanine','caffeine','l_glutamine',
+        'l_citrulline','bcaa','coq10','ashwagandha','turmeric','probiotics','collagen',
+        'melatonin','electrolytes','protein',
+      ];
       data.forEach((row: any) => {
-        const fields = [
-          'vitamin_a','vitamin_b1','vitamin_b2','vitamin_b3','vitamin_b5','vitamin_b6','vitamin_b7','vitamin_b9','vitamin_b12',
-          'vitamin_c','vitamin_d','vitamin_d3','vitamin_e','vitamin_k','vitamin_k2',
-          'calcium','magnesium','phosphorus','potassium','sodium','iron','zinc','copper',
-          'manganese','selenium','chromium','iodine','molybdenum','boron','silica',
-          'omega3','omega6','fiber','creatine','beta_alanine','caffeine','l_glutamine',
-          'l_citrulline','bcaa','coq10','ashwagandha','turmeric','probiotics','collagen',
-          'melatonin','electrolytes','protein',
-        ];
-        fields.forEach(f => {
-          totals[f] = (totals[f] || 0) + (row[f] || 0);
-        });
-        // Map display names to keys
+        fields.forEach(f => { totals[f] = (totals[f] || 0) + (row[f] || 0); });
         totals['vitamin a'] = totals['vitamin_a'] || 0;
         totals['vitamin c'] = totals['vitamin_c'] || 0;
         totals['vitamin d'] = totals['vitamin_d'] || 0;
@@ -109,9 +117,8 @@ const [sport, setSport] = useState(profile.sport || 'none');
         totals['vitamin b12'] = totals['vitamin_b12'] || 0;
       });
       setTodayNutrients(totals);
-    };
-    if (user?.id) fetchTodayNutrients();
-  }, [user?.id, profileTab]);
+    })();
+  }, [subScreen, user?.id]);
 
   const totalHeightIn = (parseInt(heightFt) || 0) * 12 + (parseInt(heightIn) || 0);
 
@@ -122,8 +129,7 @@ const [sport, setSport] = useState(profile.sport || 'none');
     if (!result.canceled && result.assets[0]) {
       setUploadingAvatar(true);
       const asset = result.assets[0];
-      const ext = 'jpg';
-      const path = `${user!.id}/avatar.${ext}`;
+      const path = `${user!.id}/avatar.jpg`;
       const binary = Uint8Array.from(atob(asset.base64 || ''), c => c.charCodeAt(0));
       await supabase.storage.from('avatars').upload(path, binary, { contentType: 'image/jpeg', upsert: true });
       const { data } = supabase.storage.from('avatars').getPublicUrl(path);
@@ -157,95 +163,81 @@ const [sport, setSport] = useState(profile.sport || 'none');
     weight_lbs: parseFloat(weight) || profile.weight_lbs,
     height_in: totalHeightIn || profile.height_in,
     age: parseInt(age) || profile.age,
-    sex, activity, goal,
+    sex, activity, goal, sport,
   });
 
   const targets = { calories: profile.calories, protein: profile.protein, carbs: profile.carbs, fat: profile.fat };
 
-  if (profileTab === 'foods') return (
-    <View style={{ flex: 1 }}>
+  // ── Sub-screens ────────────────────────────────────────────────────────────────
+  if (subScreen === 'foods') return (
+    <SafeAreaView style={s.safe} edges={['top']}>
+      <SubScreenHeader title="My Foods" onBack={() => setSubScreen(null)} />
       <FoodsScreen />
-      <View style={pt.subBar}>
-        {(['profile','foods','plan','minerals','notifs'] as const).map(t => (
-          <TouchableOpacity key={t} style={[pt.subBtn, profileTab===t && pt.subBtnActive]} onPress={() => setProfileTab(t)}>
-            <Text style={[pt.subBtnText, profileTab===t && pt.subBtnTextActive]}>{t==='profile'?'👤':t==='foods'?'🥗':t==='plan'?'📅':t==='minerals'?'💊':'🔔'}</Text>
-            <Text style={[pt.subLabel, profileTab===t && pt.subLabelActive]}>{t==='profile'?'Profile':t==='foods'?'Foods':t==='plan'?'Plan':t==='minerals'?'Nutrients':'Alerts'}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
+    </SafeAreaView>
   );
-
-  if (profileTab === 'plan') return (
-    <View style={{ flex: 1 }}>
+  if (subScreen === 'plan') return (
+    <SafeAreaView style={s.safe} edges={['top']}>
+      <SubScreenHeader title="Meal Plan" onBack={() => setSubScreen(null)} />
       <MealPlanScreen targets={targets} profile={profile} />
-      <View style={pt.subBar}>
-        {(['profile','foods','plan','minerals','notifs'] as const).map(t => (
-          <TouchableOpacity key={t} style={[pt.subBtn, profileTab===t && pt.subBtnActive]} onPress={() => setProfileTab(t)}>
-            <Text style={[pt.subBtnText, profileTab===t && pt.subBtnTextActive]}>{t==='profile'?'👤':t==='foods'?'🥗':t==='plan'?'📅':t==='minerals'?'💊':'🔔'}</Text>
-            <Text style={[pt.subLabel, profileTab===t && pt.subLabelActive]}>{t==='profile'?'Profile':t==='foods'?'Foods':t==='plan'?'Plan':t==='minerals'?'Nutrients':'Alerts'}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
+    </SafeAreaView>
   );
-
-  if (profileTab === 'minerals') return (
-    <View style={{ flex: 1 }}>
-      <MineralsScreen profile={profile} logged={todayNutrients} />
-      <View style={pt.subBar}>
-        {(['profile','foods','plan','minerals','notifs'] as const).map(t => (
-          <TouchableOpacity key={t} style={[pt.subBtn, profileTab===t && pt.subBtnActive]} onPress={() => setProfileTab(t)}>
-            <Text style={[pt.subBtnText, profileTab===t && pt.subBtnTextActive]}>
-              {t==='profile'?'👤':t==='foods'?'🥗':t==='plan'?'📅':t==='minerals'?'💊':'🔔'}
-            </Text>
-            <Text style={[pt.subLabel, profileTab===t && pt.subLabelActive]}>
-              {t==='profile'?'Profile':t==='foods'?'Foods':t==='plan'?'Plan':t==='minerals'?'Nutrients':'Alerts'}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
+  if (subScreen === 'minerals') return (
+    <SafeAreaView style={s.safe} edges={['top']}>
+      <SubScreenHeader title="Nutrients" onBack={() => setSubScreen(null)} />
+      <MineralsScreen profile={profile} />
+    </SafeAreaView>
   );
-
-  if (profileTab === 'notifs') return (
-    <View style={{ flex: 1 }}>
+  if (subScreen === 'notifs') return (
+    <SafeAreaView style={s.safe} edges={['top']}>
+      <SubScreenHeader title="Notifications" onBack={() => setSubScreen(null)} />
       <NotificationsScreen />
-      <View style={pt.subBar}>
-        {(['profile','foods','plan','minerals','notifs'] as const).map(t => (
-          <TouchableOpacity key={t} style={[pt.subBtn, profileTab===t && pt.subBtnActive]} onPress={() => setProfileTab(t)}>
-            <Text style={[pt.subBtnText, profileTab===t && pt.subBtnTextActive]}>{t==='profile'?'👤':t==='foods'?'🥗':t==='plan'?'📅':t==='minerals'?'💊':'🔔'}</Text>
-            <Text style={[pt.subLabel, profileTab===t && pt.subLabelActive]}>{t==='profile'?'Profile':t==='foods'?'Foods':t==='plan'?'Plan':t==='minerals'?'Nutrients':'Alerts'}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
+    </SafeAreaView>
   );
 
+  // ── Main profile view ──────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
-        <Text style={s.title}>Profile</Text>
-        <Text style={s.email}>{user?.email}</Text>
+        <Text style={s.title}>Me</Text>
       </View>
+
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
-        {/* Live macro preview */}
+        {/* Hero — avatar + name */}
+        <View style={s.hero}>
+          <TouchableOpacity style={s.avatarWrap} onPress={pickAvatar} activeOpacity={0.8}>
+            {avatarUri
+              ? <Image source={{ uri: avatarUri }} style={s.avatar} />
+              : <View style={s.avatarPlaceholder}><Text style={s.avatarInitial}>{name?.[0]?.toUpperCase() || '?'}</Text></View>
+            }
+            {uploadingAvatar
+              ? <View style={s.avatarOverlay}><ActivityIndicator color="#fff" size="small" /></View>
+              : <View style={s.avatarOverlay}><Ionicons name="camera" size={14} color="#fff" /></View>
+            }
+          </TouchableOpacity>
+          <Text style={s.heroName}>{name || 'Your Name'}</Text>
+          <Text style={s.heroEmail}>{user?.email}</Text>
+        </View>
+
+        {/* Daily targets */}
         <View style={s.targetsCard}>
-          <Text style={s.targetsTitle}>YOUR TARGETS</Text>
+          <Text style={s.sectionLabel}>DAILY TARGETS</Text>
           <View style={s.targetsRow}>
             <View style={s.targetItem}>
               <Text style={s.targetVal}>{targets.calories}</Text>
-              <Text style={s.targetLabel}>Calories</Text>
+              <Text style={s.targetLabel}>Cal</Text>
             </View>
+            <View style={s.targetDivider} />
             <View style={s.targetItem}>
               <Text style={[s.targetVal, { color: MC.protein.color }]}>{targets.protein}g</Text>
               <Text style={s.targetLabel}>Protein</Text>
             </View>
+            <View style={s.targetDivider} />
             <View style={s.targetItem}>
               <Text style={[s.targetVal, { color: MC.carbs.color }]}>{targets.carbs}g</Text>
               <Text style={s.targetLabel}>Carbs</Text>
             </View>
+            <View style={s.targetDivider} />
             <View style={s.targetItem}>
               <Text style={[s.targetVal, { color: MC.fat.color }]}>{targets.fat}g</Text>
               <Text style={s.targetLabel}>Fat</Text>
@@ -253,175 +245,250 @@ const [sport, setSport] = useState(profile.sport || 'none');
           </View>
         </View>
 
-        {/* Avatar */}
-        <TouchableOpacity style={s.avatarWrap} onPress={pickAvatar} activeOpacity={0.8}>
-          {avatarUri
-            ? <Image source={{ uri: avatarUri }} style={s.avatar} />
-            : <View style={s.avatarPlaceholder}>
-                <Text style={s.avatarInitial}>{name?.[0]?.toUpperCase() || '?'}</Text>
+        {/* Quick links */}
+        <View style={s.linksCard}>
+          {([
+            { key: 'foods',    icon: 'nutrition-outline',       label: 'My Foods',       sub: 'Custom food database' },
+            { key: 'plan',     icon: 'calendar-outline',        label: 'Meal Plan',      sub: 'AI-generated meal plans' },
+            { key: 'minerals', icon: 'flask-outline',           label: 'Nutrients',      sub: 'Vitamins & minerals today' },
+            { key: 'notifs',   icon: 'notifications-outline',   label: 'Notifications',  sub: 'Reminders & alerts' },
+          ] as const).map((item, i, arr) => (
+            <TouchableOpacity key={item.key} style={[s.linkRow, i < arr.length - 1 && s.linkRowBorder]} onPress={() => setSubScreen(item.key)} activeOpacity={0.7}>
+              <View style={s.linkIcon}>
+                <Ionicons name={item.icon as any} size={18} color="#888" />
               </View>
-          }
-          {uploadingAvatar
-            ? <View style={s.avatarOverlay}><ActivityIndicator color="#fff" /></View>
-            : <View style={s.avatarOverlay}><Text style={s.avatarOverlayText}>📷</Text></View>
-          }
-        </TouchableOpacity>
-
-        <Text style={s.label}>Name</Text>
-        <TextInput style={s.input} value={name} onChangeText={setName} placeholder="Your name" placeholderTextColor="#444" />
-
-        <Text style={s.label}>Sex</Text>
-        <View style={s.row}>
-          {['male', 'female'].map(v => (
-            <TouchableOpacity key={v} style={[s.optBtn, sex === v && s.optBtnActive, { flex: 1 }]} onPress={() => setSex(v)}>
-              <Text style={[s.optBtnText, sex === v && s.optBtnTextActive]}>{v === 'male' ? '♂ Male' : '♀ Female'}</Text>
+              <View style={s.linkText}>
+                <Text style={s.linkLabel}>{item.label}</Text>
+                <Text style={s.linkSub}>{item.sub}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color="#333" />
             </TouchableOpacity>
           ))}
         </View>
 
-        <Text style={s.label}>Age</Text>
-        <TextInput style={s.input} value={age} onChangeText={setAge} placeholder="25" placeholderTextColor="#444" keyboardType="number-pad" />
-
-        <Text style={s.label}>Height</Text>
-        <View style={s.row}>
-          <TextInput style={[s.input, { flex: 1 }]} value={heightFt} onChangeText={setHeightFt} placeholder="ft" placeholderTextColor="#444" keyboardType="number-pad" />
-          <TextInput style={[s.input, { flex: 1 }]} value={heightIn} onChangeText={setHeightIn} placeholder="in" placeholderTextColor="#444" keyboardType="number-pad" />
-        </View>
-
-        <Text style={s.label}>Weight (lbs)</Text>
-        <TextInput style={s.input} value={weight} onChangeText={setWeight} placeholder="172" placeholderTextColor="#444" keyboardType="decimal-pad" />
-
-        <Text style={s.label}>Activity Level</Text>
-        <View style={s.optRow}>
-          {ACTIVITY_OPTIONS.map(o => (
-            <TouchableOpacity key={o.key} style={[s.optBtn, activity === o.key && s.optBtnActive]} onPress={() => setActivity(o.key)}>
-              <Text style={[s.optBtnText, activity === o.key && s.optBtnTextActive]}>{o.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <Text style={s.label}>Goal</Text>
-        <View style={s.optRow}>
-          {GOAL_OPTIONS.map(o => (
-            <TouchableOpacity key={o.key} style={[s.optBtn, goal === o.key && s.optBtnActive]} onPress={() => setGoal(o.key)}>
-              <Text style={[s.optBtnText, goal === o.key && s.optBtnTextActive]}>{o.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-<Text style={s.label}>Sport / Training Style</Text>
-        <View style={s.optRow}>
-          {SPORT_OPTIONS.map(o => (
-            <TouchableOpacity key={o.key} style={[s.optBtn, sport === o.key && s.optBtnActive]} onPress={() => setSport(o.key)}>
-              <Text style={[s.optBtnText, sport === o.key && s.optBtnTextActive]}>{o.emoji} {o.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        {/* Custom Goals Toggle */}
-        <View style={s.customGoalsCard}>
-          <View style={s.customGoalsHeader}>
-            <View>
-              <Text style={s.customGoalsTitle}>Custom Macro Goals</Text>
-              <Text style={s.customGoalsSub}>Override auto-calculated targets</Text>
-            </View>
-            <TouchableOpacity style={[s.toggle, customGoals && s.toggleOn]} onPress={() => setCustomGoals(!customGoals)}>
-              <View style={[s.toggleThumb, customGoals && s.toggleThumbOn]} />
-            </TouchableOpacity>
+        {/* Personal info */}
+        <Text style={s.sectionLabel}>PERSONAL</Text>
+        <View style={s.formCard}>
+          <View style={s.fieldRow}>
+            <Text style={s.fieldLabel}>Name</Text>
+            <TextInput style={s.fieldInput} value={name} onChangeText={setName} placeholder="Your name" placeholderTextColor="#444" />
           </View>
-          {customGoals && (
-            <View style={s.customGoalsForm}>
-              <View style={s.customGoalsRow}>
-                <View style={s.customGoalItem}>
-                  <Text style={s.fieldLabel}>Calories</Text>
-                  <TextInput style={s.input} value={customCal} onChangeText={setCustomCal} keyboardType='number-pad' placeholder={String(autoTargets.calories)} placeholderTextColor='#444' />
-                </View>
-                <View style={s.customGoalItem}>
-                  <Text style={[s.fieldLabel, { color: '#4a9eff' }]}>Protein (g)</Text>
-                  <TextInput style={s.input} value={customProtein} onChangeText={setCustomProtein} keyboardType='number-pad' placeholder={String(autoTargets.protein)} placeholderTextColor='#444' />
-                </View>
-              </View>
-              <View style={s.customGoalsRow}>
-                <View style={s.customGoalItem}>
-                  <Text style={[s.fieldLabel, { color: '#fbbf24' }]}>Carbs (g)</Text>
-                  <TextInput style={s.input} value={customCarbs} onChangeText={setCustomCarbs} keyboardType='number-pad' placeholder={String(autoTargets.carbs)} placeholderTextColor='#444' />
-                </View>
-                <View style={s.customGoalItem}>
-                  <Text style={[s.fieldLabel, { color: '#f472b6' }]}>Fat (g)</Text>
-                  <TextInput style={s.input} value={customFat} onChangeText={setCustomFat} keyboardType='number-pad' placeholder={String(autoTargets.fat)} placeholderTextColor='#444' />
-                </View>
-              </View>
+          <View style={s.fieldDivider} />
+          <View style={s.fieldRow}>
+            <Text style={s.fieldLabel}>Sex</Text>
+            <View style={s.segmented}>
+              {['male', 'female'].map(v => (
+                <TouchableOpacity key={v} style={[s.segBtn, sex === v && s.segBtnActive]} onPress={() => setSex(v)}>
+                  <Text style={[s.segBtnText, sex === v && s.segBtnTextActive]}>{v === 'male' ? 'Male' : 'Female'}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
-          )}
+          </View>
+          <View style={s.fieldDivider} />
+          <View style={s.fieldRow}>
+            <Text style={s.fieldLabel}>Age</Text>
+            <TextInput style={s.fieldInput} value={age} onChangeText={setAge} placeholder="25" placeholderTextColor="#444" keyboardType="number-pad" />
+          </View>
+          <View style={s.fieldDivider} />
+          <View style={s.fieldRow}>
+            <Text style={s.fieldLabel}>Height</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TextInput style={[s.fieldInput, { width: 56 }]} value={heightFt} onChangeText={setHeightFt} placeholder="ft" placeholderTextColor="#444" keyboardType="number-pad" />
+              <TextInput style={[s.fieldInput, { width: 56 }]} value={heightIn} onChangeText={setHeightIn} placeholder="in" placeholderTextColor="#444" keyboardType="number-pad" />
+            </View>
+          </View>
+          <View style={s.fieldDivider} />
+          <View style={s.fieldRow}>
+            <Text style={s.fieldLabel}>Weight</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <TextInput style={[s.fieldInput, { width: 80 }]} value={weight} onChangeText={setWeight} placeholder="172" placeholderTextColor="#444" keyboardType="decimal-pad" />
+              <Text style={s.fieldUnit}>lbs</Text>
+            </View>
+          </View>
         </View>
 
+        {/* Training */}
+        <Text style={s.sectionLabel}>TRAINING</Text>
+        <View style={s.formCard}>
+          <Text style={s.inlineLabel}>Activity Level</Text>
+          <View style={s.chipRow}>
+            {ACTIVITY_OPTIONS.map(o => (
+              <TouchableOpacity key={o.key} style={[s.chip, activity === o.key && s.chipActive]} onPress={() => setActivity(o.key)}>
+                <Text style={[s.chipText, activity === o.key && s.chipTextActive]}>{o.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={s.fieldDivider} />
+          <Text style={[s.inlineLabel, { marginTop: 12 }]}>Goal</Text>
+          <View style={s.chipRow}>
+            {GOAL_OPTIONS.map(o => (
+              <TouchableOpacity key={o.key} style={[s.chip, goal === o.key && s.chipActive]} onPress={() => setGoal(o.key)}>
+                <Text style={[s.chipText, goal === o.key && s.chipTextActive]}>{o.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={s.fieldDivider} />
+          <Text style={[s.inlineLabel, { marginTop: 12 }]}>Sport</Text>
+          <View style={s.sportGrid}>
+            {SPORT_OPTIONS.map(o => {
+              const active = sport === o.key;
+              return (
+                <TouchableOpacity key={o.key} style={[s.sportCell, active && s.sportCellActive]} onPress={() => setSport(o.key)} activeOpacity={0.7}>
+                  <Text style={s.sportEmoji}>{o.emoji}</Text>
+                  <Text style={[s.sportLabel, active && s.sportLabelActive]}>{o.label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Custom macro goals */}
+        <TouchableOpacity style={s.customGoalsRow} onPress={() => setCustomGoals(!customGoals)} activeOpacity={0.8}>
+          <View>
+            <Text style={s.customGoalsTitle}>Custom Macro Goals</Text>
+            <Text style={s.customGoalsSub}>Override auto-calculated targets</Text>
+          </View>
+          <View style={[s.toggle, customGoals && s.toggleOn]}>
+            <View style={[s.toggleThumb, customGoals && s.toggleThumbOn]} />
+          </View>
+        </TouchableOpacity>
+        {customGoals && (
+          <View style={s.formCard}>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.inlineLabel}>Calories</Text>
+                <TextInput style={s.standaloneInput} value={customCal} onChangeText={setCustomCal} keyboardType="number-pad" placeholder={String(autoTargets.calories)} placeholderTextColor="#444" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.inlineLabel, { color: MC.protein.color }]}>Protein (g)</Text>
+                <TextInput style={s.standaloneInput} value={customProtein} onChangeText={setCustomProtein} keyboardType="number-pad" placeholder={String(autoTargets.protein)} placeholderTextColor="#444" />
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.inlineLabel, { color: MC.carbs.color }]}>Carbs (g)</Text>
+                <TextInput style={s.standaloneInput} value={customCarbs} onChangeText={setCustomCarbs} keyboardType="number-pad" placeholder={String(autoTargets.carbs)} placeholderTextColor="#444" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.inlineLabel, { color: MC.fat.color }]}>Fat (g)</Text>
+                <TextInput style={s.standaloneInput} value={customFat} onChangeText={setCustomFat} keyboardType="number-pad" placeholder={String(autoTargets.fat)} placeholderTextColor="#444" />
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Save */}
         <TouchableOpacity style={s.saveBtn} onPress={handleSave} disabled={loading} activeOpacity={0.8}>
           {loading ? <ActivityIndicator color="#000" /> : <Text style={s.saveBtnText}>{saved ? '✓ Saved!' : 'Save & Recalculate'}</Text>}
         </TouchableOpacity>
 
-        <TouchableOpacity style={s.signOutBtn} onPress={() => Alert.alert('Sign Out', 'Are you sure?', [{ text: 'Cancel' }, { text: 'Sign Out', style: 'destructive', onPress: signOut }])}>
+        {/* Sign out */}
+        <TouchableOpacity style={s.signOutBtn} onPress={() => Alert.alert('Sign Out', 'Are you sure?', [{ text: 'Cancel' }, { text: 'Sign Out', style: 'destructive', onPress: signOut }])} activeOpacity={0.7}>
           <Text style={s.signOutText}>Sign Out</Text>
         </TouchableOpacity>
+
       </ScrollView>
-      <View style={pt.subBar}>
-        {(['profile','foods','plan','minerals','notifs'] as const).map(t => (
-          <TouchableOpacity key={t} style={[pt.subBtn, profileTab===t && pt.subBtnActive]} onPress={() => setProfileTab(t)}>
-            <Text style={[pt.subBtnText, profileTab===t && pt.subBtnTextActive]}>{t==='profile'?'👤':t==='foods'?'🥗':t==='plan'?'📅':t==='minerals'?'💊':'🔔'}</Text>
-            <Text style={[pt.subLabel, profileTab===t && pt.subLabelActive]}>{t==='profile'?'Profile':t==='foods'?'Foods':t==='plan'?'Plan':t==='minerals'?'Nutrients':'Alerts'}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
     </SafeAreaView>
   );
 }
 
-const pt = StyleSheet.create({
-  subBar: { flexDirection: 'row', backgroundColor: '#0a0a0a', borderTopWidth: 1, borderTopColor: '#1e1e1e', paddingVertical: 8 },
-  subBtn: { flex: 1, alignItems: 'center', gap: 3, paddingVertical: 4 },
-  subBtnActive: {},
-  subBtnText: { fontSize: 20 },
-  subLabel: { fontSize: 10, color: '#3a3a3a', fontWeight: '600' },
-  subLabelActive: { color: '#fff', fontWeight: '800' },
-});
-
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#121212' },
-  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
+  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
   title: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: -0.5 },
-  email: { fontSize: 13, color: '#555', fontWeight: '500', marginTop: 2 },
-  avatarWrap: { width: 90, height: 90, borderRadius: 45, alignSelf: 'center', marginBottom: 20, overflow: 'hidden' },
-  avatar: { width: 90, height: 90, borderRadius: 45 },
-  avatarPlaceholder: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#252525', alignItems: 'center', justifyContent: 'center' },
-  avatarInitial: { fontSize: 36, fontWeight: '900', color: '#fff' },
-  avatarOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 28, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
-  avatarOverlayText: { fontSize: 14 },
   scroll: { flex: 1 },
-  content: { padding: 20, paddingBottom: 60 },
-  targetsCard: { backgroundColor: '#1a1a1a', borderRadius: 16, padding: 16, marginBottom: 24 },
-  targetsTitle: { fontSize: 10, fontWeight: '700', color: '#444', letterSpacing: 1.5, marginBottom: 14 },
-  targetsRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  targetItem: { alignItems: 'center' },
+  content: { padding: 20, paddingBottom: 60, gap: 8 },
+
+  // Sub-screen header
+  subHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: '#1e1e1e',
+  },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, width: 60 },
+  backLabel: { fontSize: 16, color: '#fff', fontWeight: '600' },
+  subHeaderTitle: { fontSize: 17, fontWeight: '800', color: '#fff' },
+
+  // Hero
+  hero: { alignItems: 'center', paddingVertical: 8, marginBottom: 8 },
+  avatarWrap: { width: 88, height: 88, borderRadius: 44, overflow: 'hidden', marginBottom: 12 },
+  avatar: { width: 88, height: 88, borderRadius: 44 },
+  avatarPlaceholder: { width: 88, height: 88, borderRadius: 44, backgroundColor: '#252525', alignItems: 'center', justifyContent: 'center' },
+  avatarInitial: { fontSize: 34, fontWeight: '900', color: '#fff' },
+  avatarOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 26, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' },
+  heroName: { fontSize: 22, fontWeight: '900', color: '#fff', marginBottom: 3 },
+  heroEmail: { fontSize: 13, color: '#444', fontWeight: '500' },
+
+  // Targets card
+  targetsCard: { backgroundColor: '#1a1a1a', borderRadius: 16, padding: 18, marginBottom: 4 },
+  sectionLabel: { fontSize: 11, fontWeight: '700', color: '#444', letterSpacing: 1.5, marginTop: 8, marginBottom: 6 },
+  targetsRow: { flexDirection: 'row', alignItems: 'center' },
+  targetItem: { flex: 1, alignItems: 'center' },
+  targetDivider: { width: 1, height: 32, backgroundColor: '#2a2a2a' },
   targetVal: { fontSize: 20, fontWeight: '900', color: '#fff', letterSpacing: -0.5 },
   targetLabel: { fontSize: 10, color: '#555', fontWeight: '600', marginTop: 2 },
-  label: { fontSize: 11, fontWeight: '700', color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  input: { backgroundColor: '#1e1e1e', borderRadius: 12, color: '#fff', padding: 14, fontSize: 16, marginBottom: 16 },
-  row: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-  optRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-  optBtn: { backgroundColor: '#1e1e1e', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 },
-  optBtnActive: { backgroundColor: '#fff' },
-  optBtnText: { color: '#555', fontSize: 13, fontWeight: '700' },
-  optBtnTextActive: { color: '#000' },
-  saveBtn: { backgroundColor: '#fff', borderRadius: 12, padding: 16, alignItems: 'center', marginBottom: 12 },
-  saveBtnText: { color: '#000', fontSize: 15, fontWeight: '800' },
-  signOutBtn: { backgroundColor: '#1e1e1e', borderRadius: 12, padding: 16, alignItems: 'center' },
-  signOutText: { color: '#ff4f4f', fontSize: 15, fontWeight: '700' },
-  customGoalsCard: { backgroundColor: '#1e1e1e', borderRadius: 16, padding: 16, marginBottom: 16 },
-  customGoalsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+
+  // Quick links card
+  linksCard: { backgroundColor: '#1a1a1a', borderRadius: 16, overflow: 'hidden', marginBottom: 4 },
+  linkRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
+  linkRowBorder: { borderBottomWidth: 1, borderBottomColor: '#222' },
+  linkIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#252525', alignItems: 'center', justifyContent: 'center' },
+  linkText: { flex: 1 },
+  linkLabel: { fontSize: 15, fontWeight: '700', color: '#fff' },
+  linkSub: { fontSize: 12, color: '#444', fontWeight: '500', marginTop: 1 },
+
+  // Form card (grouped inputs)
+  formCard: { backgroundColor: '#1a1a1a', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 4, marginBottom: 4 },
+  fieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
+  fieldDivider: { height: 1, backgroundColor: '#222' },
+  fieldLabel: { fontSize: 15, fontWeight: '600', color: '#ccc' },
+  fieldInput: { fontSize: 15, color: '#fff', textAlign: 'right', minWidth: 60 },
+  fieldUnit: { fontSize: 13, color: '#444', fontWeight: '600' },
+  inlineLabel: { fontSize: 12, fontWeight: '700', color: '#555', letterSpacing: 0.3, marginBottom: 10, marginTop: 4 },
+
+  // Chips
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+  chip: { backgroundColor: '#222', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },
+  chipActive: { backgroundColor: '#fff' },
+  chipText: { fontSize: 13, fontWeight: '700', color: '#555' },
+  chipTextActive: { color: '#000' },
+
+  // Sport grid
+  sportGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+  sportCell: {
+    width: '30%', flexGrow: 1,
+    backgroundColor: '#222', borderRadius: 14,
+    paddingVertical: 12, alignItems: 'center', gap: 6,
+    borderWidth: 1.5, borderColor: 'transparent',
+  },
+  sportCellActive: { backgroundColor: '#1a1a2e', borderColor: '#fff' },
+  sportEmoji: { fontSize: 22 },
+  sportLabel: { fontSize: 11, fontWeight: '700', color: '#555', textAlign: 'center' },
+  sportLabelActive: { color: '#fff' },
+
+  // Segmented (sex)
+  segmented: { flexDirection: 'row', backgroundColor: '#222', borderRadius: 10, padding: 3, gap: 3 },
+  segBtn: { borderRadius: 8, paddingHorizontal: 16, paddingVertical: 6 },
+  segBtnActive: { backgroundColor: '#fff' },
+  segBtnText: { fontSize: 13, fontWeight: '700', color: '#555' },
+  segBtnTextActive: { color: '#000' },
+
+  // Custom goals
+  customGoalsRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: '#1a1a1a', borderRadius: 16, padding: 16, marginTop: 4,
+  },
   customGoalsTitle: { fontSize: 15, fontWeight: '700', color: '#fff', marginBottom: 2 },
   customGoalsSub: { fontSize: 12, color: '#555', fontWeight: '500' },
-  toggle: { width: 48, height: 28, borderRadius: 14, backgroundColor: '#333', padding: 2, justifyContent: 'center' },
+  toggle: { width: 46, height: 26, borderRadius: 13, backgroundColor: '#333', padding: 2, justifyContent: 'center' },
   toggleOn: { backgroundColor: '#4ade80' },
-  toggleThumb: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#fff', alignSelf: 'flex-start' },
+  toggleThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff', alignSelf: 'flex-start' },
   toggleThumbOn: { alignSelf: 'flex-end' },
-  customGoalsForm: { marginTop: 16 },
-  customGoalsRow: { flexDirection: 'row', gap: 10 },
-  customGoalItem: { flex: 1 },
+  standaloneInput: { backgroundColor: '#222', borderRadius: 10, color: '#fff', padding: 12, fontSize: 15 },
+
+  // Buttons
+  saveBtn: { backgroundColor: '#fff', borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 8 },
+  saveBtnText: { color: '#000', fontSize: 15, fontWeight: '800' },
+  signOutBtn: { alignItems: 'center', paddingVertical: 14 },
+  signOutText: { color: '#ff4f4f', fontSize: 15, fontWeight: '700' },
 });

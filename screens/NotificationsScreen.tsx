@@ -12,6 +12,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -129,7 +131,7 @@ export default function NotificationsScreen() {
     }
     try {
       await Notifications.scheduleNotificationAsync({
-        content: { title: '🔔 MacroLog', body: 'Notifications are working!', sound: true },
+        content: { title: '🔔 Fuelog', body: 'Notifications are working!', sound: true },
         trigger: { seconds: 2 } as any,
       });
       Alert.alert('Test Sent', "You'll get a notification in 2 seconds.");

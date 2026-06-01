@@ -1,27 +1,34 @@
 {
   "expo": {
-    "name": "MacroLog",
+    "name": "Fuelog",
     "slug": "macro-log",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "icon": "./assets/icon.png",
     "splash": {
-      "backgroundColor": "#121212"
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0d0d2b"
     },
     "ios": {
       "bundleIdentifier": "com.zackschramm.macrolog",
       "supportsTablet": false,
       "infoPlist": {
-        "NSCameraUsageDescription": "MacroLog uses your camera to scan food barcodes and take photos of meals.",
-        "NSPhotoLibraryUsageDescription": "MacroLog uses your photo library to attach progress photos and food images.",
-        "NSUserNotificationsUsageDescription": "MacroLog sends daily reminders to log your meals, water, and workouts.",
-        "NSHealthShareUsageDescription": "Fuelog reads your weight from Apple Health to make logging easier.",
+        "NSCameraUsageDescription": "Fuelog uses your camera to scan food barcodes and take photos of meals.",
+        "NSPhotoLibraryUsageDescription": "Fuelog uses your photo library to attach progress photos and food images.",
+        "NSUserNotificationsUsageDescription": "Fuelog sends daily reminders to log your meals, water, and workouts.",
+        "NSHealthShareUsageDescription": "Fuelog reads your health data — including HRV, sleep, steps, heart rate, and workouts — to show your daily recovery score and sync with your Whoop, Garmin, and Apple Watch.",
         "NSHealthUpdateUsageDescription": "Fuelog writes your weight, nutrition, and workouts to Apple Health.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
       "package": "com.zackschramm.macrolog",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0d0d2b"
+      },
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
@@ -35,7 +42,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "MacroLog uses your camera to scan food barcodes and take photos of meals."
+          "cameraPermission": "Fuelog uses your camera to scan food barcodes and take photos of meals."
         }
       ],
       [
@@ -53,6 +60,7 @@
       }
     },
     "owner": "zackschramm",
-    "jsEngine": "hermes"
+    "jsEngine": "hermes",
+    "newArchEnabled": false
   }
 }

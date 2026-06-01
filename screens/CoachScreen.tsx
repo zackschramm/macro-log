@@ -1,10 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Linking,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Linking, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { callAI } from '../constants/ai';
+import { getSportProfile } from '../constants/sportProfiles';
+import { hasPro } from '../constants/purchases';
+import PaywallScreen from './PaywallScreen';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -29,18 +32,32 @@ function extractLinks(text: string): { clean: string; links: YoutubeLink[] } {
   return { clean, links };
 }
 
-const SYSTEM_PROMPT = `You are an expert personal trainer and strength coach AI assistant built into a fitness app called Macro Log. You help users with:
-- Exercise form and technique
-- How to perform specific lifts safely
-- Training programming advice
-- Injury prevention
-- General fitness questions
+function buildSystemPrompt(profile?: any): string {
+  const sport = getSportProfile(profile?.sport);
+  const goal = profile?.goal === 'lose' ? 'fat loss' : profile?.goal === 'gain' ? 'muscle gain' : 'maintenance';
+  return `You are an expert personal trainer and strength coach AI assistant built into a fitness app called Fuelog.
+
+ATHLETE PROFILE:
+- Sport / Training style: ${sport.label}
+- Goal: ${goal}
+- Training focus: ${sport.trainingFocus}
+- Key physical qualities to develop: ${sport.keyQualities.join(', ')}
+
+${sport.coachingContext}
+
+You help users with:
+- Exercise form and technique specific to their sport and goals
+- How to perform specific lifts and movements safely
+- Training programming and periodisation advice
+- Injury prevention relevant to their sport
+- Sport-specific conditioning and performance questions
 
 When explaining exercises, always cover: setup/starting position, execution, common mistakes, and key cues.
 
 When relevant, include YouTube links to reputable coaches in markdown format like [Video Title](youtube_url). Use channels like Alan Thrall, Jeff Nippard, Renaissance Periodization, Athlean-X, or Starting Strength for reference videos. Only include real, well-known videos you're confident exist.
 
-Keep responses concise but thorough. Use short paragraphs. Be encouraging and practical.`;
+Keep responses concise but thorough. Use short paragraphs. Be encouraging and practical. Always tailor advice to the user's sport and goals.`;
+}
 
 export default function CoachScreen({ initialExercise, profile }: { initialExercise?: string; profile?: any }) {
   const [messages, setMessages] = useState<Message[]>([
@@ -53,7 +70,9 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
   ]);
   const [input, setInput] = useState(initialExercise ? `How do I do the ${initialExercise} properly?` : '');
   const [loading, setLoading] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const pendingMessageRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (initialExercise) {
@@ -64,6 +83,9 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
   const sendMessage = async (text?: string) => {
     const messageText = text || input.trim();
     if (!messageText) return;
+
+    const isPro = await hasPro();
+    if (!isPro) { pendingMessageRef.current = messageText; setShowPaywall(true); return; }
     const userMsg: Message = { role: 'user', content: messageText };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
@@ -74,7 +96,7 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
     try {
       const reply = await callAI(
         newMessages.map(m => ({ role: m.role, content: m.content })),
-        SYSTEM_PROMPT,
+        buildSystemPrompt(profile),
         1000
       );
       setMessages(prev => [...prev, { role: 'assistant', content: reply || 'Sorry, I could not get a response.' }]);
@@ -116,6 +138,18 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
+      <Modal visible={showPaywall} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowPaywall(false)}>
+        <PaywallScreen
+          onClose={() => setShowPaywall(false)}
+          onUnlock={() => {
+            setShowPaywall(false);
+            const pending = pendingMessageRef.current;
+            pendingMessageRef.current = null;
+            if (pending) sendMessage(pending);
+          }}
+        />
+      </Modal>
+
       <View style={s.header}>
         <Text style={s.title}>AI Coach</Text>
         <Text style={s.subtitle}>Powered by AI</Text>

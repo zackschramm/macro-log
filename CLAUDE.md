@@ -48,3 +48,13 @@ MacroLog is a React Native + Expo fitness and nutrition tracking app with an AI 
 ## Environment
 
 `.env` is required at the project root. Supabase credentials (URL and anon key) live in `constants/supabase.ts`. Anthropic and USDA API keys are stored as Supabase function secrets (not in the repo).
+
+## TestFlight Distribution — HARD RULE
+
+**ONLY** add `zackschramm@icloud.com` (Zack Schramm) as an individual tester when publishing builds to TestFlight.
+
+- Do NOT add any other email address or tester under Individual Testers, ever.
+- Do NOT invite anyone else to TestFlight under any circumstances without explicit written instruction from the user in that session.
+- The Team (Expo) internal group is fine to keep, but no external testing groups or additional individuals should be added.
+
+This rule applies to every build, every session, no exceptions.

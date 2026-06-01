@@ -9,6 +9,7 @@ import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { useHealthKit } from '../hooks/useHealthKit';
 import Svg, { Polyline, Circle, Line, Text as SvgText } from 'react-native-svg';
+import InBodySection from './InBodySection';
 
 const { width } = Dimensions.get('window');
 const CHART_WIDTH = width - 64;
@@ -281,6 +282,9 @@ export default function ProgressScreen({ profile }: { profile: any }) {
               </View>
             );
           })}
+
+          {/* InBody body composition */}
+          <InBodySection />
 
           {/* History */}
           <Text style={s.sectionTitle}>HISTORY</Text>

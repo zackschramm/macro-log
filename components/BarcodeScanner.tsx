@@ -93,7 +93,7 @@ export default function BarcodeScanner({ visible, onClose, onResult }: Props) {
           <View style={s.center}>
             <Text style={s.permIcon}>📷</Text>
             <Text style={s.permTitle}>Camera Access Needed</Text>
-            <Text style={s.permSub}>Go to Settings → MacroLog → Camera to enable access.</Text>
+            <Text style={s.permSub}>Go to Settings → Fuelog → Camera to enable access.</Text>
           </View>
         )}
 

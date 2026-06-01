@@ -71,10 +71,36 @@ export const WORKOUT_PLAN = [
   { day: 'Day 7', name: 'Rest Day', type: 'rest', exercises: [] },
 ];
 
+// Sport-specific macro multipliers applied on top of base calculation
+const SPORT_MULTIPLIERS: Record<string, { protein: number; carbs: number; fat: number; cal: number }> = {
+  none:         { protein: 1.0,  carbs: 1.0,  fat: 1.0,  cal: 1.0  },
+  bodybuilding: { protein: 1.3,  carbs: 1.1,  fat: 0.9,  cal: 1.05 },
+  powerlifting: { protein: 1.25, carbs: 1.15, fat: 1.1,  cal: 1.1  },
+  crossfit:     { protein: 1.2,  carbs: 1.3,  fat: 0.9,  cal: 1.1  },
+  running:      { protein: 0.95, carbs: 1.4,  fat: 0.9,  cal: 1.15 },
+  cycling:      { protein: 0.95, carbs: 1.45, fat: 0.9,  cal: 1.15 },
+  swimming:     { protein: 1.1,  carbs: 1.25, fat: 0.95, cal: 1.1  },
+  basketball:   { protein: 1.1,  carbs: 1.3,  fat: 0.9,  cal: 1.1  },
+  soccer:       { protein: 1.05, carbs: 1.35, fat: 0.9,  cal: 1.1  },
+  football:     { protein: 1.3,  carbs: 1.2,  fat: 1.0,  cal: 1.1  },
+  baseball:     { protein: 1.1,  carbs: 1.1,  fat: 1.0,  cal: 1.0  },
+  tennis:       { protein: 1.05, carbs: 1.3,  fat: 0.95, cal: 1.1  },
+  wrestling:    { protein: 1.35, carbs: 1.0,  fat: 0.85, cal: 1.0  },
+  gymnastics:   { protein: 1.2,  carbs: 1.1,  fat: 0.85, cal: 0.95 },
+  volleyball:   { protein: 1.1,  carbs: 1.2,  fat: 0.9,  cal: 1.05 },
+  hockey:       { protein: 1.15, carbs: 1.3,  fat: 0.95, cal: 1.1  },
+  golf:         { protein: 1.0,  carbs: 1.05, fat: 1.0,  cal: 1.0  },
+  climbing:     { protein: 1.25, carbs: 1.1,  fat: 0.9,  cal: 1.0  },
+  yoga:         { protein: 0.95, carbs: 0.95, fat: 1.0,  cal: 0.95 },
+  rowing:       { protein: 1.2,  carbs: 1.4,  fat: 0.9,  cal: 1.15 },
+  triathlon:    { protein: 1.1,  carbs: 1.4,  fat: 0.9,  cal: 1.2  },
+  hiking:       { protein: 1.05, carbs: 1.2,  fat: 1.0,  cal: 1.05 },
+};
+
 // Mifflin-St Jeor BMR calculator
 export function calculateTargets(profile: {
   weight_lbs: number; height_in: number; age: number;
-  sex: string; activity: string; goal: string;
+  sex: string; activity: string; goal: string; sport?: string;
 }) {
   const kg = profile.weight_lbs * 0.453592;
   const cm = profile.height_in * 2.54;
@@ -90,10 +116,17 @@ export function calculateTargets(profile: {
   const goalMap: Record<string, number> = {
     lose: -300, maintain: 0, gain: 300,
   };
-  const calories = Math.round(tdee + (goalMap[profile.goal] || 0));
-  const protein = Math.round(profile.weight_lbs * 0.8);
-  const fat = Math.round((calories * 0.25) / 9);
-  const carbs = Math.round((calories - protein * 4 - fat * 9) / 4);
+  const baseCalories = tdee + (goalMap[profile.goal] || 0);
+  const baseProtein = profile.weight_lbs * 0.8;
+  const baseFat = (baseCalories * 0.25) / 9;
+  const baseCarbs = (baseCalories - baseProtein * 4 - baseFat * 9) / 4;
+
+  // Apply sport multipliers if a sport is set
+  const m = SPORT_MULTIPLIERS[profile.sport || 'none'] || SPORT_MULTIPLIERS.none;
+  const calories = Math.round(baseCalories * m.cal);
+  const protein = Math.round(baseProtein * m.protein);
+  const fat = Math.round(baseFat * m.fat);
+  const carbs = Math.round(baseCarbs * m.carbs);
 
   return { calories, protein, carbs, fat };
 }

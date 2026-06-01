@@ -31,7 +31,7 @@ export default function AuthScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
           <View style={s.hero}>
-            <Text style={s.appName}>Macro Log</Text>
+            <Text style={s.appName}>Fuelog</Text>
             <Text style={s.tagline}>Track macros. Crush workouts.</Text>
           </View>
 

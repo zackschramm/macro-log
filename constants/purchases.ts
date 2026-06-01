@@ -1,0 +1,45 @@
+import Purchases, { LOG_LEVEL } from 'react-native-purchases';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const PRO_CACHE_KEY = 'fuelog_has_pro';
+
+export const REVENUECAT_IOS_API_KEY = 'appl_widYlAIBGWbxsKJMtAIkwmeihmL';
+export const ENTITLEMENT_ID = 'Fuelog Pro';
+
+// Call once at app startup — never call again.
+export function configureRevenueCat() {
+  Purchases.setLogLevel(LOG_LEVEL.ERROR);
+  Purchases.configure({ apiKey: REVENUECAT_IOS_API_KEY });
+}
+
+// Call after the user logs in so purchases are tied to their account.
+export async function loginRevenueCat(userId: string) {
+  try {
+    await Purchases.logIn(userId);
+  } catch {}
+}
+
+// Call when the user logs out.
+export async function logoutRevenueCat() {
+  try {
+    await Purchases.logOut();
+  } catch {}
+}
+
+export async function hasPro(): Promise<boolean> {
+  try {
+    const customerInfo = await Purchases.getCustomerInfo();
+    const result = customerInfo.entitlements.active[ENTITLEMENT_ID] !== undefined;
+    // Cache the result so it's available offline
+    await AsyncStorage.setItem(PRO_CACHE_KEY, result ? '1' : '0');
+    return result;
+  } catch {
+    // RevenueCat unavailable — fall back to cached value
+    try {
+      const cached = await AsyncStorage.getItem(PRO_CACHE_KEY);
+      return cached === '1';
+    } catch {
+      return false;
+    }
+  }
+}

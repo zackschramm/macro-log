@@ -277,4 +277,157 @@ export const PRESET_PROGRAMS = [
       { day: 'Day 7', name: 'Rest Day', type: 'rest', exercises: [] },
     ],
   },
+  {
+    id: 'athletic_performance',
+    name: 'Athletic Performance',
+    description: 'Explosiveness, speed & agility for team sport athletes',
+    level: 'Intermediate',
+    days: [
+      {
+        day: 'Day 1', name: 'Lower Power', type: 'training',
+        exercises: [
+          { id: 'ap1e1', name: 'Barbell Back Squat', sets: 4, reps: '4-6' },
+          { id: 'ap1e2', name: 'Box Jump', sets: 4, reps: '5' },
+          { id: 'ap1e3', name: 'Bulgarian Split Squat', sets: 3, reps: '8 each' },
+          { id: 'ap1e4', name: 'Nordic Hamstring Curl', sets: 3, reps: '5-8' },
+          { id: 'ap1e5', name: 'Lateral Bound', sets: 3, reps: '8 each' },
+        ],
+      },
+      {
+        day: 'Day 2', name: 'Upper Power', type: 'training',
+        exercises: [
+          { id: 'ap2e1', name: 'Barbell Bench Press', sets: 4, reps: '4-6' },
+          { id: 'ap2e2', name: 'Barbell Row', sets: 4, reps: '4-6' },
+          { id: 'ap2e3', name: 'Overhead Press', sets: 3, reps: '6-8' },
+          { id: 'ap2e4', name: 'Med Ball Chest Pass', sets: 3, reps: '8' },
+          { id: 'ap2e5', name: 'Face Pulls', sets: 3, reps: '15' },
+        ],
+      },
+      {
+        day: 'Day 3', name: 'Speed & Agility', type: 'training',
+        exercises: [
+          { id: 'ap3e1', name: 'Depth Jump', sets: 4, reps: '5' },
+          { id: 'ap3e2', name: 'Broad Jump', sets: 4, reps: '5' },
+          { id: 'ap3e3', name: 'Lateral Shuffle Drill', sets: 4, reps: '15 sec' },
+          { id: 'ap3e4', name: 'Hip Thrust', sets: 3, reps: '10' },
+          { id: 'ap3e5', name: 'Calf Raise', sets: 3, reps: '20' },
+        ],
+      },
+      { day: 'Day 4', name: 'Rest Day', type: 'rest', exercises: [] },
+      {
+        day: 'Day 5', name: 'Lower Strength', type: 'training',
+        exercises: [
+          { id: 'ap5e1', name: 'Romanian Deadlift', sets: 4, reps: '6-8' },
+          { id: 'ap5e2', name: 'Leg Press', sets: 3, reps: '8-10' },
+          { id: 'ap5e3', name: 'Step-Up with Knee Drive', sets: 3, reps: '10 each' },
+          { id: 'ap5e4', name: 'Lateral Band Walk', sets: 3, reps: '15 each' },
+          { id: 'ap5e5', name: 'Single-Leg Calf Raise', sets: 3, reps: '15 each' },
+        ],
+      },
+      {
+        day: 'Day 6', name: 'Upper Strength', type: 'training',
+        exercises: [
+          { id: 'ap6e1', name: 'Pull-Ups', sets: 4, reps: '6-10' },
+          { id: 'ap6e2', name: 'Dumbbell Bench Press', sets: 3, reps: '8-10' },
+          { id: 'ap6e3', name: 'Single-Arm Dumbbell Row', sets: 3, reps: '10 each' },
+          { id: 'ap6e4', name: 'Med Ball Rotational Throw', sets: 3, reps: '8 each' },
+          { id: 'ap6e5', name: 'Pallof Press', sets: 3, reps: '12 each' },
+        ],
+      },
+      { day: 'Day 7', name: 'Rest Day', type: 'rest', exercises: [] },
+    ],
+  },
+  {
+    id: 'endurance',
+    name: 'Endurance Athlete Strength',
+    description: 'Injury-proof strength training for runners, cyclists & swimmers',
+    level: 'Beginner',
+    days: [
+      {
+        day: 'Day 1', name: 'Lower Body Strength', type: 'training',
+        exercises: [
+          { id: 'en1e1', name: 'Goblet Squat', sets: 3, reps: '10-12' },
+          { id: 'en1e2', name: 'Romanian Deadlift', sets: 3, reps: '10' },
+          { id: 'en1e3', name: 'Single-Leg Romanian Deadlift', sets: 3, reps: '10 each' },
+          { id: 'en1e4', name: 'Nordic Hamstring Curl', sets: 3, reps: '6-8' },
+          { id: 'en1e5', name: 'Standing Calf Raise', sets: 3, reps: '20' },
+        ],
+      },
+      { day: 'Day 2', name: 'Rest / Easy Cardio', type: 'rest', exercises: [] },
+      {
+        day: 'Day 3', name: 'Upper Body & Core', type: 'training',
+        exercises: [
+          { id: 'en3e1', name: 'Push-Up', sets: 3, reps: '12-15' },
+          { id: 'en3e2', name: 'Dumbbell Row', sets: 3, reps: '12 each' },
+          { id: 'en3e3', name: 'Dead Bug', sets: 3, reps: '8 each' },
+          { id: 'en3e4', name: 'Pallof Press', sets: 3, reps: '12 each' },
+          { id: 'en3e5', name: 'Hip Flexor Stretch', sets: 3, reps: '45 sec each' },
+        ],
+      },
+      { day: 'Day 4', name: 'Rest / Easy Cardio', type: 'rest', exercises: [] },
+      {
+        day: 'Day 5', name: 'Power & Stability', type: 'training',
+        exercises: [
+          { id: 'en5e1', name: 'Hip Thrust', sets: 4, reps: '10-12' },
+          { id: 'en5e2', name: 'Step-Up', sets: 3, reps: '12 each' },
+          { id: 'en5e3', name: 'Lateral Band Walk', sets: 3, reps: '15 each' },
+          { id: 'en5e4', name: 'Side-Lying Hip Abduction', sets: 3, reps: '15 each' },
+          { id: 'en5e5', name: 'Plank', sets: 3, reps: '45 sec' },
+        ],
+      },
+      { day: 'Day 6', name: 'Rest / Easy Cardio', type: 'rest', exercises: [] },
+      { day: 'Day 7', name: 'Rest Day', type: 'rest', exercises: [] },
+    ],
+  },
+  {
+    id: 'powerlifting_program',
+    name: 'Powerlifting — 4 Day',
+    description: 'Squat, bench, deadlift focused with competition peaking',
+    level: 'Advanced',
+    days: [
+      {
+        day: 'Day 1', name: 'Squat Focus', type: 'training',
+        exercises: [
+          { id: 'pl1e1', name: 'Barbell Back Squat', sets: 5, reps: '3' },
+          { id: 'pl1e2', name: 'Pause Squat', sets: 3, reps: '3' },
+          { id: 'pl1e3', name: 'Romanian Deadlift', sets: 3, reps: '6' },
+          { id: 'pl1e4', name: 'Leg Press', sets: 3, reps: '8' },
+          { id: 'pl1e5', name: 'Leg Curl', sets: 3, reps: '10' },
+        ],
+      },
+      {
+        day: 'Day 2', name: 'Bench Focus', type: 'training',
+        exercises: [
+          { id: 'pl2e1', name: 'Barbell Bench Press', sets: 5, reps: '3' },
+          { id: 'pl2e2', name: 'Close-Grip Bench Press', sets: 3, reps: '5' },
+          { id: 'pl2e3', name: 'Weighted Dips', sets: 3, reps: '6-8' },
+          { id: 'pl2e4', name: 'Face Pulls', sets: 4, reps: '15' },
+          { id: 'pl2e5', name: 'Tricep Pushdowns', sets: 3, reps: '12' },
+        ],
+      },
+      { day: 'Day 3', name: 'Rest Day', type: 'rest', exercises: [] },
+      {
+        day: 'Day 4', name: 'Deadlift Focus', type: 'training',
+        exercises: [
+          { id: 'pl4e1', name: 'Conventional Deadlift', sets: 5, reps: '3' },
+          { id: 'pl4e2', name: 'Deficit Deadlift', sets: 3, reps: '3' },
+          { id: 'pl4e3', name: 'Barbell Row', sets: 3, reps: '5' },
+          { id: 'pl4e4', name: 'Pull-Ups', sets: 3, reps: '6-8' },
+          { id: 'pl4e5', name: 'Plank', sets: 3, reps: '45 sec' },
+        ],
+      },
+      {
+        day: 'Day 5', name: 'Accessory Day', type: 'training',
+        exercises: [
+          { id: 'pl5e1', name: 'Overhead Press', sets: 4, reps: '5' },
+          { id: 'pl5e2', name: 'Romanian Deadlift', sets: 3, reps: '8' },
+          { id: 'pl5e3', name: 'Dumbbell Lateral Raises', sets: 3, reps: '15' },
+          { id: 'pl5e4', name: 'Hammer Curl', sets: 3, reps: '12' },
+          { id: 'pl5e5', name: 'Ab Wheel Rollout', sets: 3, reps: '10' },
+        ],
+      },
+      { day: 'Day 6', name: 'Rest Day', type: 'rest', exercises: [] },
+      { day: 'Day 7', name: 'Rest Day', type: 'rest', exercises: [] },
+    ],
+  },
 ];

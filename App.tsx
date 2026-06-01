@@ -1,10 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import AuthScreen from './screens/AuthScreen';
 import OnboardingScreen from './screens/OnboardingScreen';
 import MainTabs from './screens/MainTabs';
 import { supabase } from './constants/supabase';
+import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from './constants/purchases';
+
+// Configure RevenueCat once when the module loads — before any component mounts.
+configureRevenueCat();
 
 function AppContent() {
   const { session, loading } = useAuth();
@@ -13,9 +18,11 @@ function AppContent() {
 
   useEffect(() => {
     if (session?.user) {
+      loginRevenueCat(session.user.id);
       supabase.from('profiles').select('*').eq('id', session.user.id).single()
         .then(({ data }) => { setProfile(data); setProfileLoading(false); });
     } else {
+      logoutRevenueCat();
       setProfile(null);
       setProfileLoading(false);
     }
@@ -36,8 +43,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }

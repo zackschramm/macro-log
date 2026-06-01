@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet,
-  Modal, Alert, ActivityIndicator,
+  Modal, Alert, ActivityIndicator, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -10,6 +10,8 @@ import { useAuth } from '../hooks/useAuth';
 import { PRESET_PROGRAMS } from '../constants/programs';
 import CoachScreen from './CoachScreen';
 import { callAI } from '../constants/ai';
+import { getSportProfile } from '../constants/sportProfiles';
+import { useHealthKit, HealthKitWorkout, WeeklyTrainingLoad } from '../hooks/useHealthKit';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 function initSets(ex: any) { return Array.from({ length: ex.sets }, () => ({ weight: '', reps: '', done: false })); }
@@ -20,8 +22,11 @@ const LEVEL_COLORS: Record<string, string> = {
   Advanced: '#f472b6',
 };
 
-export default function WorkoutScreen() {
+export default function WorkoutScreen({ profile }: { profile?: any }) {
   const { user } = useAuth();
+  const health = useHealthKit();
+  const [recentWorkouts, setRecentWorkouts] = useState<HealthKitWorkout[]>([]);
+  const [weeklyLoad, setWeeklyLoad] = useState<WeeklyTrainingLoad | null>(null);
   const [view, setView] = useState<'select' | 'workout' | 'builder'>('select');
   const [activeProgram, setActiveProgram] = useState<any>(null);
   const [activeDay, setActiveDay] = useState(0);
@@ -51,6 +56,20 @@ export default function WorkoutScreen() {
   }, [user]);
 
   useEffect(() => { fetchCustomWorkouts(); }, [fetchCustomWorkouts]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    (async () => {
+      const authorized = health.isAuthorized || (await health.requestPermissions()).ok;
+      if (!authorized) return;
+      const [workouts, load] = await Promise.all([
+        health.getWorkoutHistory(7),
+        health.getWeeklyTrainingLoad(),
+      ]);
+      setRecentWorkouts(workouts);
+      setWeeklyLoad(load);
+    })();
+  }, []);
 
   const date = todayStr();
   const plan = activeProgram?.days?.[activeDay];
@@ -147,19 +166,21 @@ export default function WorkoutScreen() {
   const generateWorkoutDay = async () => {
     setGeneratingWorkout(true);
     try {
-      const prompt = `Generate 5-6 gym exercises for a workout called "${builderName}".
+      const sport = getSportProfile(profile?.sport);
+      const prompt = `Generate 5-6 exercises for a workout called "${builderName}" for a ${sport.label} athlete.
 
-Only include exercises for the muscles indicated by the name "${builderName}".
-Common abbreviations: Bi's = Biceps, Tri's = Triceps, Delts = Shoulders, Lats = Back, Quads/Hams = Legs.
+ATHLETE CONTEXT:
+- Sport: ${sport.label}
+- Training focus: ${sport.trainingFocus}
+- Key qualities to develop: ${sport.keyQualities.join(', ')}
+- Recommended exercises for this sport: ${sport.keyExercises.join(', ')}
 
-Examples:
-- "Leg Day" → squats, leg press, leg curls, leg extensions, calf raises, RDLs
-- "Back & Biceps" → pull-ups, lat pulldowns, bent over rows, barbell curls, hammer curls, preacher curls
-- "Push Day" → bench press, incline press, shoulder press, lateral raises, tricep pushdowns, dips
-- "Chest" → bench press, incline dumbbell press, cable flys, dips, push-ups
-- "Biceps" → barbell curl, dumbbell curl, hammer curl, preacher curl, incline curl, concentration curl
-- "Shoulders" → overhead press, lateral raises, front raises, rear delt flys, upright rows, face pulls
-- Generic names → balanced full body workout
+RULES:
+- Prioritise exercises relevant to "${builderName}" AND beneficial for ${sport.label}
+- If the workout name indicates specific muscles (e.g. "Leg Day", "Push Day", "Back & Biceps"), stick to those muscles but choose sport-appropriate variations
+- Common abbreviations: Bi's = Biceps, Tri's = Triceps, Delts = Shoulders, Lats = Back, Quads/Hams = Legs
+- If the name is generic (e.g. "Workout", "Training"), use sport-specific exercises
+- Set and rep ranges should match the sport's training demands
 
 Return ONLY a JSON array, nothing else:
 [{"name":"Exercise Name","sets":3,"reps":"8-12"}]`;
@@ -233,6 +254,16 @@ Return ONLY a JSON array, nothing else:
           </TouchableOpacity>
         </View>
         <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+          {/* Training Suggestion Banner */}
+          {weeklyLoad !== null && (
+            <TrainingSuggestionBanner load={weeklyLoad} />
+          )}
+
+          {/* Recent Activity */}
+          {recentWorkouts.length > 0 && (
+            <RecentActivitySection workouts={recentWorkouts} />
+          )}
+
           <Text style={s.sectionTitle}>PRESET PROGRAMS</Text>
           {PRESET_PROGRAMS.map(prog => (
             <TouchableOpacity key={prog.id} style={s.programCard} onPress={() => { setActiveProgram(prog); setActiveDay(0); setView('workout'); }} activeOpacity={0.8}>
@@ -466,6 +497,98 @@ Return ONLY a JSON array, nothing else:
     </SafeAreaView>
   );
 }
+
+// ─── Source badge label ─────────────────────────────────────────────────────────
+function sourceBadge(src: string): string {
+  const l = src.toLowerCase();
+  if (l.includes('whoop')) return 'WHOOP';
+  if (l.includes('garmin')) return 'Garmin';
+  if (l.includes('apple watch') || l.includes("watch")) return 'Watch';
+  if (l.includes('apple health') || l.includes('health')) return 'Health';
+  return src.split(' ')[0];
+}
+
+// ─── Training Suggestion Banner ─────────────────────────────────────────────────
+function TrainingSuggestionBanner({ load }: { load: WeeklyTrainingLoad }) {
+  const loadLevel = load.totalMinutes > 300 ? 'high' : load.totalMinutes > 150 ? 'mid' : 'low';
+  const tips: Record<string, string> = {
+    high: `Heavy week (${load.totalMinutes} min) — consider a deload or recovery session today.`,
+    mid: `Moderate week (${load.totalMinutes} min) — a quality session today fits well.`,
+    low: `Light week so far (${load.totalMinutes} min) — good time to push hard today.`,
+  };
+  const colors: Record<string, string> = { high: '#ff4f4f', mid: '#fbbf24', low: '#4ade80' };
+  return (
+    <View style={[ws.suggestionCard, { borderColor: colors[loadLevel] + '44' }]}>
+      <Text style={[ws.suggestionDot, { color: colors[loadLevel] }]}>●</Text>
+      <Text style={ws.suggestionText}>{tips[loadLevel]}</Text>
+    </View>
+  );
+}
+
+// ─── Recent Activity Section ─────────────────────────────────────────────────────
+function RecentActivitySection({ workouts }: { workouts: HealthKitWorkout[] }) {
+  // Group by date (last 7 days, newest first)
+  const grouped: Record<string, HealthKitWorkout[]> = {};
+  for (const w of workouts) {
+    const date = w.startDate.split('T')[0];
+    if (!grouped[date]) grouped[date] = [];
+    grouped[date].push(w);
+  }
+  const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+
+  const fmtDate = (d: string) => {
+    const today = new Date().toISOString().split('T')[0];
+    const yest = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    if (d === today) return 'Today';
+    if (d === yest) return 'Yesterday';
+    return new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  };
+
+  return (
+    <View style={{ marginBottom: 8 }}>
+      <Text style={ws.activityTitle}>RECENT ACTIVITY</Text>
+      {sortedDates.map(date => (
+        <View key={date}>
+          <Text style={ws.activityDate}>{fmtDate(date)}</Text>
+          {grouped[date].map(w => (
+            <View key={w.id} style={ws.activityRow}>
+              <View style={ws.activityInfo}>
+                <Text style={ws.activityName}>{w.name}</Text>
+                <Text style={ws.activityMeta}>
+                  {Math.round(w.duration)} min{w.calories ? ` · ${Math.round(w.calories)} kcal` : ''}{w.distance ? ` · ${w.distance.toFixed(1)} km` : ''}
+                </Text>
+              </View>
+              <View style={ws.sourceBadge}>
+                <Text style={ws.sourceBadgeText}>{sourceBadge(w.source)}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const ws = StyleSheet.create({
+  suggestionCard: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 8,
+    backgroundColor: '#1a1a1a', borderRadius: 12, padding: 12,
+    borderWidth: 1, marginBottom: 16,
+  },
+  suggestionDot: { fontSize: 10, marginTop: 3 },
+  suggestionText: { flex: 1, fontSize: 13, color: '#aaa', fontWeight: '500', lineHeight: 20 },
+  activityTitle: { fontSize: 11, fontWeight: '700', color: '#444', letterSpacing: 1.5, marginBottom: 10 },
+  activityDate: { fontSize: 12, fontWeight: '700', color: '#555', marginBottom: 6, marginTop: 4 },
+  activityRow: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a',
+    borderRadius: 12, padding: 12, marginBottom: 6,
+  },
+  activityInfo: { flex: 1 },
+  activityName: { fontSize: 14, fontWeight: '700', color: '#fff', marginBottom: 2 },
+  activityMeta: { fontSize: 12, color: '#555', fontWeight: '500' },
+  sourceBadge: { backgroundColor: '#2a2a2a', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  sourceBadgeText: { fontSize: 11, fontWeight: '700', color: '#666' },
+});
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#121212' },

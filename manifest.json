@@ -1,7 +1,7 @@
 {
-  "name": "Macro Log",
-  "short_name": "Macro Log",
-  "description": "Track your daily macros and calories",
+  "name": "Fuelog",
+  "short_name": "Fuelog",
+  "description": "AI-powered nutrition and fitness tracking",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0a1628",
