@@ -11,6 +11,7 @@ import ProgressScreen from './ProgressScreen';
 import NotificationsScreen from './NotificationsScreen';
 import RecoveryScreen from './RecoveryScreen';
 import FoodsScreen from './FoodsScreen';
+import { colors, weight } from '../constants/theme';
 
 type Tab = {
   key: string;
@@ -37,7 +38,7 @@ export default function MainTabs({ profile, onProfileUpdate }: { profile: any; o
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#121212' }}>
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={{ flex: 1 }}>
         {activeTab === 'log'      && <LogScreen targets={targets} />}
         {activeTab === 'workout'  && <WorkoutScreen profile={profile} />}
@@ -60,7 +61,7 @@ export default function MainTabs({ profile, onProfileUpdate }: { profile: any; o
               <Ionicons
                 name={active ? tab.iconActive : tab.icon}
                 size={22}
-                color={active ? '#fff' : '#404040'}
+                color={active ? colors.accent : colors.textMuted}
               />
               <Text style={[s.label, active && s.labelActive]}>{tab.label}</Text>
             </TouchableOpacity>
@@ -73,9 +74,9 @@ export default function MainTabs({ profile, onProfileUpdate }: { profile: any; o
 
 const s = StyleSheet.create({
   tabBar: {
-    backgroundColor: '#0a0a0a',
+    backgroundColor: colors.bgElevated,
     borderTopWidth: 1,
-    borderTopColor: '#1e1e1e',
+    borderTopColor: colors.border,
     flexDirection: 'row',
     paddingTop: 8,
     paddingBottom: 4,
@@ -89,12 +90,12 @@ const s = StyleSheet.create({
   },
   label: {
     fontSize: 10,
-    fontWeight: '600',
-    color: '#3a3a3a',
+    fontWeight: weight.medium,
+    color: colors.textMuted,
     letterSpacing: 0.2,
   },
   labelActive: {
-    color: '#fff',
-    fontWeight: '800',
+    color: colors.accent,
+    fontWeight: weight.bold,
   },
 });

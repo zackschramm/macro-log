@@ -14,6 +14,7 @@ import MineralsScreen from './MineralsScreen';
 import { useAuth } from '../hooks/useAuth';
 import { calculateTargets, MC } from '../constants/data';
 import { useUnits, UnitSystem, KG_PER_LB, CM_PER_IN } from '../constants/units';
+import { colors, radius, weight } from '../constants/theme';
 
 const ACTIVITY_OPTIONS = [
   { key: 'sedentary', label: 'Sedentary' },
@@ -430,9 +431,9 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#121212' },
-  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
-  title: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: -0.5 },
+  safe: { flex: 1, backgroundColor: colors.bg },
+  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border },
+  title: { fontSize: 28, fontWeight: weight.bold, color: colors.text, letterSpacing: -0.5 },
   scroll: { flex: 1 },
   content: { padding: 20, paddingBottom: 60, gap: 8 },
 
@@ -440,92 +441,93 @@ const s = StyleSheet.create({
   subHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: 16, paddingVertical: 14,
-    borderBottomWidth: 1, borderBottomColor: '#1e1e1e',
+    borderBottomWidth: 1, borderBottomColor: colors.border,
   },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, width: 60 },
-  backLabel: { fontSize: 16, color: '#fff', fontWeight: '600' },
-  subHeaderTitle: { fontSize: 17, fontWeight: '800', color: '#fff' },
+  backLabel: { fontSize: 16, color: colors.text, fontWeight: weight.medium },
+  subHeaderTitle: { fontSize: 17, fontWeight: weight.bold, color: colors.text },
 
   // Hero
   hero: { alignItems: 'center', paddingVertical: 8, marginBottom: 8 },
   avatarWrap: { width: 88, height: 88, borderRadius: 44, overflow: 'hidden', marginBottom: 12 },
   avatar: { width: 88, height: 88, borderRadius: 44 },
-  avatarPlaceholder: { width: 88, height: 88, borderRadius: 44, backgroundColor: '#252525', alignItems: 'center', justifyContent: 'center' },
-  avatarInitial: { fontSize: 34, fontWeight: '900', color: '#fff' },
+  avatarPlaceholder: { width: 88, height: 88, borderRadius: 44, backgroundColor: colors.cardAlt, alignItems: 'center', justifyContent: 'center' },
+  avatarInitial: { fontSize: 34, fontWeight: weight.heavy, color: colors.text },
   avatarOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 26, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' },
-  heroName: { fontSize: 22, fontWeight: '900', color: '#fff', marginBottom: 3 },
-  heroEmail: { fontSize: 13, color: '#444', fontWeight: '500' },
+  heroName: { fontSize: 22, fontWeight: weight.bold, color: colors.text, marginBottom: 3 },
+  heroEmail: { fontSize: 13, color: colors.textMuted, fontWeight: weight.regular },
 
   // Targets card
-  targetsCard: { backgroundColor: '#1a1a1a', borderRadius: 16, padding: 18, marginBottom: 4 },
-  sectionLabel: { fontSize: 11, fontWeight: '700', color: '#444', letterSpacing: 1.5, marginTop: 8, marginBottom: 6 },
+  targetsCard: { backgroundColor: colors.card, borderRadius: radius.lg, padding: 18, marginBottom: 4, borderWidth: 1, borderColor: colors.borderSubtle },
+  sectionLabel: { fontSize: 11, fontWeight: weight.semibold, color: colors.textSecondary, letterSpacing: 1.5, marginTop: 8, marginBottom: 6 },
   targetsRow: { flexDirection: 'row', alignItems: 'center' },
   targetItem: { flex: 1, alignItems: 'center' },
-  targetDivider: { width: 1, height: 32, backgroundColor: '#2a2a2a' },
-  targetVal: { fontSize: 20, fontWeight: '900', color: '#fff', letterSpacing: -0.5 },
-  targetLabel: { fontSize: 10, color: '#555', fontWeight: '600', marginTop: 2 },
+  targetDivider: { width: 1, height: 32, backgroundColor: colors.border },
+  targetVal: { fontSize: 20, fontWeight: weight.heavy, color: colors.text, letterSpacing: -0.5 },
+  targetLabel: { fontSize: 10, color: colors.textMuted, fontWeight: weight.medium, marginTop: 2 },
 
   // Quick links card
-  linksCard: { backgroundColor: '#1a1a1a', borderRadius: 16, overflow: 'hidden', marginBottom: 4 },
+  linksCard: { backgroundColor: colors.card, borderRadius: radius.lg, overflow: 'hidden', marginBottom: 4, borderWidth: 1, borderColor: colors.borderSubtle },
   linkRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
-  linkRowBorder: { borderBottomWidth: 1, borderBottomColor: '#222' },
-  linkIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: '#252525', alignItems: 'center', justifyContent: 'center' },
+  linkRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
+  linkIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: colors.cardAlt, alignItems: 'center', justifyContent: 'center' },
   linkText: { flex: 1 },
-  linkLabel: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  linkSub: { fontSize: 12, color: '#444', fontWeight: '500', marginTop: 1 },
+  linkLabel: { fontSize: 15, fontWeight: weight.semibold, color: colors.text },
+  linkSub: { fontSize: 12, color: colors.textMuted, fontWeight: weight.regular, marginTop: 1 },
 
   // Form card (grouped inputs)
-  formCard: { backgroundColor: '#1a1a1a', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 4, marginBottom: 4 },
+  formCard: { backgroundColor: colors.card, borderRadius: radius.lg, paddingHorizontal: 16, paddingVertical: 4, marginBottom: 4, borderWidth: 1, borderColor: colors.borderSubtle },
   fieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
-  fieldDivider: { height: 1, backgroundColor: '#222' },
-  fieldLabel: { fontSize: 15, fontWeight: '600', color: '#ccc' },
-  fieldInput: { fontSize: 15, color: '#fff', textAlign: 'right', minWidth: 60 },
-  fieldUnit: { fontSize: 13, color: '#444', fontWeight: '600' },
-  inlineLabel: { fontSize: 12, fontWeight: '700', color: '#555', letterSpacing: 0.3, marginBottom: 10, marginTop: 4 },
+  fieldDivider: { height: 1, backgroundColor: colors.border },
+  fieldLabel: { fontSize: 15, fontWeight: weight.medium, color: colors.text },
+  fieldInput: { fontSize: 15, color: colors.text, textAlign: 'right', minWidth: 60 },
+  fieldUnit: { fontSize: 13, color: colors.textMuted, fontWeight: weight.medium },
+  inlineLabel: { fontSize: 12, fontWeight: weight.semibold, color: colors.textSecondary, letterSpacing: 0.3, marginBottom: 10, marginTop: 4 },
 
   // Chips
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
-  chip: { backgroundColor: '#222', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },
-  chipActive: { backgroundColor: '#fff' },
-  chipText: { fontSize: 13, fontWeight: '700', color: '#555' },
-  chipTextActive: { color: '#000' },
+  chip: { backgroundColor: colors.cardAlt, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },
+  chipActive: { backgroundColor: colors.accent },
+  chipText: { fontSize: 13, fontWeight: weight.semibold, color: colors.textSecondary },
+  chipTextActive: { color: colors.accentText },
 
   // Sport grid
   sportGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
   sportCell: {
     width: '30%', flexGrow: 1,
-    backgroundColor: '#222', borderRadius: 14,
+    backgroundColor: colors.cardAlt, borderRadius: radius.md,
     paddingVertical: 12, alignItems: 'center', gap: 6,
     borderWidth: 1.5, borderColor: 'transparent',
   },
-  sportCellActive: { backgroundColor: '#1a1a2e', borderColor: '#fff' },
+  sportCellActive: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
   sportEmoji: { fontSize: 22 },
-  sportLabel: { fontSize: 11, fontWeight: '700', color: '#555', textAlign: 'center' },
-  sportLabelActive: { color: '#fff' },
+  sportLabel: { fontSize: 11, fontWeight: weight.semibold, color: colors.textSecondary, textAlign: 'center' },
+  sportLabelActive: { color: colors.text },
 
   // Segmented (sex)
-  segmented: { flexDirection: 'row', backgroundColor: '#222', borderRadius: 10, padding: 3, gap: 3 },
+  segmented: { flexDirection: 'row', backgroundColor: colors.cardAlt, borderRadius: radius.sm, padding: 3, gap: 3 },
   segBtn: { borderRadius: 8, paddingHorizontal: 16, paddingVertical: 6 },
-  segBtnActive: { backgroundColor: '#fff' },
-  segBtnText: { fontSize: 13, fontWeight: '700', color: '#555' },
-  segBtnTextActive: { color: '#000' },
+  segBtnActive: { backgroundColor: colors.accent },
+  segBtnText: { fontSize: 13, fontWeight: weight.semibold, color: colors.textSecondary },
+  segBtnTextActive: { color: colors.accentText },
 
   // Custom goals
   customGoalsRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: '#1a1a1a', borderRadius: 16, padding: 16, marginTop: 4,
+    backgroundColor: colors.card, borderRadius: radius.lg, padding: 16, marginTop: 4,
+    borderWidth: 1, borderColor: colors.borderSubtle,
   },
-  customGoalsTitle: { fontSize: 15, fontWeight: '700', color: '#fff', marginBottom: 2 },
-  customGoalsSub: { fontSize: 12, color: '#555', fontWeight: '500' },
-  toggle: { width: 46, height: 26, borderRadius: 13, backgroundColor: '#333', padding: 2, justifyContent: 'center' },
-  toggleOn: { backgroundColor: '#4ade80' },
-  toggleThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#fff', alignSelf: 'flex-start' },
+  customGoalsTitle: { fontSize: 15, fontWeight: weight.semibold, color: colors.text, marginBottom: 2 },
+  customGoalsSub: { fontSize: 12, color: colors.textMuted, fontWeight: weight.regular },
+  toggle: { width: 46, height: 26, borderRadius: 13, backgroundColor: colors.cardAlt, padding: 2, justifyContent: 'center' },
+  toggleOn: { backgroundColor: colors.accent },
+  toggleThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.white, alignSelf: 'flex-start' },
   toggleThumbOn: { alignSelf: 'flex-end' },
-  standaloneInput: { backgroundColor: '#222', borderRadius: 10, color: '#fff', padding: 12, fontSize: 15 },
+  standaloneInput: { backgroundColor: colors.cardAlt, borderRadius: radius.sm, color: colors.text, padding: 12, fontSize: 15 },
 
   // Buttons
-  saveBtn: { backgroundColor: '#fff', borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 8 },
-  saveBtnText: { color: '#000', fontSize: 15, fontWeight: '800' },
+  saveBtn: { backgroundColor: colors.accent, borderRadius: radius.md, padding: 16, alignItems: 'center', marginTop: 8 },
+  saveBtnText: { color: colors.accentText, fontSize: 15, fontWeight: weight.bold },
   signOutBtn: { alignItems: 'center', paddingVertical: 14 },
-  signOutText: { color: '#ff4f4f', fontSize: 15, fontWeight: '700' },
+  signOutText: { color: colors.danger, fontSize: 15, fontWeight: weight.semibold },
 });

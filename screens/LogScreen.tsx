@@ -9,6 +9,7 @@ import MacroRing from '../components/MacroRing';
 import WaterTracker from '../components/WaterTracker';
 import AddFoodModal from '../components/AddFoodModal';
 import { MEALS, MC } from '../constants/data';
+import { colors, radius, weight } from '../constants/theme';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -130,7 +131,13 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
             </View>
           );
         })}
-        {logs.length === 0 && <Text style={s.empty}>Nothing logged yet.{'\n'}Tap “+ Log Food” to get started.</Text>}
+        {logs.length === 0 && (
+          <View style={s.empty}>
+            <Text style={s.emptyIcon}>🍽️</Text>
+            <Text style={s.emptyTitle}>Nothing logged yet</Text>
+            <Text style={s.emptySub}>Tap “+ Log Food” above to start tracking your day.</Text>
+          </View>
+        )}
       </ScrollView>
 
       <AddFoodModal
@@ -145,36 +152,39 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#121212' },
-  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
-  title: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: -0.5 },
-  date: { fontSize: 13, color: '#555', fontWeight: '500', marginTop: 2 },
+  safe: { flex: 1, backgroundColor: colors.bg },
+  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
+  title: { fontSize: 28, fontWeight: weight.bold, color: colors.text, letterSpacing: -0.5 },
+  date: { fontSize: 13, color: colors.textSecondary, fontWeight: weight.regular, marginTop: 2 },
   scroll: { flex: 1 },
   content: { padding: 16, paddingBottom: 40 },
   dateNav: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24 },
-  dateBtn: { backgroundColor: '#1e1e1e', borderRadius: 10, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  dateBtn: { backgroundColor: colors.card, borderRadius: radius.sm, width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
   dateBtnDisabled: { opacity: 0.25 },
-  dateArrow: { color: '#fff', fontSize: 22 },
-  dateLabel: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '600', color: '#fff' },
+  dateArrow: { color: colors.text, fontSize: 22 },
+  dateLabel: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: weight.medium, color: colors.text },
   hero: { alignItems: 'center', marginBottom: 28 },
-  heroLabel: { fontSize: 11, fontWeight: '700', color: '#444', letterSpacing: 2, marginBottom: 6 },
-  heroNum: { fontSize: 72, fontWeight: '900', color: '#fff', letterSpacing: -3, lineHeight: 80 },
-  heroOver: { color: '#ff4f4f' },
-  heroSub: { fontSize: 13, color: '#444', marginTop: 6, fontWeight: '500' },
+  heroLabel: { fontSize: 11, fontWeight: weight.semibold, color: colors.textSecondary, letterSpacing: 2, marginBottom: 6 },
+  heroNum: { fontSize: 72, fontWeight: weight.heavy, color: colors.text, letterSpacing: -3, lineHeight: 80 },
+  heroOver: { color: colors.danger },
+  heroSub: { fontSize: 13, color: colors.textMuted, marginTop: 6, fontWeight: weight.regular },
   rings: { flexDirection: 'row', gap: 10, marginBottom: 28 },
-  addFoodBtn: { backgroundColor: '#fff', borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 16 },
-  addFoodBtnText: { color: '#000', fontWeight: '900', fontSize: 15 },
+  addFoodBtn: { backgroundColor: colors.accent, borderRadius: radius.md, padding: 16, alignItems: 'center', marginBottom: 16 },
+  addFoodBtnText: { color: colors.accentText, fontWeight: weight.bold, fontSize: 15 },
   mealSection: { marginBottom: 8 },
-  mealSectionEmpty: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, paddingHorizontal: 4, opacity: 0.5 },
+  mealSectionEmpty: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, paddingHorizontal: 4, opacity: 0.6 },
   mealHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4 },
-  mealHeader: { fontSize: 11, fontWeight: '700', color: '#444', letterSpacing: 1.5, paddingVertical: 10 },
-  mealHeaderEmpty: { fontSize: 11, fontWeight: '700', color: '#333', letterSpacing: 1.5 },
-  mealAdd: { color: '#888', fontSize: 12, fontWeight: '700' },
-  entry: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 12, padding: 12, marginBottom: 6 },
+  mealHeader: { fontSize: 11, fontWeight: weight.semibold, color: colors.textSecondary, letterSpacing: 1.5, paddingVertical: 10 },
+  mealHeaderEmpty: { fontSize: 11, fontWeight: weight.semibold, color: colors.textMuted, letterSpacing: 1.5 },
+  mealAdd: { color: colors.accent, fontSize: 12, fontWeight: weight.semibold },
+  entry: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card, borderRadius: radius.md, padding: 12, marginBottom: 6, borderWidth: 1, borderColor: colors.borderSubtle },
   entryInfo: { flex: 1 },
-  entryName: { fontSize: 14, fontWeight: '600', color: '#fff', marginBottom: 3 },
+  entryName: { fontSize: 14, fontWeight: weight.medium, color: colors.text, marginBottom: 3 },
   entryMacros: { flexDirection: 'row', gap: 8 },
-  entryCal: { fontSize: 11, color: '#555', fontWeight: '600' },
-  del: { color: '#333', fontSize: 22, paddingLeft: 12 },
-  empty: { textAlign: 'center', color: '#333', fontSize: 14, paddingVertical: 48, lineHeight: 26, fontWeight: '500' },
+  entryCal: { fontSize: 11, color: colors.textSecondary, fontWeight: weight.medium },
+  del: { color: colors.textFaint, fontSize: 22, paddingLeft: 12 },
+  empty: { alignItems: 'center', paddingVertical: 48, gap: 8 },
+  emptyIcon: { fontSize: 40 },
+  emptyTitle: { fontSize: 17, fontWeight: weight.bold, color: colors.text },
+  emptySub: { fontSize: 13, color: colors.textMuted, textAlign: 'center', lineHeight: 20, fontWeight: weight.regular, paddingHorizontal: 32 },
 });
