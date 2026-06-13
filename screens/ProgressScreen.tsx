@@ -8,6 +8,7 @@ import * as Haptics from 'expo-haptics';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { useHealthKit } from '../hooks/useHealthKit';
+import { useUnits } from '../constants/units';
 import Svg, { Polyline, Circle, Line, Text as SvgText } from 'react-native-svg';
 import InBodySection from './InBodySection';
 
@@ -49,7 +50,8 @@ function LineChart({ data, color, unit }: { data: { date: string; value: number 
   const first = values[0];
   const last = values[values.length - 1];
   const diff = last - first;
-  const trendColor = diff === 0 ? '#555' : (unit === 'lbs' || unit === 'in') ? (diff < 0 ? '#4ade80' : '#ff4f4f') : (diff > 0 ? '#4ade80' : '#ff4f4f');
+  const lowerIsBetter = ['lbs', 'kg', 'in', 'cm'].includes(unit);
+  const trendColor = diff === 0 ? '#555' : lowerIsBetter ? (diff < 0 ? '#4ade80' : '#ff4f4f') : (diff > 0 ? '#4ade80' : '#ff4f4f');
 
   return (
     <View style={{ marginTop: 8 }}>
@@ -124,6 +126,7 @@ function MacroChart({ logs }: { logs: any[] }) {
 export default function ProgressScreen({ profile }: { profile: any }) {
   const { user } = useAuth();
   const health = useHealthKit();
+  const u = useUnits();
   const [logs, setLogs] = useState<any[]>([]);
   const [macroLogs, setMacroLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -175,12 +178,12 @@ export default function ProgressScreen({ profile }: { profile: any }) {
     }
     setSaving(true);
     const payload: any = { user_id: user!.id, date: todayStr(), notes: form.notes };
-    if (form.weight_lbs) payload.weight_lbs = parseFloat(form.weight_lbs);
+    if (form.weight_lbs) payload.weight_lbs = u.toLb(form.weight_lbs);
     if (form.body_fat) payload.body_fat = parseFloat(form.body_fat);
-    MEASUREMENTS.forEach(m => { if ((form as any)[m.key]) payload[m.key] = parseFloat((form as any)[m.key]); });
+    MEASUREMENTS.forEach(m => { if ((form as any)[m.key]) payload[m.key] = u.toInch((form as any)[m.key]); });
     const { error: saveError } = await supabase.from('progress_logs').upsert(payload, { onConflict: 'user_id,date' });
     console.log('Progress save:', saveError?.message || 'success', JSON.stringify(payload));
-    if (form.weight_lbs && health.isAuthorized) await health.saveWeight(parseFloat(form.weight_lbs));
+    if (form.weight_lbs && health.isAuthorized) await health.saveWeight(u.toLb(form.weight_lbs));
     await fetchLogs();
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setModalVisible(false);
@@ -195,17 +198,20 @@ export default function ProgressScreen({ profile }: { profile: any }) {
     }
     const weight = await health.getLatestWeight();
     if (weight) {
-      setForm(f => ({ ...f, weight_lbs: weight.toFixed(1) }));
-      Alert.alert('Imported!', `Latest weight from Health: ${weight.toFixed(1)} lbs`);
+      setForm(f => ({ ...f, weight_lbs: String(u.dispWeight(weight)) }));
+      Alert.alert('Imported!', `Latest weight from Health: ${u.fmtWeight(weight)}`);
     } else {
       Alert.alert('No Data', 'No weight data found in Apple Health.');
     }
   };
 
-  const weightData = logs.filter(l => l.weight_lbs).map(l => ({ date: l.date, value: l.weight_lbs }));
+  const weightData = logs.filter(l => l.weight_lbs).map(l => ({ date: l.date, value: u.dispWeight(l.weight_lbs) }));
   const currentWeight = [...logs].reverse().find(l => l.weight_lbs)?.weight_lbs;
   const startWeight = logs.find(l => l.weight_lbs)?.weight_lbs;
-  const weightChange = startWeight && currentWeight ? currentWeight - startWeight : null;
+  // Display-unit versions for the cards/stats (canonical values stay in lbs).
+  const dispCurrent = currentWeight != null ? u.dispWeight(currentWeight) : null;
+  const dispStart = startWeight != null ? u.dispWeight(startWeight) : null;
+  const dispChange = dispStart != null && dispCurrent != null ? Math.round((dispCurrent - dispStart) * 10) / 10 : null;
 
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
@@ -225,30 +231,30 @@ export default function ProgressScreen({ profile }: { profile: any }) {
           <View style={s.card}>
             <View style={s.cardHeader}>
               <Text style={s.cardTitle}>WEIGHT</Text>
-              {currentWeight && <Text style={s.cardValue}>{currentWeight} <Text style={s.cardUnit}>lbs</Text></Text>}
+              {dispCurrent != null && <Text style={s.cardValue}>{dispCurrent} <Text style={s.cardUnit}>{u.weightUnit}</Text></Text>}
             </View>
-            {weightChange !== null && (
-              <Text style={[s.changeText, { color: weightChange <= 0 ? '#4ade80' : '#ff4f4f' }]}>
-                {weightChange > 0 ? '+' : ''}{weightChange.toFixed(1)} lbs since start
+            {dispChange !== null && (
+              <Text style={[s.changeText, { color: dispChange <= 0 ? '#4ade80' : '#ff4f4f' }]}>
+                {dispChange > 0 ? '+' : ''}{dispChange.toFixed(1)} {u.weightUnit} since start
               </Text>
             )}
-            <LineChart data={weightData} color="#fff" unit="lbs" />
+            <LineChart data={weightData} color="#fff" unit={u.weightUnit} />
           </View>
 
           {/* Stats row */}
           {profile && (
             <View style={s.statsRow}>
               <View style={s.statCard}>
-                <Text style={s.statVal}>{profile.weight_lbs || '—'}</Text>
+                <Text style={s.statVal}>{profile.weight_lbs ? u.dispWeight(profile.weight_lbs) : '—'}</Text>
                 <Text style={s.statLabel}>Start</Text>
               </View>
               <View style={s.statCard}>
-                <Text style={s.statVal}>{currentWeight || '—'}</Text>
+                <Text style={s.statVal}>{dispCurrent != null ? dispCurrent : '—'}</Text>
                 <Text style={s.statLabel}>Current</Text>
               </View>
               <View style={s.statCard}>
-                <Text style={[s.statVal, { color: weightChange !== null && weightChange <= 0 ? '#4ade80' : '#ff4f4f' }]}>
-                  {weightChange !== null ? `${weightChange > 0 ? '+' : ''}${weightChange.toFixed(1)}` : '—'}
+                <Text style={[s.statVal, { color: dispChange !== null && dispChange <= 0 ? '#4ade80' : '#ff4f4f' }]}>
+                  {dispChange !== null ? `${dispChange > 0 ? '+' : ''}${dispChange.toFixed(1)}` : '—'}
                 </Text>
                 <Text style={s.statLabel}>Change</Text>
               </View>
@@ -270,15 +276,15 @@ export default function ProgressScreen({ profile }: { profile: any }) {
           {/* Measurements */}
           <Text style={s.sectionTitle}>MEASUREMENTS</Text>
           {MEASUREMENTS.map(m => {
-            const mData = logs.filter(l => l[m.key]).map(l => ({ date: l.date, value: l[m.key] }));
+            const mData = logs.filter(l => l[m.key]).map(l => ({ date: l.date, value: u.dispLength(l[m.key]) }));
             const latestVal = mData[mData.length - 1]?.value;
             return (
               <View key={m.key} style={s.measCard}>
                 <View style={s.measHeader}>
                   <Text style={s.measLabel}>{m.label}</Text>
-                  {latestVal && <Text style={[s.measVal, { color: m.color }]}>{latestVal}"</Text>}
+                  {latestVal != null && <Text style={[s.measVal, { color: m.color }]}>{latestVal} {u.lengthUnit}</Text>}
                 </View>
-                <LineChart data={mData} color={m.color} unit="in" />
+                <LineChart data={mData} color={m.color} unit={u.lengthUnit} />
               </View>
             );
           })}
@@ -293,11 +299,11 @@ export default function ProgressScreen({ profile }: { profile: any }) {
             <View key={i} style={s.historyCard}>
               <Text style={s.historyDate}>{fmtDate(log.date)}</Text>
               <View style={s.historyRow}>
-                {log.weight_lbs && <View style={s.historyItem}><Text style={s.historyVal}>{log.weight_lbs}</Text><Text style={s.historyUnit}>lbs</Text></View>}
+                {log.weight_lbs && <View style={s.historyItem}><Text style={s.historyVal}>{u.dispWeight(log.weight_lbs)}</Text><Text style={s.historyUnit}>{u.weightUnit}</Text></View>}
                 {log.body_fat && <View style={s.historyItem}><Text style={s.historyVal}>{log.body_fat}</Text><Text style={s.historyUnit}>% bf</Text></View>}
                 {MEASUREMENTS.map(m => log[m.key] ? (
                   <View key={m.key} style={s.historyItem}>
-                    <Text style={[s.historyVal, { color: m.color }]}>{log[m.key]}"</Text>
+                    <Text style={[s.historyVal, { color: m.color }]}>{u.dispLength(log[m.key])}</Text>
                     <Text style={s.historyUnit}>{m.label.toLowerCase()}</Text>
                   </View>
                 ) : null)}
@@ -333,9 +339,9 @@ export default function ProgressScreen({ profile }: { profile: any }) {
                     <Text style={s.healthBtnText}>Import from Apple Health</Text>
                   </TouchableOpacity>
                 )}
-                <Text style={s.fieldLabel}>Weight (lbs)</Text>
+                <Text style={s.fieldLabel}>Weight ({u.weightUnit})</Text>
                 <TextInput style={s.input} value={form.weight_lbs} onChangeText={v => setForm(f => ({ ...f, weight_lbs: v }))}
-                  placeholder={String(profile?.weight_lbs || '172')} placeholderTextColor="#444" keyboardType="decimal-pad" />
+                  placeholder={String(profile?.weight_lbs ? u.dispWeight(profile.weight_lbs) : (u.isMetric ? 78 : 172))} placeholderTextColor="#444" keyboardType="decimal-pad" />
                 <Text style={s.fieldLabel}>Body Fat %</Text>
                 <TextInput style={s.input} value={form.body_fat} onChangeText={v => setForm(f => ({ ...f, body_fat: v }))}
                   placeholder="e.g. 15" placeholderTextColor="#444" keyboardType="decimal-pad" />
@@ -346,7 +352,7 @@ export default function ProgressScreen({ profile }: { profile: any }) {
             ) : (
               MEASUREMENTS.map(m => (
                 <View key={m.key}>
-                  <Text style={[s.fieldLabel, { color: m.color }]}>{m.label} (inches)</Text>
+                  <Text style={[s.fieldLabel, { color: m.color }]}>{m.label} ({u.isMetric ? 'cm' : 'inches'})</Text>
                   <TextInput style={s.input} value={(form as any)[m.key]} onChangeText={v => setForm(f => ({ ...f, [m.key]: v }))}
                     placeholder="e.g. 14.5" placeholderTextColor="#444" keyboardType="decimal-pad" />
                 </View>

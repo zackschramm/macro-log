@@ -7,11 +7,25 @@ import AppleHealthKit, {
 
 const isHealthAvailable = Platform.OS === 'ios' && AppleHealthKit && typeof AppleHealthKit.isAvailable === 'function';
 
+// --- Shared authorization state (M1) ---
+// `initHealthKit` only needs to succeed once per app session. Previously each
+// screen instantiated useHealthKit() with its own `isAuthorized` flag, so a
+// screen that hadn't yet re-run initHealthKit would silently skip reads/writes
+// (e.g. ProgressScreen dropping a weight save). We hoist the flag to module
+// scope and notify all mounted hook instances when it flips.
+let moduleAuthorized = false;
+const authListeners = new Set<(v: boolean) => void>();
+const setModuleAuthorized = (v: boolean) => {
+  moduleAuthorized = v;
+  authListeners.forEach((fn) => fn(v));
+};
+
 const PERMISSIONS: HealthKitPermissions = {
   permissions: {
     read: [
       AppleHealthKit.Constants.Permissions.Weight,
       AppleHealthKit.Constants.Permissions.ActiveEnergyBurned,
+      AppleHealthKit.Constants.Permissions.BasalEnergyBurned, // resting energy — for TDEE / "calories needed" (L2)
       AppleHealthKit.Constants.Permissions.Workout,
       AppleHealthKit.Constants.Permissions.HeartRate,
       AppleHealthKit.Constants.Permissions.RestingHeartRate,
@@ -64,6 +78,28 @@ const WORKOUT_TYPE_NAMES: Record<number, string> = {
   60: 'Dance', 63: 'Walking', 3000: 'Other',
 };
 
+// Map a free-text workout name to the closest HealthKit activity type (L1).
+// Falls back to strength training so saved workouts are never mislabeled as
+// generic when we can do better.
+const activityTypeForName = (name: string): string => {
+  const A = AppleHealthKit.Constants.Activities;
+  const n = (name || '').toLowerCase();
+  if (/(run|jog|sprint)/.test(n)) return A.Running;
+  if (/(walk|ruck)/.test(n)) return A.Walking;
+  if (/(cycl|bike|spin|ride)/.test(n)) return A.Cycling;
+  if (/(swim)/.test(n)) return A.Swimming;
+  if (/(row)/.test(n)) return A.Rowing;
+  if (/(hiit|interval)/.test(n)) return A.HighIntensityIntervalTraining;
+  if (/(yoga)/.test(n)) return A.Yoga;
+  if (/(hike|hiking|trail)/.test(n)) return A.Hiking;
+  if (/(elliptical)/.test(n)) return A.Elliptical;
+  if (/(stair|climb)/.test(n)) return A.StairClimbing;
+  if (/(core|abs)/.test(n)) return A.CoreTraining;
+  if (/(functional|crossfit|wod)/.test(n)) return A.FunctionalStrengthTraining;
+  if (/(cardio|conditioning)/.test(n)) return A.MixedCardio;
+  return A.TraditionalStrengthTraining;
+};
+
 export interface RecoveryData {
   hrv: number | null;           // ms, latest overnight
   restingHR: number | null;     // bpm
@@ -84,13 +120,22 @@ export interface RecoveryData {
 
 export function useHealthKit() {
   const [isAvailable, setIsAvailable] = useState(false);
-  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [isAuthorized, setIsAuthorized] = useState(moduleAuthorized);
 
   useEffect(() => {
     if (!isHealthAvailable) return;
     AppleHealthKit.isAvailable((err, available) => {
       if (!err && available) setIsAvailable(true);
     });
+  }, []);
+
+  // Stay in sync with the shared module flag (M1): once any screen authorizes,
+  // every mounted instance sees isAuthorized=true.
+  useEffect(() => {
+    const fn = (v: boolean) => setIsAuthorized(v);
+    authListeners.add(fn);
+    setIsAuthorized(moduleAuthorized);
+    return () => { authListeners.delete(fn); };
   }, []);
 
   const requestPermissions = (): Promise<{ ok: boolean; error?: string }> => {
@@ -102,7 +147,7 @@ export function useHealthKit() {
         }
         AppleHealthKit.initHealthKit(PERMISSIONS, (err) => {
           if (err) { resolve({ ok: false, error: JSON.stringify(err) }); return; }
-          setIsAuthorized(true);
+          setModuleAuthorized(true);
           resolve({ ok: true });
         });
       } catch (e: any) {
@@ -111,9 +156,35 @@ export function useHealthKit() {
     });
   };
 
+  // Read-access probe (H2). initHealthKit reports success even when the user
+  // denied READ access (Apple privacy: denied reads are indistinguishable from
+  // "no data"). This checks whether ANY core metric has data over the last 30
+  // days, so the UI can tell "granted but empty" from a real permission problem.
+  const probeData = (): Promise<{ hasData: boolean }> => {
+    return new Promise(async (resolve) => {
+      if (!moduleAuthorized) return resolve({ hasData: false });
+      const now = new Date();
+      const monthAgo = new Date(now);
+      monthAgo.setDate(monthAgo.getDate() - 30);
+      const opts = { startDate: monthAgo.toISOString(), endDate: now.toISOString(), limit: 1 };
+      const any = (fn: (cb: (e: any, d: any) => void) => void) =>
+        new Promise<boolean>((res) => {
+          try { fn((err, data) => res(!err && !!data && (Array.isArray(data) ? data.length > 0 : data.value != null))); }
+          catch { res(false); }
+        });
+      const checks = await Promise.all([
+        any((cb) => (AppleHealthKit as any).getDailyStepCountSamples(opts, cb)),
+        any((cb) => AppleHealthKit.getLatestWeight({ unit: AppleHealthKit.Constants.Units.pound }, cb)),
+        any((cb) => AppleHealthKit.getHeartRateVariabilitySamples(opts, cb)),
+        any((cb) => (AppleHealthKit as any).getSamples({ type: 'Workout', ...opts }, cb)),
+      ]);
+      resolve({ hasData: checks.some(Boolean) });
+    });
+  };
+
   const saveWeight = (weightLbs: number): Promise<boolean> => {
     return new Promise((resolve) => {
-      if (!isAuthorized) return resolve(false);
+      if (!moduleAuthorized) return resolve(false);
       AppleHealthKit.saveWeight(
         { value: weightLbs, unit: AppleHealthKit.Constants.Units.pound },
         (err) => resolve(!err)
@@ -123,7 +194,7 @@ export function useHealthKit() {
 
   const getLatestWeight = (): Promise<number | null> => {
     return new Promise((resolve) => {
-      if (!isAuthorized) return resolve(null);
+      if (!moduleAuthorized) return resolve(null);
       AppleHealthKit.getLatestWeight(
         { unit: AppleHealthKit.Constants.Units.pound },
         (err, result: HealthValue) => {
@@ -142,7 +213,7 @@ export function useHealthKit() {
     meal: string;
   }): Promise<boolean> => {
     return new Promise((resolve) => {
-      if (!isAuthorized) return resolve(false);
+      if (!moduleAuthorized) return resolve(false);
       const now = new Date().toISOString();
       AppleHealthKit.saveFood(
         {
@@ -165,10 +236,10 @@ export function useHealthKit() {
     calories?: number;
   }): Promise<boolean> => {
     return new Promise((resolve) => {
-      if (!isAuthorized) return resolve(false);
+      if (!moduleAuthorized) return resolve(false);
       AppleHealthKit.saveWorkout(
         {
-          type: AppleHealthKit.Constants.Activities.TraditionalStrengthTraining,
+          type: activityTypeForName(data.name),
           startDate: data.startDate.toISOString(),
           endDate: data.endDate.toISOString(),
           energyBurned: data.calories || 0,
@@ -181,7 +252,7 @@ export function useHealthKit() {
 
   const getAvailableSources = (): Promise<Record<string, string[]>> => {
     return new Promise(async (resolve) => {
-      if (!isAuthorized) return resolve({});
+      if (!moduleAuthorized) return resolve({});
       const now = new Date();
       const sevenDaysAgo = new Date(now);
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -256,7 +327,7 @@ export function useHealthKit() {
     };
 
     return new Promise(async (resolve) => {
-      if (!isAuthorized) {
+      if (!moduleAuthorized) {
         return resolve({
           hrv: null, restingHR: null, sleepHours: null, sleepDeepHours: null,
           sleepRemHours: null, steps: null, activeCalories: null,
@@ -442,14 +513,26 @@ export function useHealthKit() {
           );
         }),
 
-        // Active Calories — today
+        // Active Calories — today.
+        // Sum PER SOURCE and keep the largest total rather than summing across
+        // all sources (M3): Apple Watch + iPhone + Whoop each write active
+        // energy, so a naive sum double-counts and inflates today's burn.
+        // Respects an explicit source preference if the user set one.
         new Promise<void>((res) => {
           AppleHealthKit.getActiveEnergyBurned(
             { startDate: todayStart.toISOString(), endDate: now.toISOString() },
             (err: any, data: any[]) => {
-              if (!err && data?.length > 0) {
-                results.activeCalories = Math.round(data.reduce((sum: number, s: any) => sum + s.value, 0));
-                results.sources['activeCal'] = data[0].sourceName ?? '';
+              const filtered = filterBySource(data, 'activeCal');
+              if (!err && filtered?.length > 0) {
+                const bySource: Record<string, number> = {};
+                filtered.forEach((s: any) => {
+                  const src = s.sourceName ?? 'unknown';
+                  bySource[src] = (bySource[src] ?? 0) + (s.value ?? 0);
+                });
+                const [topSource, topTotal] = Object.entries(bySource)
+                  .reduce((max, cur) => (cur[1] > max[1] ? cur : max), ['', 0] as [string, number]);
+                results.activeCalories = Math.round(topTotal);
+                results.sources['activeCal'] = topSource;
               }
               res();
             }
@@ -508,28 +591,40 @@ export function useHealthKit() {
 
   const getWorkoutHistory = (days: number): Promise<HealthKitWorkout[]> => {
     return new Promise(async (resolve) => {
-      if (!isAuthorized) return resolve([]);
+      if (!moduleAuthorized) return resolve([]);
       const now = new Date();
       const start = new Date(now);
       start.setDate(start.getDate() - days);
+      // react-native-health's Workout samples expose: start, end, calories
+      // (kcal), activityId (number), activityName (string), distance (MILES),
+      // sourceName, id. The previous code read HealthKit-native names
+      // (startDate/endDate/totalEnergyBurned/totalDistance/workoutActivityType/
+      // uuid) which are all undefined here — producing NaN durations, null
+      // calories and "Other" for every workout (M2).
+      const MILES_TO_KM = 1.60934;
       (AppleHealthKit as any).getSamples(
         { type: 'Workout', startDate: start.toISOString(), endDate: now.toISOString(), ascending: false },
         (err: any, data: any[]) => {
           if (err || !data?.length) return resolve([]);
           const workouts: HealthKitWorkout[] = data.map((w: any) => {
-            const startMs = new Date(w.startDate).getTime();
-            const endMs = new Date(w.endDate).getTime();
-            const durationMin = Math.round((endMs - startMs) / 60000);
-            const typeNum = w.workoutActivityType ?? w.activityType ?? 3000;
+            const startDate = w.start ?? w.startDate;
+            const endDate = w.end ?? w.endDate;
+            const startMs = new Date(startDate).getTime();
+            const endMs = new Date(endDate).getTime();
+            const durationMin = (isFinite(startMs) && isFinite(endMs))
+              ? Math.round((endMs - startMs) / 60000) : 0;
+            const typeNum = w.activityId ?? 3000;
+            const name = w.activityName || WORKOUT_TYPE_NAMES[typeNum] || 'Workout';
+            const miles = w.distance;
             return {
-              id: w.uuid ?? w.startDate,
+              id: w.id ?? startDate,
               type: typeNum,
-              name: WORKOUT_TYPE_NAMES[typeNum] ?? 'Workout',
-              startDate: w.startDate,
-              endDate: w.endDate,
+              name,
+              startDate,
+              endDate,
               duration: durationMin,
-              calories: w.totalEnergyBurned != null ? Math.round(w.totalEnergyBurned) : null,
-              distance: w.totalDistance != null ? Math.round(w.totalDistance / 100) / 10 : null,
+              calories: (w.calories != null && w.calories > 0) ? Math.round(w.calories) : null,
+              distance: (miles != null && miles > 0) ? Math.round(miles * MILES_TO_KM * 10) / 10 : null,
               source: w.sourceName ?? '',
             };
           });
@@ -541,7 +636,7 @@ export function useHealthKit() {
 
   const getWeeklyTrainingLoad = (): Promise<WeeklyTrainingLoad> => {
     return new Promise(async (resolve) => {
-      if (!isAuthorized) return resolve({ totalMinutes: 0, totalCalories: 0, dailyLoad: [] });
+      if (!moduleAuthorized) return resolve({ totalMinutes: 0, totalCalories: 0, dailyLoad: [] });
       const workouts = await getWorkoutHistory(7);
       const byDay: Record<string, { minutes: number; calories: number }> = {};
       workouts.forEach(w => {
@@ -563,6 +658,7 @@ export function useHealthKit() {
     isAvailable,
     isAuthorized,
     requestPermissions,
+    probeData,
     saveWeight,
     getLatestWeight,
     saveNutrition,

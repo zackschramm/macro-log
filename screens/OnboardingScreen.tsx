@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { calculateTargets } from '../constants/data';
+import { UnitSystem, LB_PER_KG, CM_PER_IN } from '../constants/units';
 
 const ACTIVITY_OPTIONS = [
   { key: 'sedentary', label: 'Sedentary', sub: 'Little or no exercise' },
@@ -30,12 +31,17 @@ export default function OnboardingScreen({ onComplete }: { onComplete: (p: any) 
   const [age, setAge] = useState('');
   const [heightFt, setHeightFt] = useState('');
   const [heightIn, setHeightIn] = useState('');
+  const [heightCm, setHeightCm] = useState('');
   const [weight, setWeight] = useState('');
+  const [units, setUnits] = useState<UnitSystem>('imperial');
   const [activity, setActivity] = useState('moderate');
   const [goal, setGoal] = useState('gain');
   const [loading, setLoading] = useState(false);
 
-  const totalHeightIn = (parseInt(heightFt) || 0) * 12 + (parseInt(heightIn) || 0);
+  const isMetric = units === 'metric';
+  const totalHeightIn = isMetric
+    ? Math.round((parseFloat(heightCm) || 0) / CM_PER_IN)
+    : (parseInt(heightFt) || 0) * 12 + (parseInt(heightIn) || 0);
 
   const handleFinish = async () => {
     if (!name || !age || !totalHeightIn || !weight) {
@@ -43,8 +49,9 @@ export default function OnboardingScreen({ onComplete }: { onComplete: (p: any) 
     }
     setLoading(true);
     const profileData = {
-      weight_lbs: parseFloat(weight), height_in: totalHeightIn,
-      age: parseInt(age), sex, activity, goal,
+      weight_lbs: isMetric ? (parseFloat(weight) || 0) * LB_PER_KG : parseFloat(weight),
+      height_in: totalHeightIn,
+      age: parseInt(age), sex, activity, goal, unit_system: units,
     };
     const targets = calculateTargets(profileData);
     const profile = { id: user!.id, name, ...profileData, ...targets };
@@ -83,21 +90,35 @@ export default function OnboardingScreen({ onComplete }: { onComplete: (p: any) 
       <Text style={s.stepTitle}>Body Stats 📏</Text>
       <Text style={s.stepSub}>Used to calculate your calorie needs.</Text>
 
-      <Text style={s.label}>Height</Text>
+      <Text style={s.label}>Units</Text>
       <View style={s.row}>
-        <View style={{ flex: 1 }}>
-          <TextInput style={s.input} value={heightFt} onChangeText={setHeightFt}
-            placeholder="ft" placeholderTextColor="#444" keyboardType="number-pad" />
-        </View>
-        <View style={{ flex: 1 }}>
-          <TextInput style={s.input} value={heightIn} onChangeText={setHeightIn}
-            placeholder="in" placeholderTextColor="#444" keyboardType="number-pad" />
-        </View>
+        {(['imperial', 'metric'] as const).map(v => (
+          <TouchableOpacity key={v} style={[s.optBtn, units === v && s.optBtnActive, { flex: 1 }]} onPress={() => setUnits(v)}>
+            <Text style={[s.optBtnText, units === v && s.optBtnTextActive]}>{v === 'imperial' ? 'Imperial (lb/ft)' : 'Metric (kg/cm)'}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
-      <Text style={s.label}>Weight (lbs)</Text>
+      <Text style={s.label}>Height</Text>
+      {isMetric ? (
+        <TextInput style={s.input} value={heightCm} onChangeText={setHeightCm}
+          placeholder="cm" placeholderTextColor="#444" keyboardType="number-pad" />
+      ) : (
+        <View style={s.row}>
+          <View style={{ flex: 1 }}>
+            <TextInput style={s.input} value={heightFt} onChangeText={setHeightFt}
+              placeholder="ft" placeholderTextColor="#444" keyboardType="number-pad" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <TextInput style={s.input} value={heightIn} onChangeText={setHeightIn}
+              placeholder="in" placeholderTextColor="#444" keyboardType="number-pad" />
+          </View>
+        </View>
+      )}
+
+      <Text style={s.label}>Weight ({isMetric ? 'kg' : 'lbs'})</Text>
       <TextInput style={s.input} value={weight} onChangeText={setWeight}
-        placeholder="172" placeholderTextColor="#444" keyboardType="decimal-pad" />
+        placeholder={isMetric ? '78' : '172'} placeholderTextColor="#444" keyboardType="decimal-pad" />
     </View>,
 
     // Step 2 - Activity

@@ -13,6 +13,7 @@ import NotificationsScreen from './NotificationsScreen';
 import MineralsScreen from './MineralsScreen';
 import { useAuth } from '../hooks/useAuth';
 import { calculateTargets, MC } from '../constants/data';
+import { useUnits, UnitSystem, KG_PER_LB, CM_PER_IN } from '../constants/units';
 
 const ACTIVITY_OPTIONS = [
   { key: 'sedentary', label: 'Sedentary' },
@@ -61,13 +62,14 @@ function SubScreenHeader({ title, onBack }: { title: string; onBack: () => void 
 
 export default function ProfileScreen({ profile, onUpdate }: { profile: any; onUpdate: (p: any) => void }) {
   const { user, signOut } = useAuth();
+  const u = useUnits();
   const [name, setName] = useState(profile.name || '');
   const [age, setAge] = useState(String(profile.age || ''));
-  const [weight, setWeight] = useState(String(profile.weight_lbs || ''));
-  const ftVal = Math.floor((profile.height_in || 0) / 12);
-  const inVal = (profile.height_in || 0) % 12;
-  const [heightFt, setHeightFt] = useState(String(ftVal || ''));
-  const [heightIn, setHeightIn] = useState(String(inVal || ''));
+  const [weight, setWeight] = useState(profile.weight_lbs ? String(u.dispWeight(profile.weight_lbs)) : '');
+  const hf = u.heightFields(profile.height_in || 0);
+  const [heightFt, setHeightFt] = useState(hf.ft);
+  const [heightIn, setHeightIn] = useState(hf.in);
+  const [heightCm, setHeightCm] = useState(hf.cm);
   const [sex, setSex] = useState(profile.sex || 'male');
   const [activity, setActivity] = useState(profile.activity || 'moderate');
   const [goal, setGoal] = useState(profile.goal || 'gain');
@@ -120,7 +122,24 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
     })();
   }, [subScreen, user?.id]);
 
-  const totalHeightIn = (parseInt(heightFt) || 0) * 12 + (parseInt(heightIn) || 0);
+  const totalHeightIn = Math.round(u.fieldsToInch({ ft: heightFt, in: heightIn, cm: heightCm }));
+
+  // Switching systems converts whatever the user has currently typed, so the
+  // displayed numbers stay physically equivalent.
+  const changeUnits = (next: UnitSystem) => {
+    if (next === u.system) return;
+    const lb = u.toLb(weight);
+    const inch = u.fieldsToInch({ ft: heightFt, in: heightIn, cm: heightCm });
+    if (next === 'metric') {
+      setWeight(isNaN(lb) ? '' : String(Math.round(lb * KG_PER_LB * 10) / 10));
+      setHeightCm(inch ? String(Math.round(inch * CM_PER_IN)) : '');
+    } else {
+      setWeight(isNaN(lb) ? '' : String(Math.round(lb * 10) / 10));
+      setHeightFt(inch ? String(Math.floor(inch / 12)) : '');
+      setHeightIn(inch ? String(Math.round(inch % 12)) : '');
+    }
+    u.setSystem(next);
+  };
 
   const pickAvatar = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -143,7 +162,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   const handleSave = async () => {
     setLoading(true);
     const profileData = {
-      weight_lbs: parseFloat(weight), height_in: totalHeightIn,
+      weight_lbs: u.toLb(weight), height_in: totalHeightIn,
       age: parseInt(age), sex, activity, goal, sport,
     };
     const targets = customGoals ? {
@@ -160,7 +179,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   };
 
   const autoTargets = calculateTargets({
-    weight_lbs: parseFloat(weight) || profile.weight_lbs,
+    weight_lbs: u.toLb(weight) || profile.weight_lbs,
     height_in: totalHeightIn || profile.height_in,
     age: parseInt(age) || profile.age,
     sex, activity, goal, sport,
@@ -292,17 +311,35 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
           <View style={s.fieldDivider} />
           <View style={s.fieldRow}>
             <Text style={s.fieldLabel}>Height</Text>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <TextInput style={[s.fieldInput, { width: 56 }]} value={heightFt} onChangeText={setHeightFt} placeholder="ft" placeholderTextColor="#444" keyboardType="number-pad" />
-              <TextInput style={[s.fieldInput, { width: 56 }]} value={heightIn} onChangeText={setHeightIn} placeholder="in" placeholderTextColor="#444" keyboardType="number-pad" />
-            </View>
+            {u.isMetric ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <TextInput style={[s.fieldInput, { width: 80 }]} value={heightCm} onChangeText={setHeightCm} placeholder="178" placeholderTextColor="#444" keyboardType="number-pad" />
+                <Text style={s.fieldUnit}>cm</Text>
+              </View>
+            ) : (
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput style={[s.fieldInput, { width: 56 }]} value={heightFt} onChangeText={setHeightFt} placeholder="ft" placeholderTextColor="#444" keyboardType="number-pad" />
+                <TextInput style={[s.fieldInput, { width: 56 }]} value={heightIn} onChangeText={setHeightIn} placeholder="in" placeholderTextColor="#444" keyboardType="number-pad" />
+              </View>
+            )}
           </View>
           <View style={s.fieldDivider} />
           <View style={s.fieldRow}>
             <Text style={s.fieldLabel}>Weight</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <TextInput style={[s.fieldInput, { width: 80 }]} value={weight} onChangeText={setWeight} placeholder="172" placeholderTextColor="#444" keyboardType="decimal-pad" />
-              <Text style={s.fieldUnit}>lbs</Text>
+              <TextInput style={[s.fieldInput, { width: 80 }]} value={weight} onChangeText={setWeight} placeholder={u.isMetric ? '78' : '172'} placeholderTextColor="#444" keyboardType="decimal-pad" />
+              <Text style={s.fieldUnit}>{u.weightUnit}</Text>
+            </View>
+          </View>
+          <View style={s.fieldDivider} />
+          <View style={s.fieldRow}>
+            <Text style={s.fieldLabel}>Units</Text>
+            <View style={s.segmented}>
+              {(['imperial', 'metric'] as const).map(v => (
+                <TouchableOpacity key={v} style={[s.segBtn, u.system === v && s.segBtnActive]} onPress={() => changeUnits(v)}>
+                  <Text style={[s.segBtnText, u.system === v && s.segBtnTextActive]}>{v === 'imperial' ? 'Imperial' : 'Metric'}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
         </View>

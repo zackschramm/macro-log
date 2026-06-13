@@ -10,6 +10,7 @@ import Svg, { Polyline, Circle, Line, Text as SvgText } from 'react-native-svg';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { hasPro } from '../constants/purchases';
+import { useUnits, KG_PER_LB, LB_PER_KG } from '../constants/units';
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE';
 
@@ -86,6 +87,10 @@ If nothing is readable return {"error":"unreadable"}.`;
 
 export default function InBodySection() {
   const { user } = useAuth();
+  const u = useUnits();
+  // InBody masses are stored canonically in lb; show kg when metric.
+  const cv = (val: number | null, unit: string) => (unit === 'lb' && val != null ? u.dispWeight(val) : val);
+  const ul = (unit: string) => (unit === 'lb' ? u.weightUnit : unit);
   const [logs, setLogs] = useState<InBodyLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);

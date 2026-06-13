@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
+import { useUnits } from '../constants/units';
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE';
 
@@ -108,6 +109,7 @@ const todayStr = () => new Date().toISOString().split('T')[0];
 
 export default function MineralsScreen({ profile }: Props) {
   const { user } = useAuth();
+  const u = useUnits();
   const [todayIntake, setTodayIntake] = useState<Record<string, number>>({});
   const [bloodworkResults, setBloodworkResults] = useState<Record<string, number>>({});
   const [analyzingBloodwork, setAnalyzingBloodwork] = useState(false);
@@ -222,11 +224,11 @@ export default function MineralsScreen({ profile }: Props) {
 
         <View style={s.statsRow}>
           <View style={s.statCard}>
-            <Text style={s.statVal}>{weightLbs} lbs</Text>
+            <Text style={s.statVal}>{u.fmtWeight(weightLbs)}</Text>
             <Text style={s.statLabel}>Weight</Text>
           </View>
           <View style={s.statCard}>
-            <Text style={s.statVal}>{heightFt}'{heightRemIn}"</Text>
+            <Text style={s.statVal}>{u.fmtHeight(heightIn)}</Text>
             <Text style={s.statLabel}>Height</Text>
           </View>
           <View style={s.statCard}>

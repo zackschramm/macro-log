@@ -12,6 +12,7 @@ import CoachScreen from './CoachScreen';
 import { callAI } from '../constants/ai';
 import { getSportProfile } from '../constants/sportProfiles';
 import { useHealthKit, HealthKitWorkout, WeeklyTrainingLoad } from '../hooks/useHealthKit';
+import { useUnits } from '../constants/units';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
 function initSets(ex: any) { return Array.from({ length: ex.sets }, () => ({ weight: '', reps: '', done: false })); }
@@ -527,6 +528,7 @@ function TrainingSuggestionBanner({ load }: { load: WeeklyTrainingLoad }) {
 
 // ─── Recent Activity Section ─────────────────────────────────────────────────────
 function RecentActivitySection({ workouts }: { workouts: HealthKitWorkout[] }) {
+  const u = useUnits();
   // Group by date (last 7 days, newest first)
   const grouped: Record<string, HealthKitWorkout[]> = {};
   for (const w of workouts) {
@@ -555,7 +557,7 @@ function RecentActivitySection({ workouts }: { workouts: HealthKitWorkout[] }) {
               <View style={ws.activityInfo}>
                 <Text style={ws.activityName}>{w.name}</Text>
                 <Text style={ws.activityMeta}>
-                  {Math.round(w.duration)} min{w.calories ? ` · ${Math.round(w.calories)} kcal` : ''}{w.distance ? ` · ${w.distance.toFixed(1)} km` : ''}
+                  {Math.round(w.duration)} min{w.calories ? ` · ${Math.round(w.calories)} kcal` : ''}{w.distance ? ` · ${u.dispDistance(w.distance).toFixed(1)} ${u.distanceUnit}` : ''}
                 </Text>
               </View>
               <View style={ws.sourceBadge}>

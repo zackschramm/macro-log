@@ -285,6 +285,7 @@ export default function RecoveryScreen() {
   const [data, setData] = useState<RecoveryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
+  const [noData, setNoData] = useState(false);
   const [healthError, setHealthError] = useState<string | null>(null);
   const [showCustomize, setShowCustomize] = useState(false);
   const [visibleMetrics, setVisibleMetrics] = useState<string[]>(DEFAULT_VISIBLE);
@@ -308,6 +309,7 @@ export default function RecoveryScreen() {
     if (!silent) {
       setLoading(true);
       setUnavailable(false);
+      setNoData(false);
       setHealthError(null);
     }
     if (Platform.OS !== 'ios') {
@@ -329,6 +331,18 @@ export default function RecoveryScreen() {
     ]);
     setData(result);
     setTrainingLoad(load_);
+    // Authorized but every core metric is empty? initHealthKit can't tell
+    // "read denied" from "no data" (H2), so probe a 30-day window. If nothing
+    // comes back, the per-category toggles are almost certainly off.
+    const allEmpty = result.hrv == null && result.restingHR == null &&
+      result.sleepHours == null && result.steps == null &&
+      result.activeCalories == null && (load_?.totalMinutes ?? 0) === 0;
+    if (allEmpty) {
+      const { hasData } = await health.probeData();
+      if (!silent) setNoData(!hasData);
+    } else if (!silent) {
+      setNoData(false);
+    }
     if (!silent) setLoading(false);
     // Fetch available sources in background for customize sheet
     health.getAvailableSources().then(setAvailableSources);
@@ -397,6 +411,29 @@ export default function RecoveryScreen() {
               <Text style={s.errorText}>Debug: {healthError}</Text>
             </View>
           )}
+          <TouchableOpacity style={s.connectBtn} onPress={() => load()}>
+            <Text style={s.connectBtnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (noData) {
+    return (
+      <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.header}>
+          <Text style={s.title}>Recovery</Text>
+        </View>
+        <View style={s.center}>
+          <Text style={s.emptyIcon}>🔒</Text>
+          <Text style={s.emptyTitle}>No Health Data Yet</Text>
+          <Text style={s.emptySub}>
+            Fuelog is connected, but Apple Health isn't sharing any data. Open the
+            Health app → tap your profile → Privacy → Apps → Fuelog, and turn on the
+            categories you want (HRV, Sleep, Steps, Workouts, Heart Rate). Data from a
+            Whoop, Garmin, or Apple Watch can take a few minutes to sync.
+          </Text>
           <TouchableOpacity style={s.connectBtn} onPress={() => load()}>
             <Text style={s.connectBtnText}>Retry</Text>
           </TouchableOpacity>
