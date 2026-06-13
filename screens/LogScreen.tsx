@@ -7,6 +7,7 @@ import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
 import MacroRing from '../components/MacroRing';
 import WaterTracker from '../components/WaterTracker';
+import AddFoodModal from '../components/AddFoodModal';
 import { MEALS, MC } from '../constants/data';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
@@ -17,6 +18,7 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
   const { user } = useAuth();
   const [logs, setLogs] = useState<any[]>([]);
   const [activeDate, setActiveDate] = useState(todayStr());
+  const [addFoodMeal, setAddFoodMeal] = useState<string | null>(null);
 
   const fetchLogs = useCallback(async () => {
     if (!user) return;
@@ -85,12 +87,30 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
         {/* Water tracker */}
         <WaterTracker />
 
+        {/* Primary add-food button */}
+        <TouchableOpacity style={s.addFoodBtn} onPress={() => setAddFoodMeal('')} activeOpacity={0.8}>
+          <Text style={s.addFoodBtnText}>+ Log Food</Text>
+        </TouchableOpacity>
+
         {/* Entries */}
         {MEALS.map(meal => {
-          const entries = logs.filter(e => e.meal === meal); if (!entries.length) return null;
+          const entries = logs.filter(e => e.meal === meal);
+          if (!entries.length) {
+            return (
+              <TouchableOpacity key={meal} style={s.mealSectionEmpty} onPress={() => setAddFoodMeal(meal)} activeOpacity={0.7}>
+                <Text style={s.mealHeaderEmpty}>{meal.toUpperCase()}</Text>
+                <Text style={s.mealAdd}>+ Add</Text>
+              </TouchableOpacity>
+            );
+          }
           return (
             <View key={meal} style={s.mealSection}>
-              <Text style={s.mealHeader}>{meal.toUpperCase()}</Text>
+              <View style={s.mealHeaderRow}>
+                <Text style={s.mealHeader}>{meal.toUpperCase()}</Text>
+                <TouchableOpacity onPress={() => setAddFoodMeal(meal)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={s.mealAdd}>+ Add</Text>
+                </TouchableOpacity>
+              </View>
               {entries.map(e => (
                 <View key={e.id} style={s.entry}>
                   <View style={s.entryInfo}>
@@ -110,8 +130,16 @@ export default function LogScreen({ targets }: { targets: { calories: number; pr
             </View>
           );
         })}
-        {logs.length === 0 && <Text style={s.empty}>Nothing logged yet.</Text>}
+        {logs.length === 0 && <Text style={s.empty}>Nothing logged yet.{'\n'}Tap “+ Log Food” to get started.</Text>}
       </ScrollView>
+
+      <AddFoodModal
+        visible={addFoodMeal !== null}
+        date={activeDate}
+        defaultMeal={addFoodMeal || undefined}
+        onClose={() => setAddFoodMeal(null)}
+        onLogged={() => { void fetchLogs(); }}
+      />
     </SafeAreaView>
   );
 }
@@ -134,8 +162,14 @@ const s = StyleSheet.create({
   heroOver: { color: '#ff4f4f' },
   heroSub: { fontSize: 13, color: '#444', marginTop: 6, fontWeight: '500' },
   rings: { flexDirection: 'row', gap: 10, marginBottom: 28 },
+  addFoodBtn: { backgroundColor: '#fff', borderRadius: 14, padding: 16, alignItems: 'center', marginBottom: 16 },
+  addFoodBtnText: { color: '#000', fontWeight: '900', fontSize: 15 },
   mealSection: { marginBottom: 8 },
-  mealHeader: { fontSize: 11, fontWeight: '700', color: '#444', letterSpacing: 1.5, paddingVertical: 10, paddingHorizontal: 4 },
+  mealSectionEmpty: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, paddingHorizontal: 4, opacity: 0.5 },
+  mealHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4 },
+  mealHeader: { fontSize: 11, fontWeight: '700', color: '#444', letterSpacing: 1.5, paddingVertical: 10 },
+  mealHeaderEmpty: { fontSize: 11, fontWeight: '700', color: '#333', letterSpacing: 1.5 },
+  mealAdd: { color: '#888', fontSize: 12, fontWeight: '700' },
   entry: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 12, padding: 12, marginBottom: 6 },
   entryInfo: { flex: 1 },
   entryName: { fontSize: 14, fontWeight: '600', color: '#fff', marginBottom: 3 },
