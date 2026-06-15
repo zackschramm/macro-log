@@ -91,9 +91,6 @@ export default function BarcodeScanner({ visible, onClose, onResult }: Props) {
       <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
         <View style={s.header}>
           <Text style={s.title} numberOfLines={1}>Scan Barcode</Text>
-          <TouchableOpacity style={s.closeBtn} onPress={onClose}>
-            <Text style={s.closeBtnText}>Cancel</Text>
-          </TouchableOpacity>
         </View>
 
         {hasPermission === false && (
@@ -101,6 +98,9 @@ export default function BarcodeScanner({ visible, onClose, onResult }: Props) {
             <Text style={s.permIcon}>📷</Text>
             <Text style={s.permTitle}>Camera Access Needed</Text>
             <Text style={s.permSub}>Go to Settings → Fuelog → Camera to enable access.</Text>
+            <TouchableOpacity style={s.cancelBtn} onPress={onClose} activeOpacity={0.8}>
+              <Text style={s.cancelBtnText}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -128,6 +128,9 @@ export default function BarcodeScanner({ visible, onClose, onResult }: Props) {
                 {loading
                   ? <ActivityIndicator color="#fff" size="large" />
                   : <Text style={s.hint}>Point at a barcode to scan</Text>}
+                <TouchableOpacity style={s.cancelBtn} onPress={onClose} activeOpacity={0.8}>
+                  <Text style={s.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
               </View>
             </View>
           </View>
@@ -163,6 +166,9 @@ export default function BarcodeScanner({ visible, onClose, onResult }: Props) {
             <TouchableOpacity style={s.scanAgainBtn} onPress={() => { setFound(null); setScanned(false); }}>
               <Text style={s.scanAgainText}>Scan Another</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={s.scanAgainBtn} onPress={onClose}>
+              <Text style={s.scanAgainText}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         )}
       </SafeAreaView>
@@ -174,10 +180,10 @@ const OVERLAY = 'rgba(0,0,0,0.6)';
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#121212' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
-  title: { fontSize: 20, fontWeight: '900', color: '#fff', flexShrink: 1, marginRight: 12 },
-  closeBtn: { backgroundColor: '#252525', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8 },
-  closeBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  header: { alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
+  title: { fontSize: 20, fontWeight: '900', color: '#fff' },
+  cancelBtn: { borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.45)', backgroundColor: 'rgba(0,0,0,0.35)', borderRadius: 24, paddingHorizontal: 32, paddingVertical: 12 },
+  cancelBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 16 },
   permIcon: { fontSize: 48 },
   permTitle: { fontSize: 20, fontWeight: '900', color: '#fff', textAlign: 'center' },
@@ -193,7 +199,7 @@ const s = StyleSheet.create({
   cornerTR: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0 },
   cornerBL: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0 },
   cornerBR: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0 },
-  overlayBottom: { flex: 1, backgroundColor: OVERLAY, alignItems: 'center', justifyContent: 'center' },
+  overlayBottom: { flex: 1, backgroundColor: OVERLAY, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 28, gap: 20 },
   hint: { color: '#fff', fontSize: 14, fontWeight: '600', opacity: 0.8 },
   result: { flex: 1, padding: 24, alignItems: 'center', justifyContent: 'center', gap: 8 },
   resultCheck: { fontSize: 56, marginBottom: 8 },
