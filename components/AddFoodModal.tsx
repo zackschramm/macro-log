@@ -178,7 +178,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onLo
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible && !scannerOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={s.safe} edges={['top','bottom']}>
         <View style={s.header}>
           <Text style={s.title}>Log Food</Text>

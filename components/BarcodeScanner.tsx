@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Modal, ActivityIndicator, Alert,
+  View, Text, StyleSheet, TouchableOpacity, Modal, ActivityIndicator, Alert, useWindowDimensions,
 } from 'react-native';
 import { CameraView, Camera } from 'expo-camera';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,6 +26,13 @@ export default function BarcodeScanner({ visible, onClose, onResult }: Props) {
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
   const [found, setFound] = useState<NutritionResult | null>(null);
+
+  const { width, height } = useWindowDimensions();
+  // Scale the scan target box relative to the screen so it doesn't
+  // overwhelm smaller devices (e.g. iPhone SE/mini) or look tiny on
+  // larger ones (e.g. Pro Max / tablets).
+  const scanBoxSize = Math.round(Math.min(width, height) * 0.62);
+  const SCAN_BOX = Math.min(Math.max(scanBoxSize, 180), 320);
 
   useEffect(() => {
     if (visible) {
@@ -83,7 +90,7 @@ export default function BarcodeScanner({ visible, onClose, onResult }: Props) {
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
         <View style={s.header}>
-          <Text style={s.title}>Scan Barcode</Text>
+          <Text style={s.title} numberOfLines={1}>Scan Barcode</Text>
           <TouchableOpacity style={s.closeBtn} onPress={onClose}>
             <Text style={s.closeBtnText}>Cancel</Text>
           </TouchableOpacity>
@@ -107,9 +114,9 @@ export default function BarcodeScanner({ visible, onClose, onResult }: Props) {
             />
             <View style={s.overlay}>
               <View style={s.overlayTop} />
-              <View style={s.overlayMiddle}>
+              <View style={[s.overlayMiddle, { height: SCAN_BOX }]}>
                 <View style={s.overlaySide} />
-                <View style={s.scanBox}>
+                <View style={[s.scanBox, { width: SCAN_BOX, height: SCAN_BOX }]}>
                   <View style={[s.corner, s.cornerTL]} />
                   <View style={[s.corner, s.cornerTR]} />
                   <View style={[s.corner, s.cornerBL]} />
@@ -163,13 +170,12 @@ export default function BarcodeScanner({ visible, onClose, onResult }: Props) {
   );
 }
 
-const SCAN_BOX = 240;
 const OVERLAY = 'rgba(0,0,0,0.6)';
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#121212' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
-  title: { fontSize: 20, fontWeight: '900', color: '#fff' },
+  title: { fontSize: 20, fontWeight: '900', color: '#fff', flexShrink: 1, marginRight: 12 },
   closeBtn: { backgroundColor: '#252525', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8 },
   closeBtnText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 16 },
@@ -179,9 +185,9 @@ const s = StyleSheet.create({
   scannerWrap: { flex: 1, position: 'relative' },
   overlay: { ...StyleSheet.absoluteFillObject, flexDirection: 'column' },
   overlayTop: { flex: 1, backgroundColor: OVERLAY },
-  overlayMiddle: { flexDirection: 'row', height: SCAN_BOX },
+  overlayMiddle: { flexDirection: 'row' },
   overlaySide: { flex: 1, backgroundColor: OVERLAY },
-  scanBox: { width: SCAN_BOX, height: SCAN_BOX, position: 'relative' },
+  scanBox: { position: 'relative' },
   corner: { position: 'absolute', width: 24, height: 24, borderColor: '#fff', borderWidth: 3 },
   cornerTL: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0 },
   cornerTR: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0 },
