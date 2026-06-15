@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator,
+  KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../constants/supabase';
@@ -11,6 +11,10 @@ export default function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const [forgotVisible, setForgotVisible] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
 
   const handleAuth = async () => {
     if (!email || !password) { Alert.alert('Please enter email and password'); return; }
@@ -24,6 +28,26 @@ export default function AuthScreen() {
       if (error) Alert.alert('Error', error.message);
     }
     setLoading(false);
+  };
+
+  const openForgotPassword = () => {
+    setResetEmail(email);
+    setForgotVisible(true);
+  };
+
+  const handleSendResetEmail = async () => {
+    if (!resetEmail) { Alert.alert('Please enter your email'); return; }
+    setResetLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+      redirectTo: 'fuelog://reset-password',
+    });
+    setResetLoading(false);
+    if (error) {
+      Alert.alert('Error', error.message);
+    } else {
+      setForgotVisible(false);
+      Alert.alert('Check your email', 'If an account exists for that email, we sent a link to reset your password.');
+    }
   };
 
   return (
@@ -54,6 +78,12 @@ export default function AuthScreen() {
             <TextInput style={s.input} value={password} onChangeText={setPassword}
               placeholder="••••••••" placeholderTextColor="#444" secureTextEntry />
 
+            {mode === 'login' && (
+              <TouchableOpacity onPress={openForgotPassword} style={s.forgotBtn}>
+                <Text style={s.forgotText}>Forgot password?</Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity style={s.btn} onPress={handleAuth} disabled={loading} activeOpacity={0.8}>
               {loading
                 ? <ActivityIndicator color="#000" />
@@ -62,6 +92,30 @@ export default function AuthScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal visible={forgotVisible} animationType="slide" transparent onRequestClose={() => setForgotVisible(false)}>
+        <View style={s.modalOverlay}>
+          <View style={s.modalCard}>
+            <Text style={s.modalTitle}>Reset Password</Text>
+            <Text style={s.modalSubtitle}>Enter your email and we'll send you a link to reset your password.</Text>
+
+            <Text style={s.label}>Email</Text>
+            <TextInput style={s.input} value={resetEmail} onChangeText={setResetEmail}
+              placeholder="you@example.com" placeholderTextColor="#444"
+              autoCapitalize="none" keyboardType="email-address" autoCorrect={false} />
+
+            <TouchableOpacity style={s.btn} onPress={handleSendResetEmail} disabled={resetLoading} activeOpacity={0.8}>
+              {resetLoading
+                ? <ActivityIndicator color="#000" />
+                : <Text style={s.btnText}>Send Reset Link</Text>}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={s.modalCancel} onPress={() => setForgotVisible(false)}>
+              <Text style={s.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -82,4 +136,12 @@ const s = StyleSheet.create({
   input: { backgroundColor: '#252525', borderRadius: 12, color: '#fff', padding: 14, fontSize: 15, marginBottom: 16 },
   btn: { backgroundColor: '#fff', borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 8 },
   btnText: { color: '#000', fontSize: 16, fontWeight: '800' },
+  forgotBtn: { alignSelf: 'flex-end', marginTop: -8, marginBottom: 8 },
+  forgotText: { color: '#888', fontSize: 13, fontWeight: '600' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 24 },
+  modalCard: { backgroundColor: '#1a1a1a', borderRadius: 20, padding: 24 },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginBottom: 8 },
+  modalSubtitle: { fontSize: 13, color: '#888', marginBottom: 20, lineHeight: 18 },
+  modalCancel: { alignItems: 'center', marginTop: 12, padding: 8 },
+  modalCancelText: { color: '#888', fontSize: 14, fontWeight: '600' },
 });

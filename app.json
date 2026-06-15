@@ -3,6 +3,7 @@
     "name": "Fuelog",
     "slug": "macro-log",
     "version": "1.0.0",
+    "scheme": "fuelog",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "icon": "./assets/icon.png",

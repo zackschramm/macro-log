@@ -20,6 +20,32 @@ const setModuleAuthorized = (v: boolean) => {
   authListeners.forEach((fn) => fn(v));
 };
 
+// --- Preferred tracker / source-of-truth (Recovery + Train data discrepancy fix) ---
+// AsyncStorage key for the user's global "Preferred fitness tracker" choice
+// (Profile screen). Value is '' / 'auto' for Automatic, or a HealthKit
+// sourceName (e.g. "Whoop", "Apple Watch") to prefer everywhere unless a
+// screen-level/per-metric override (e.g. Recovery's Customize sheet) is set.
+export const STORAGE_PREFERRED_TRACKER = 'health_preferred_tracker';
+
+export const SOURCE_PREF_KEYS = ['hrv', 'rhr', 'sleep', 'steps', 'activeCal', 'bloodO2', 'respRate', 'vo2', 'workouts'] as const;
+
+// Merge the global "preferred tracker" default with per-metric overrides
+// (e.g. from Recovery's Customize sheet). Per-metric overrides always win.
+export function buildSourcePrefs(
+  preferredTracker: string | null | undefined,
+  overrides: Record<string, string> = {}
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (preferredTracker && preferredTracker !== 'auto') {
+    SOURCE_PREF_KEYS.forEach((k) => { out[k] = preferredTracker; });
+  }
+  Object.entries(overrides).forEach(([k, v]) => {
+    if (v) out[k] = v;
+    else delete out[k];
+  });
+  return out;
+}
+
 const PERMISSIONS: HealthKitPermissions = {
   permissions: {
     read: [
@@ -99,6 +125,42 @@ const activityTypeForName = (name: string): string => {
   if (/(cardio|conditioning)/.test(n)) return A.MixedCardio;
   return A.TraditionalStrengthTraining;
 };
+
+// Two workout samples logged by different sources (e.g. Whoop's iPhone app
+// AND Apple Watch both syncing the same session to Apple Health) that
+// overlap significantly in time almost certainly represent the SAME
+// real-world workout. Counting both inflates weekly training load /
+// calories burned. Keep one per overlapping group, preferring whichever
+// has calorie data (and otherwise the longer/first-seen entry).
+function dedupeOverlappingWorkouts(workouts: HealthKitWorkout[]): HealthKitWorkout[] {
+  const sorted = [...workouts].sort(
+    (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()
+  );
+  const kept: HealthKitWorkout[] = [];
+  for (const w of sorted) {
+    const wStart = new Date(w.startDate).getTime();
+    const wEnd = new Date(w.endDate).getTime();
+    const wDur = Math.max(wEnd - wStart, 1);
+
+    const dupIdx = kept.findIndex((k) => {
+      if (k.source === w.source) return false; // same device/app — not a cross-source dup
+      const kStart = new Date(k.startDate).getTime();
+      const kEnd = new Date(k.endDate).getTime();
+      const overlap = Math.max(0, Math.min(wEnd, kEnd) - Math.max(wStart, kStart));
+      const kDur = Math.max(kEnd - kStart, 1);
+      // Overlapping by more than half of the shorter workout's duration
+      return overlap / Math.min(wDur, kDur) > 0.5;
+    });
+
+    if (dupIdx === -1) {
+      kept.push(w);
+    } else if (kept[dupIdx].calories == null && w.calories != null) {
+      // Prefer the duplicate that actually has a calorie figure
+      kept[dupIdx] = w;
+    }
+  }
+  return kept;
+}
 
 export interface RecoveryData {
   hrv: number | null;           // ms, latest overnight
@@ -310,6 +372,26 @@ export function useHealthKit() {
           (AppleHealthKit as any).getVo2MaxSamples(
             { startDate: sevenDaysAgo.toISOString(), endDate: now.toISOString() },
             (err: any, data: any[]) => { if (!err && data?.length) addSources('vo2', data); res(); }
+          );
+        }),
+        // Active Energy — look back 7 days so sources are detected even on
+        // days the user didn't open the app (M3/scoping follow-up: this key
+        // was previously missing, so the Customize sheet never showed source
+        // pills for "Active Calories" even though getRecoveryData supports
+        // filtering it by source).
+        new Promise<void>((res) => {
+          AppleHealthKit.getActiveEnergyBurned(
+            { startDate: sevenDaysAgo.toISOString(), endDate: now.toISOString() },
+            (err: any, data: any[]) => { if (!err && data?.length) addSources('activeCal', data); res(); }
+          );
+        }),
+        // Workouts — look back 30 days. Lets the Customize sheet (and a
+        // future "Preferred fitness tracker" setting) offer a source choice
+        // for the Train screen's weekly training load / recent activity.
+        new Promise<void>((res) => {
+          (AppleHealthKit as any).getSamples(
+            { type: 'Workout', startDate: thirtyDaysAgo.toISOString(), endDate: now.toISOString() },
+            (err: any, data: any[]) => { if (!err && data?.length) addSources('workouts', data); res(); }
           );
         }),
       ]);
@@ -589,7 +671,13 @@ export function useHealthKit() {
     });
   };
 
-  const getWorkoutHistory = (days: number): Promise<HealthKitWorkout[]> => {
+  // `sourcePrefs['workouts']`, if set, restricts results to a single
+  // HealthKit source (e.g. "Whoop" or "Apple Watch") — falls back to all
+  // sources if that source has no workouts in range. Regardless of the
+  // filter, overlapping cross-source duplicates (Whoop + Apple Watch both
+  // syncing the same session) are collapsed via dedupeOverlappingWorkouts so
+  // weekly totals aren't doubled.
+  const getWorkoutHistory = (days: number, sourcePrefs: Record<string, string> = {}): Promise<HealthKitWorkout[]> => {
     return new Promise(async (resolve) => {
       if (!moduleAuthorized) return resolve([]);
       const now = new Date();
@@ -606,7 +694,7 @@ export function useHealthKit() {
         { type: 'Workout', startDate: start.toISOString(), endDate: now.toISOString(), ascending: false },
         (err: any, data: any[]) => {
           if (err || !data?.length) return resolve([]);
-          const workouts: HealthKitWorkout[] = data.map((w: any) => {
+          let workouts: HealthKitWorkout[] = data.map((w: any) => {
             const startDate = w.start ?? w.startDate;
             const endDate = w.end ?? w.endDate;
             const startMs = new Date(startDate).getTime();
@@ -628,16 +716,23 @@ export function useHealthKit() {
               source: w.sourceName ?? '',
             };
           });
-          resolve(workouts);
+
+          const pref = sourcePrefs['workouts'];
+          if (pref) {
+            const filtered = workouts.filter((w) => w.source === pref);
+            if (filtered.length > 0) workouts = filtered;
+          }
+
+          resolve(dedupeOverlappingWorkouts(workouts));
         }
       );
     });
   };
 
-  const getWeeklyTrainingLoad = (): Promise<WeeklyTrainingLoad> => {
+  const getWeeklyTrainingLoad = (sourcePrefs: Record<string, string> = {}): Promise<WeeklyTrainingLoad> => {
     return new Promise(async (resolve) => {
       if (!moduleAuthorized) return resolve({ totalMinutes: 0, totalCalories: 0, dailyLoad: [] });
-      const workouts = await getWorkoutHistory(7);
+      const workouts = await getWorkoutHistory(7, sourcePrefs);
       const byDay: Record<string, { minutes: number; calories: number }> = {};
       workouts.forEach(w => {
         const day = w.startDate.split('T')[0];

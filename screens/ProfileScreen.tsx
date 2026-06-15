@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet,
-  Alert, ActivityIndicator, Image,
+  Alert, ActivityIndicator, Image, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../constants/supabase';
 import * as ImagePicker from 'expo-image-picker';
 import FoodsScreen from './FoodsScreen';
@@ -15,6 +16,7 @@ import { useAuth } from '../hooks/useAuth';
 import { calculateTargets, MC } from '../constants/data';
 import { useUnits, UnitSystem, KG_PER_LB, CM_PER_IN } from '../constants/units';
 import { colors, radius, weight } from '../constants/theme';
+import { useHealthKit, STORAGE_PREFERRED_TRACKER } from '../hooks/useHealthKit';
 
 const ACTIVITY_OPTIONS = [
   { key: 'sedentary', label: 'Sedentary' },
@@ -63,7 +65,10 @@ function SubScreenHeader({ title, onBack }: { title: string; onBack: () => void 
 
 export default function ProfileScreen({ profile, onUpdate }: { profile: any; onUpdate: (p: any) => void }) {
   const { user, signOut } = useAuth();
+  const health = useHealthKit();
   const u = useUnits();
+  const [preferredTracker, setPreferredTracker] = useState('auto');
+  const [availableTrackers, setAvailableTrackers] = useState<string[]>([]);
   const [name, setName] = useState(profile.name || '');
   const [age, setAge] = useState(String(profile.age || ''));
   const [weight, setWeight] = useState(profile.weight_lbs ? String(u.dispWeight(profile.weight_lbs)) : '');
@@ -122,6 +127,26 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
       setTodayNutrients(totals);
     })();
   }, [subScreen, user?.id]);
+
+  // Load the saved "Preferred fitness tracker" choice, and detect which
+  // source names (e.g. "Whoop", "Apple Watch") Apple Health currently has
+  // data from, so the picker can offer real options instead of guesses.
+  React.useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    AsyncStorage.getItem(STORAGE_PREFERRED_TRACKER).then(val => { if (val) setPreferredTracker(val); });
+    (async () => {
+      if (!health.isAuthorized) return;
+      const sources = await health.getAvailableSources();
+      const names = new Set<string>();
+      Object.values(sources).forEach(list => list.forEach(n => names.add(n)));
+      setAvailableTrackers([...names].sort());
+    })();
+  }, [health.isAuthorized]);
+
+  const setPreferredTrackerPref = async (value: string) => {
+    setPreferredTracker(value);
+    await AsyncStorage.setItem(STORAGE_PREFERRED_TRACKER, value);
+  };
 
   const totalHeightIn = Math.round(u.fieldsToInch({ ft: heightFt, in: heightIn, cm: heightCm }));
 
@@ -380,6 +405,35 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
           </View>
         </View>
 
+        {/* Health data source */}
+        {Platform.OS === 'ios' && (
+          <>
+            <Text style={s.sectionLabel}>HEALTH DATA</Text>
+            <View style={s.formCard}>
+              <Text style={s.inlineLabel}>Preferred Fitness Tracker</Text>
+              <View style={s.chipRow}>
+                {(['auto', ...availableTrackers]).map(opt => {
+                  const active = preferredTracker === opt;
+                  const label = opt === 'auto' ? 'Automatic' : opt;
+                  return (
+                    <TouchableOpacity key={opt} style={[s.chip, active && s.chipActive]} onPress={() => setPreferredTrackerPref(opt)}>
+                      <Text style={[s.chipText, active && s.chipTextActive]}>{label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={s.healthNote}>
+                {availableTrackers.length === 0
+                  ? 'Open the Recovery tab once to connect Apple Health and detect your devices (Whoop, Apple Watch, etc.).'
+                  : 'Applies to steps, active calories, HRV, sleep, and workouts pulled from Apple Health. "Automatic" picks the source with the most data for each metric. You can still override individual metrics in Recovery → Customize.'}
+              </Text>
+              <Text style={s.healthNote}>
+                Even with the right source selected, numbers may differ slightly from a tracker's own app — each device/app calculates calories, sleep stages, etc. with its own algorithm.
+              </Text>
+            </View>
+          </>
+        )}
+
         {/* Custom macro goals */}
         <TouchableOpacity style={s.customGoalsRow} onPress={() => setCustomGoals(!customGoals)} activeOpacity={0.8}>
           <View>
@@ -483,6 +537,7 @@ const s = StyleSheet.create({
   fieldInput: { fontSize: 15, color: colors.text, textAlign: 'right', minWidth: 60 },
   fieldUnit: { fontSize: 13, color: colors.textMuted, fontWeight: weight.medium },
   inlineLabel: { fontSize: 12, fontWeight: weight.semibold, color: colors.textSecondary, letterSpacing: 0.3, marginBottom: 10, marginTop: 4 },
+  healthNote: { fontSize: 11, color: colors.textMuted, fontWeight: weight.regular, lineHeight: 16, marginTop: 4, marginBottom: 8 },
 
   // Chips
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },

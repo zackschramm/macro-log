@@ -7,7 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle, Polyline, Line, Text as SvgText } from 'react-native-svg';
-import { useHealthKit, RecoveryData, WeeklyTrainingLoad } from '../hooks/useHealthKit';
+import { useHealthKit, RecoveryData, WeeklyTrainingLoad, STORAGE_PREFERRED_TRACKER, buildSourcePrefs } from '../hooks/useHealthKit';
 
 const { width } = Dimensions.get('window');
 const CHART_W = (width - 64) / 2 - 8;
@@ -290,15 +290,17 @@ export default function RecoveryScreen() {
   const [showCustomize, setShowCustomize] = useState(false);
   const [visibleMetrics, setVisibleMetrics] = useState<string[]>(DEFAULT_VISIBLE);
   const [sourcePrefs, setSourcePrefs] = useState<Record<string, string>>({});
+  const [preferredTracker, setPreferredTracker] = useState<string>('auto');
   const [availableSources, setAvailableSources] = useState<Record<string, string[]>>({});
   const [trainingLoad, setTrainingLoad] = useState<WeeklyTrainingLoad | null>(null);
 
   // Load persisted prefs on mount
   useEffect(() => {
-    AsyncStorage.multiGet([STORAGE_SOURCE_PREFS, STORAGE_VISIBLE_METRICS]).then(pairs => {
-      const [srcRaw, visRaw] = pairs;
+    AsyncStorage.multiGet([STORAGE_SOURCE_PREFS, STORAGE_VISIBLE_METRICS, STORAGE_PREFERRED_TRACKER]).then(pairs => {
+      const [srcRaw, visRaw, trackerRaw] = pairs;
       if (srcRaw[1]) setSourcePrefs(JSON.parse(srcRaw[1]));
       if (visRaw[1]) setVisibleMetrics(JSON.parse(visRaw[1]));
+      if (trackerRaw[1]) setPreferredTracker(trackerRaw[1]);
     });
   }, []);
 
@@ -325,9 +327,16 @@ export default function RecoveryScreen() {
       if (!silent) { setUnavailable(true); setLoading(false); }
       return;
     }
+    // Re-read the global "Preferred fitness tracker" (set on Profile) in
+    // case it changed since this screen mounted, then merge it with any
+    // per-metric overrides from the Customize sheet (those win).
+    const trackerRaw = await AsyncStorage.getItem(STORAGE_PREFERRED_TRACKER);
+    const tracker = trackerRaw ?? preferredTracker;
+    if (trackerRaw && trackerRaw !== preferredTracker) setPreferredTracker(trackerRaw);
+    const effectivePrefs = buildSourcePrefs(tracker, prefs ?? sourcePrefs);
     const [result, load_] = await Promise.all([
-      health.getRecoveryData(prefs ?? sourcePrefs),
-      health.getWeeklyTrainingLoad(),
+      health.getRecoveryData(effectivePrefs),
+      health.getWeeklyTrainingLoad(effectivePrefs),
     ]);
     setData(result);
     setTrainingLoad(load_);
@@ -590,7 +599,7 @@ export default function RecoveryScreen() {
                   label="Active Cal"
                   value={data.activeCalories !== null ? data.activeCalories.toLocaleString() : null}
                   unit="kcal"
-                  sub="Burned today"
+                  sub="Burned today · may differ from your tracker's app"
                   color="#fbbf24"
                   source={data.sources['activeCal']}
                 />
@@ -769,6 +778,7 @@ function TrainingLoadCard({ load }: { load: WeeklyTrainingLoad }) {
           {load.totalCalories > 0 && <Text style={tl.statSub}>{load.totalCalories.toLocaleString()} kcal</Text>}
         </View>
       </View>
+      <Text style={tl.note}>From Apple Health workouts · overlapping entries from multiple devices are merged, but totals may still differ slightly from a tracker's own app</Text>
       <View style={tl.bars}>
         {days.map((d, i) => {
           const pct = d.minutes / maxMin;
@@ -794,6 +804,7 @@ const tl = StyleSheet.create({
   stat: { fontSize: 22, fontWeight: '900', color: '#fff' },
   statUnit: { fontSize: 13, color: '#555', fontWeight: '600' },
   statSub: { fontSize: 11, color: '#444', fontWeight: '500', marginTop: 2 },
+  note: { fontSize: 10, color: '#333', fontWeight: '500', marginTop: 8, lineHeight: 15 },
   bars: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 16, height: 60 },
   barCol: { alignItems: 'center', gap: 4 },
   barBg: { flex: 1, width: '70%', backgroundColor: '#222', borderRadius: 3, justifyContent: 'flex-end', overflow: 'hidden' },

@@ -11,7 +11,8 @@ import { PRESET_PROGRAMS } from '../constants/programs';
 import CoachScreen from './CoachScreen';
 import { callAI } from '../constants/ai';
 import { getSportProfile } from '../constants/sportProfiles';
-import { useHealthKit, HealthKitWorkout, WeeklyTrainingLoad } from '../hooks/useHealthKit';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useHealthKit, HealthKitWorkout, WeeklyTrainingLoad, STORAGE_PREFERRED_TRACKER, buildSourcePrefs } from '../hooks/useHealthKit';
 import { useUnits } from '../constants/units';
 
 const todayStr = () => new Date().toISOString().split('T')[0];
@@ -43,6 +44,8 @@ export default function WorkoutScreen({ profile }: { profile?: any }) {
     { day: 'Day 1', name: 'Day 1', type: 'training', exercises: [] },
   ]);
   const [builderDayIndex, setBuilderDayIndex] = useState(0);
+  const [editingWorkoutId, setEditingWorkoutId] = useState<number | null>(null);
+  const [builderReturnView, setBuilderReturnView] = useState<'select' | 'workout'>('select');
   const [savingWorkout, setSavingWorkout] = useState(false);
   const [generatingWorkout, setGeneratingWorkout] = useState(false);
   const [exName, setExName] = useState('');
@@ -63,9 +66,14 @@ export default function WorkoutScreen({ profile }: { profile?: any }) {
     (async () => {
       const authorized = health.isAuthorized || (await health.requestPermissions()).ok;
       if (!authorized) return;
+      // Respect the global "Preferred fitness tracker" (set on Profile) so
+      // workouts logged by multiple devices don't double-count training load.
+      // Overlapping cross-source duplicates are also merged regardless.
+      const tracker = await AsyncStorage.getItem(STORAGE_PREFERRED_TRACKER);
+      const sourcePrefs = buildSourcePrefs(tracker);
       const [workouts, load] = await Promise.all([
-        health.getWorkoutHistory(7),
-        health.getWeeklyTrainingLoad(),
+        health.getWorkoutHistory(7, sourcePrefs),
+        health.getWeeklyTrainingLoad(sourcePrefs),
       ]);
       setRecentWorkouts(workouts);
       setWeeklyLoad(load);
@@ -106,9 +114,9 @@ export default function WorkoutScreen({ profile }: { profile?: any }) {
 
   useEffect(() => { fetchLastSessions(); }, [fetchLastSessions]);
 
-  const upsertEx = async (exId: string, done: boolean, sets: any[]) => {
+  const upsertEx = async (exId: string, exName: string, done: boolean, sets: any[]) => {
     await supabase.from('workout_logs').upsert({
-      user_id: user!.id, date, day_index: activeDay, exercise_id: exId, done, sets,
+      user_id: user!.id, date, day_index: activeDay, exercise_id: exId, exercise_name: exName, done, sets,
     }, { onConflict: 'user_id,date,day_index,exercise_id' });
   };
 
@@ -117,7 +125,7 @@ export default function WorkoutScreen({ profile }: { profile?: any }) {
     const cur = dayLog[exId] || { done: false, sets: initSets(ex) };
     const updated = { ...cur, done: !cur.done };
     setDayLog(prev => ({ ...prev, [exId]: updated }));
-    await upsertEx(exId, updated.done, updated.sets);
+    await upsertEx(exId, ex.name, updated.done, updated.sets);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
@@ -126,7 +134,7 @@ export default function WorkoutScreen({ profile }: { profile?: any }) {
     const cur = dayLog[exId] || { done: false, sets: initSets(ex) };
     const sets = cur.sets.map((s: any, i: number) => i === si ? { ...s, [field]: value } : s);
     setDayLog(prev => ({ ...prev, [exId]: { ...cur, sets } }));
-    await upsertEx(exId, cur.done, sets);
+    await upsertEx(exId, ex.name, cur.done, sets);
   };
 
   const toggleSetDone = async (exId: string, si: number) => {
@@ -136,8 +144,18 @@ export default function WorkoutScreen({ profile }: { profile?: any }) {
     const allDone = sets.every((s: any) => s.done);
     const updated = { ...cur, sets, done: allDone };
     setDayLog(prev => ({ ...prev, [exId]: updated }));
-    await upsertEx(exId, allDone, sets);
+    await upsertEx(exId, ex.name, allDone, sets);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const selectDay = async (i: number) => {
+    setActiveDay(i);
+    setExpandedEx(null);
+    if (activeProgram?.isCustom && activeProgram?.id) {
+      setActiveProgram((prev: any) => prev ? { ...prev, current_day_index: i } : prev);
+      setCustomWorkouts(prev => prev.map(w => w.id === activeProgram.id ? { ...w, current_day_index: i } : w));
+      await supabase.from('custom_workouts').update({ current_day_index: i, updated_at: new Date().toISOString() }).eq('id', activeProgram.id);
+    }
   };
 
   const addExerciseToDay = () => {
@@ -210,15 +228,54 @@ Return ONLY a JSON array, nothing else:
     }
   };
 
+  const openEditWorkout = (w: any) => {
+    setBuilderName(w.name);
+    setBuilderDays(JSON.parse(JSON.stringify(w.days)));
+    setBuilderDayIndex(Math.min(activeDay, w.days.length - 1));
+    setEditingWorkoutId(w.id);
+    setBuilderReturnView('workout');
+    setView('builder');
+  };
+
+  const resetBuilderState = () => {
+    setBuilderName('My Workout');
+    setBuilderDays([{ day: 'Day 1', name: 'Day 1', type: 'training', exercises: [] }]);
+    setBuilderDayIndex(0);
+    setEditingWorkoutId(null);
+  };
+
+  const exitBuilder = () => {
+    setView(builderReturnView);
+    resetBuilderState();
+    setBuilderReturnView('select');
+  };
+
   const saveCustomWorkout = async () => {
     setSavingWorkout(true);
+    if (editingWorkoutId) {
+      await supabase.from('custom_workouts')
+        .update({ name: builderName, days: builderDays, updated_at: new Date().toISOString() })
+        .eq('id', editingWorkoutId);
+      await fetchCustomWorkouts();
+      setSavingWorkout(false);
+      setView(builderReturnView);
+      if (builderReturnView === 'workout') {
+        const newDayIndex = Math.min(activeDay, builderDays.length - 1);
+        setActiveProgram({ id: editingWorkoutId, name: builderName, days: builderDays, isCustom: true, current_day_index: newDayIndex });
+        setActiveDay(newDayIndex);
+        setExpandedEx(null);
+      }
+      resetBuilderState();
+      setBuilderReturnView('select');
+      Alert.alert('Saved!', 'Your workout has been updated.');
+      return;
+    }
     await supabase.from('custom_workouts').insert({ user_id: user!.id, name: builderName, days: builderDays });
     await fetchCustomWorkouts();
     setSavingWorkout(false);
     setView('select');
-    setBuilderName('My Workout');
-    setBuilderDays([{ day: 'Day 1', name: 'Day 1', type: 'training', exercises: [] }]);
-    setBuilderDayIndex(0);
+    resetBuilderState();
+    setBuilderReturnView('select');
     Alert.alert('Saved!', 'Your custom workout has been saved.');
   };
 
@@ -250,7 +307,7 @@ Return ONLY a JSON array, nothing else:
       <SafeAreaView style={s.safe} edges={['top']}>
         <View style={s.header}>
           <Text style={s.title}>Workout</Text>
-          <TouchableOpacity style={s.buildBtn} onPress={() => setView('builder')}>
+          <TouchableOpacity style={s.buildBtn} onPress={() => { resetBuilderState(); setBuilderReturnView('select'); setView('builder'); }}>
             <Text style={s.buildBtnText}>+ Build</Text>
           </TouchableOpacity>
         </View>
@@ -285,7 +342,7 @@ Return ONLY a JSON array, nothing else:
             <Text style={s.emptyText}>No custom workouts yet.{'\n'}Tap "+ Build" to create one!</Text>
           )}
           {customWorkouts.map(w => (
-            <TouchableOpacity key={w.id} style={s.programCard} onPress={() => { setActiveProgram({ ...w, days: w.days }); setActiveDay(0); setView('workout'); }} activeOpacity={0.8}>
+            <TouchableOpacity key={w.id} style={s.programCard} onPress={() => { setActiveProgram({ ...w, days: w.days, isCustom: true }); setActiveDay(w.current_day_index || 0); setExpandedEx(null); setView('workout'); }} activeOpacity={0.8}>
               <View style={s.programTop}>
                 <Text style={s.programName}>{w.name}</Text>
                 <TouchableOpacity onPress={() => deleteCustomWorkout(w.id, w.name)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
@@ -305,8 +362,8 @@ Return ONLY a JSON array, nothing else:
     return (
       <SafeAreaView style={s.safe} edges={['top']}>
         <View style={s.header}>
-          <TouchableOpacity onPress={() => setView('select')}><Text style={s.backBtn}>‹ Back</Text></TouchableOpacity>
-          <Text style={s.headerTitle}>Build Workout</Text>
+          <TouchableOpacity onPress={exitBuilder}><Text style={s.backBtn}>‹ Back</Text></TouchableOpacity>
+          <Text style={s.headerTitle}>{editingWorkoutId ? 'Edit Workout' : 'Build Workout'}</Text>
           <TouchableOpacity onPress={saveCustomWorkout} disabled={savingWorkout}>
             {savingWorkout ? <ActivityIndicator color="#fff" /> : <Text style={s.saveBtn}>Save</Text>}
           </TouchableOpacity>
@@ -384,12 +441,18 @@ Return ONLY a JSON array, nothing else:
       <View style={s.header}>
         <TouchableOpacity onPress={() => setView('select')}><Text style={s.backBtn}>‹ Programs</Text></TouchableOpacity>
         <Text style={s.headerTitle} numberOfLines={1}>{activeProgram?.name}</Text>
-        <View style={{ width: 70 }} />
+        {activeProgram?.isCustom ? (
+          <TouchableOpacity style={{ width: 70, alignItems: 'flex-end' }} onPress={() => openEditWorkout(activeProgram)}>
+            <Text style={s.saveBtn}>Edit</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 70 }} />
+        )}
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.dayPicker} contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 10, gap: 8 }}>
         {activeProgram.days.map((p: any, i: number) => (
           <TouchableOpacity key={i} style={[s.dayChip, i === activeDay && s.dayChipActive, p.type === 'rest' && s.dayChipRest, i === activeDay && p.type === 'rest' && s.dayChipRestActive]}
-            onPress={() => { setActiveDay(i); setExpandedEx(null); }}>
+            onPress={() => selectDay(i)}>
             <Text style={[s.dayChipText, i === activeDay && s.dayChipTextActive, p.type === 'rest' && i !== activeDay && s.dayChipTextRest]}>{p.day}</Text>
           </TouchableOpacity>
         ))}
@@ -549,6 +612,7 @@ function RecentActivitySection({ workouts }: { workouts: HealthKitWorkout[] }) {
   return (
     <View style={{ marginBottom: 8 }}>
       <Text style={ws.activityTitle}>RECENT ACTIVITY</Text>
+      <Text style={ws.activityNote}>From Apple Health · duplicate entries from multiple devices are merged, but calories may still differ slightly from a tracker's own app</Text>
       {sortedDates.map(date => (
         <View key={date}>
           <Text style={ws.activityDate}>{fmtDate(date)}</Text>
@@ -580,6 +644,7 @@ const ws = StyleSheet.create({
   suggestionDot: { fontSize: 10, marginTop: 3 },
   suggestionText: { flex: 1, fontSize: 13, color: '#aaa', fontWeight: '500', lineHeight: 20 },
   activityTitle: { fontSize: 11, fontWeight: '700', color: '#444', letterSpacing: 1.5, marginBottom: 10 },
+  activityNote: { fontSize: 10, color: '#333', fontWeight: '500', marginTop: -6, marginBottom: 10, lineHeight: 15 },
   activityDate: { fontSize: 12, fontWeight: '700', color: '#555', marginBottom: 6, marginTop: 4 },
   activityRow: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a',
