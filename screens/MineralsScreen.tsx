@@ -2,6 +2,7 @@ import React, { useMemo, useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { useUnits } from '../constants/units';
@@ -158,7 +159,12 @@ export default function MineralsScreen({ profile }: Props) {
     if (result.canceled || !result.assets[0]?.base64) return;
     setAnalyzingBloodwork(true);
     try {
-      const base64 = result.assets[0].base64;
+      // The picker can return HEIC (default iOS photo format), which Anthropic's
+      // vision API rejects. Re-encode to JPEG so we always send a supported type.
+      const jpeg = await ImageManipulator.manipulateAsync(
+        result.assets[0].uri, [], { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      );
+      const base64 = jpeg.base64!;
       const res = await fetch('https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY, 'Authorization': `Bearer ${ANON_KEY}` },

@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import Svg, { Polyline, Circle, Line, Text as SvgText } from 'react-native-svg';
 
 import { supabase } from '../constants/supabase';
@@ -123,8 +124,14 @@ export default function InBodySection() {
       if (result.canceled || !result.assets[0]?.base64) return;
 
       setScanning(true);
-      const base64 = result.assets[0].base64;
-      const mime = result.assets[0].mimeType || 'image/jpeg';
+
+      // The picker can return HEIC (default iOS photo format), which Anthropic's
+      // vision API rejects. Re-encode to JPEG so we always send a supported type.
+      const jpeg = await ImageManipulator.manipulateAsync(
+        result.assets[0].uri, [], { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      );
+      const base64 = jpeg.base64!;
+      const mime = 'image/jpeg';
 
       const res = await fetch('https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy', {
         method: 'POST',
