@@ -178,6 +178,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onLo
   };
 
   return (
+    <>
     <Modal visible={visible && !scannerOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={s.safe} edges={['top','bottom']}>
         <View style={s.header}>
@@ -296,13 +297,15 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onLo
           </View>
         </Modal>
 
-        <BarcodeScanner
-          visible={scannerOpen}
-          onClose={() => setScannerOpen(false)}
-          onResult={onBarcodeResult}
-        />
       </SafeAreaView>
     </Modal>
+
+    <BarcodeScanner
+      visible={scannerOpen}
+      onClose={() => setScannerOpen(false)}
+      onResult={onBarcodeResult}
+    />
+    </>
   );
 }
 
