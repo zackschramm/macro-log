@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   ActivityIndicator, Dimensions, Platform, Modal, Switch,
-  TouchableWithoutFeedback, AppState, AppStateStatus,
+  TouchableWithoutFeedback, AppState, AppStateStatus, RefreshControl,
 } from 'react-native';
 import BreathworkScreen from './BreathworkScreen';
 import GlucoseScreen from './GlucoseScreen';
@@ -25,6 +25,27 @@ const CHART_H = 60;
 
 const STORAGE_SOURCE_PREFS = 'recovery_source_prefs';
 const STORAGE_VISIBLE_METRICS = 'recovery_visible_metrics';
+// Last-known snapshot of everything this screen shows. Hydrated on mount so
+// the tab renders instantly with real numbers instead of a full-screen
+// spinner; background refresh then updates in place.
+const STORAGE_SNAPSHOT = 'recovery_snapshot_v1';
+
+type RecoverySnapshot = {
+  ts: number;
+  data: RecoveryData | null;
+  trainingLoad: WeeklyTrainingLoad | null;
+  connectedWearables: Provider[];
+  whoopData: WhoopData | null;
+  whoopTrends: WhoopTrends | null;
+  ouraData: OuraData | null;
+  garminData: GarminData | null;
+  dexcomData: {
+    stats: { average: number; timeInRange: number; timeAboveRange: number; timeBelowRange: number; high: number; low: number };
+    currentReading: number | null;
+    currentTrend: string | null;
+  } | null;
+  cyclePhase: { name: string; emoji: string; day: number; totalDays: number; daysUntilPeriod: number } | null;
+};
 
 const SUPABASE_URL = 'https://zbcxuffgmjuqarapfdwb.supabase.co';
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE';
@@ -506,6 +527,10 @@ export default function RecoveryScreen({
   const [showGlucose, setShowGlucose] = useState(false);
   const [showCycleTracking, setShowCycleTracking] = useState(false);
 
+  const [refreshing, setRefreshing] = useState(false);
+  const [wearableError, setWearableError] = useState<string | null>(null);
+  const hasCacheRef = useRef(false);
+
   useEffect(() => {
     AsyncStorage.multiGet([STORAGE_SOURCE_PREFS, STORAGE_VISIBLE_METRICS, STORAGE_PREFERRED_TRACKER]).then(pairs => {
       const [srcRaw, visRaw, trackerRaw] = pairs;
@@ -515,11 +540,21 @@ export default function RecoveryScreen({
     });
   }, []);
 
+  // Persist the current view so the next open is instant.
+  const snapshotRef = useRef<Partial<RecoverySnapshot>>({});
+  const saveSnapshot = useCallback((patch: Partial<RecoverySnapshot>) => {
+    snapshotRef.current = { ...snapshotRef.current, ...patch, ts: Date.now() };
+    hasCacheRef.current = true;
+    AsyncStorage.setItem(STORAGE_SNAPSHOT, JSON.stringify(snapshotRef.current)).catch(() => {});
+  }, []);
+
   const loadRef = useRef<((prefs?: Record<string, string>, silent?: boolean) => Promise<void>) | null>(null);
 
   const load = useCallback(async (prefs?: Record<string, string>, silent = false) => {
     if (!silent) {
-      setLoading(true);
+      // Full-screen spinner only when there's nothing on screen yet —
+      // otherwise (source change, manual retry) refresh in place.
+      if (!hasCacheRef.current) setLoading(true);
       setUnavailable(false);
       setNoData(false);
       setHealthError(null);
@@ -565,8 +600,9 @@ export default function RecoveryScreen({
       setNoData(false);
     }
     if (!silent) setLoading(false);
+    saveSnapshot({ data: result, trainingLoad: load_ });
     health.getAvailableSources().then(setAvailableSources);
-  }, [health.isAuthorized, sourcePrefs, preferredTracker]);
+  }, [health.isAuthorized, sourcePrefs, preferredTracker, saveSnapshot]);
 
   const loadWearableData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
@@ -575,6 +611,7 @@ export default function RecoveryScreen({
     try {
       connected = await getConnectedWearables(user.id);
       setConnectedWearables(connected);
+      saveSnapshot({ connectedWearables: connected });
     } finally {
       // Always unblock the screen's loading gate, even if the connected-wearables
       // lookup fails — otherwise a network hiccup here would spin the Recovery
@@ -582,14 +619,35 @@ export default function RecoveryScreen({
       setWearablesChecked(true);
     }
     if (connected.length === 0) return;
-    setWearableLoading(true);
-    await Promise.all([
-      connected.includes('whoop') ? getWhoopData(user.id).then(setWhoopData) : null,
-      connected.includes('whoop') ? getWhoopTrends(user.id).then(setWhoopTrends) : null,
-      connected.includes('oura') ? getOuraData(user.id).then(setOuraData) : null,
-      connected.includes('garmin') ? getGarminData(user.id).then(setGarminData) : null,
+    // Only show the cards' loading state when we have nothing to show yet —
+    // with cached data on screen this is a silent background update.
+    if (!snapshotRef.current.whoopData && !snapshotRef.current.ouraData && !snapshotRef.current.garminData) {
+      setWearableLoading(true);
+    }
+    setWearableError(null);
+    // Each provider settles independently and paints as it lands; one failing
+    // proxy no longer nulls out the others or dies silently.
+    const results = await Promise.allSettled([
+      connected.includes('whoop')
+        ? getWhoopData(user.id).then(d => { if (d) { setWhoopData(d); saveSnapshot({ whoopData: d }); } return d; })
+        : Promise.resolve(null),
+      connected.includes('whoop')
+        ? getWhoopTrends(user.id).then(t => { setWhoopTrends(t); saveSnapshot({ whoopTrends: t }); return t; })
+        : Promise.resolve(null),
+      connected.includes('oura')
+        ? getOuraData(user.id).then(d => { if (d) { setOuraData(d); saveSnapshot({ ouraData: d }); } return d; })
+        : Promise.resolve(null),
+      connected.includes('garmin')
+        ? getGarminData(user.id).then(d => { if (d) { setGarminData(d); saveSnapshot({ garminData: d }); } return d; })
+        : Promise.resolve(null),
     ]);
     setWearableLoading(false);
+    // Whoop returning nothing when it's connected = sync problem worth surfacing.
+    if (connected.includes('whoop')) {
+      const whoopFailed = results[0].status === 'rejected' ||
+        (results[0].status === 'fulfilled' && results[0].value == null && !snapshotRef.current.whoopData);
+      if (whoopFailed) setWearableError('Whoop sync failed — pull down to retry');
+    }
 
     // Load Dexcom CGM data
     try {
@@ -600,11 +658,13 @@ export default function RecoveryScreen({
         const cgmResp = await callCgmProxy(session, { action: 'readings' });
         if (cgmResp.data?.stats) {
           const last = cgmResp.data.readings?.[cgmResp.data.readings.length - 1];
-          setDexcomData({
+          const dex = {
             stats: cgmResp.data.stats,
             currentReading: last?.value ?? null,
             currentTrend: last?.trend ?? null,
-          });
+          };
+          setDexcomData(dex);
+          saveSnapshot({ dexcomData: dex });
         }
       }
     } catch {}
@@ -615,16 +675,57 @@ export default function RecoveryScreen({
         .select('tracking_enabled,cycle_length_days,period_length_days,last_period_start')
         .eq('user_id', user.id).maybeSingle();
       if (cs?.tracking_enabled && cs.last_period_start) {
-        setCyclePhase(computeCyclePhase(cs.last_period_start, cs.cycle_length_days, cs.period_length_days));
+        const phase = computeCyclePhase(cs.last_period_start, cs.cycle_length_days, cs.period_length_days);
+        setCyclePhase(phase);
+        saveSnapshot({ cyclePhase: phase });
       }
     } catch {}
-  }, []);
+  }, [saveSnapshot]);
 
   useEffect(() => { loadRef.current = load; }, [load]);
-  useEffect(() => { load(); loadWearableData(); }, []);
 
+  // Mount: hydrate the last-known snapshot first (instant paint), then
+  // refresh everything in the background.
   useEffect(() => {
-    const interval = setInterval(() => { loadRef.current?.(undefined, true); }, 30000);
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(STORAGE_SNAPSHOT);
+        if (raw) {
+          const snap: RecoverySnapshot = JSON.parse(raw);
+          snapshotRef.current = snap;
+          hasCacheRef.current = true;
+          if (snap.data) setData(snap.data);
+          if (snap.trainingLoad) setTrainingLoad(snap.trainingLoad);
+          if (snap.connectedWearables?.length) setConnectedWearables(snap.connectedWearables);
+          if (snap.whoopData) setWhoopData(snap.whoopData);
+          if (snap.whoopTrends) setWhoopTrends(snap.whoopTrends);
+          if (snap.ouraData) setOuraData(snap.ouraData);
+          if (snap.garminData) setGarminData(snap.garminData);
+          if (snap.dexcomData) setDexcomData(snap.dexcomData);
+          if (snap.cyclePhase) setCyclePhase(snap.cyclePhase);
+          if (snap.ts) setLastSyncMs(snap.ts);
+          // Cached view is on screen — skip the full-screen spinner entirely.
+          setLoading(false);
+          setWearablesChecked(true);
+        }
+      } catch {}
+      // Fresh data in the background (silent when cache painted).
+      load(undefined, hasCacheRef.current);
+      loadWearableData();
+    })();
+  }, []);
+
+  // Pull-to-refresh: one gesture refreshes HealthKit + every wearable.
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.allSettled([load(undefined, true), loadWearableData()]);
+    setRefreshing(false);
+  }, [load, loadWearableData]);
+
+  // Periodic silent HealthKit refresh — 5 min, not 30 s (the old interval
+  // hammered HealthKit and the battery for data that changes slowly).
+  useEffect(() => {
+    const interval = setInterval(() => { loadRef.current?.(undefined, true); }, 300_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -636,7 +737,7 @@ export default function RecoveryScreen({
       }
     });
     return () => sub.remove();
-  }, []);
+  }, [loadWearableData]);
 
   const handleToggleMetric = async (key: string) => {
     const next = visibleMetrics.includes(key)
@@ -688,9 +789,15 @@ export default function RecoveryScreen({
         sources: { ...safeData.sources, hrv: 'Whoop', rhr: 'Whoop', sleep: 'Whoop' },
       }
     : data;
-  const score = whoopConnected && whoopData?.recoveryScore != null
-    ? whoopData.recoveryScore
-    : (effectiveData ? calcScore(effectiveData) : null);
+  // While Whoop is connected but its score hasn't arrived yet (first load,
+  // nothing cached), don't flash a HealthKit-derived score that will visibly
+  // jump when Whoop lands a second later — hold the slot until it resolves.
+  const whoopScorePending = whoopConnected && whoopData == null && wearableLoading;
+  const score = whoopScorePending
+    ? null
+    : whoopConnected && whoopData?.recoveryScore != null
+      ? whoopData.recoveryScore
+      : (effectiveData ? calcScore(effectiveData) : null);
   const color = scoreColor(score, colors);
 
   const fmtSleep = (h: number | null) => {
@@ -764,11 +871,12 @@ export default function RecoveryScreen({
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
         <Text style={s.title}>Recovery</Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+          {refreshing && <ActivityIndicator size="small" color={colors.textTertiary} />}
           <TouchableOpacity style={s.iconBtn} onPress={() => setShowCustomize(true)}>
             <Text style={s.iconBtnText}>⚙</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.iconBtn} onPress={() => load(undefined, false)}>
+          <TouchableOpacity style={s.iconBtn} onPress={onRefresh}>
             <Text style={s.iconBtnText}>↻</Text>
           </TouchableOpacity>
         </View>
@@ -789,13 +897,26 @@ export default function RecoveryScreen({
           </TouchableOpacity>
         </View>
       ) : (
-        <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={s.scroll}
+          contentContainerStyle={s.content}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.textTertiary} />
+          }
+        >
+
+          {wearableError && (
+            <TouchableOpacity onPress={onRefresh} style={{ paddingVertical: 6 }}>
+              <Text style={{ fontSize: 12, color: colors.warning }}>⚠ {wearableError}</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Wearable Scores */}
           {connectedWearables.length > 0 ? (
             <>
               <Text style={s.wearableSectionLabel}>WEARABLE SCORES</Text>
-              {wearableLoading ? (
+              {wearableLoading && !whoopData && !ouraData && !garminData ? (
                 <ActivityIndicator color={colors.textTertiary} style={{ alignSelf: 'flex-start', marginBottom: 4 }} />
               ) : (
                 <>
