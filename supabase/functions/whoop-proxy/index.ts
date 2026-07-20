@@ -41,14 +41,29 @@ function localDate(iso: string | null | undefined, tzOffset: string | null | und
   return new Date(new Date(iso).getTime() + offsetMs).toISOString().split('T')[0]
 }
 
-async function refreshWhoop(userId: string): Promise<string | null> {
-  const { data: row } = await supabaseAdmin
-    .from('wearable_tokens')
-    .select('refresh_token')
-    .eq('user_id', userId)
-    .eq('provider', 'whoop')
-    .single()
+// Whoop ROTATES refresh tokens: every refresh invalidates the old one. When
+// several function instances refresh concurrently with the same stored token,
+// only the first wins — the rest get invalid_grant (and Whoop may revoke the
+// whole grant on reuse). So refresh is written to survive races: before and
+// after attempting a refresh we re-read the row, and if another instance
+// already saved a newer access token we use that instead of failing.
+async function refreshWhoop(userId: string, staleAccessToken?: string | null): Promise<string | null> {
+  const readRow = async () => {
+    const { data } = await supabaseAdmin
+      .from('wearable_tokens')
+      .select('access_token, refresh_token')
+      .eq('user_id', userId)
+      .eq('provider', 'whoop')
+      .single()
+    return data as { access_token: string | null; refresh_token: string | null } | null
+  }
+
+  let row = await readRow()
   if (!row?.refresh_token) return null
+  // Another instance already refreshed while we were waiting on the API.
+  if (staleAccessToken && row.access_token && row.access_token !== staleAccessToken) {
+    return row.access_token
+  }
 
   const params = new URLSearchParams({
     grant_type: 'refresh_token',
@@ -62,7 +77,15 @@ async function refreshWhoop(userId: string): Promise<string | null> {
     body: params,
   })
   const tokens = await res.json()
-  if (!tokens.access_token) return null
+
+  if (!tokens.access_token) {
+    // Likely lost a refresh race — give the winner a moment to persist its
+    // new tokens, then use those.
+    await new Promise((r) => setTimeout(r, 1200))
+    row = await readRow()
+    if (row?.access_token && row.access_token !== staleAccessToken) return row.access_token
+    return null
+  }
 
   await supabaseAdmin.from('wearable_tokens').update({
     access_token: tokens.access_token,
@@ -86,7 +109,7 @@ async function whoopFetch(userId: string, path: string): Promise<unknown> {
 
   let token = row.access_token
   if (row.expires_at && new Date(row.expires_at).getTime() - Date.now() < 5 * 60 * 1000) {
-    token = await refreshWhoop(userId) ?? token
+    token = await refreshWhoop(userId, row.access_token) ?? token
   }
 
   let res = await fetch(`${WHOOP_API}${path}`, {
@@ -94,7 +117,7 @@ async function whoopFetch(userId: string, path: string): Promise<unknown> {
   })
 
   if (res.status === 401) {
-    const newToken = await refreshWhoop(userId)
+    const newToken = await refreshWhoop(userId, token)
     if (!newToken) throw new Error('token_refresh_failed')
     res = await fetch(`${WHOOP_API}${path}`, {
       headers: { Authorization: `Bearer ${newToken}` },
@@ -238,6 +261,68 @@ serve(async (req) => {
             }
           })
         return okResponse({ records })
+      }
+
+      case 'summary': {
+        // Everything the Recovery screen needs in ONE invocation. The three
+        // Whoop API calls run sequentially, so at most one token refresh can
+        // ever happen — this is the fix for refresh-token races caused by the
+        // app firing recovery/strain/sleep/history calls in parallel.
+        const recData = await whoopFetch(user.id, '/v2/recovery?limit=14') as any
+        const cycleData = await whoopFetch(user.id, '/v2/cycle?limit=1') as any
+        const sleepData = await whoopFetch(user.id, '/v2/activity/sleep?limit=25') as any
+
+        const scoredRecs = (recData?.records ?? []).filter((r: any) => r.score_state === 'SCORED')
+        const r = scoredRecs[0]
+        const recovery = r ? {
+          recoveryScore: r.score?.recovery_score ?? null,
+          hrv: r.score?.hrv_rmssd_milli ?? null,
+          restingHR: r.score?.resting_heart_rate ?? null,
+          spo2: r.score?.spo2_percentage ?? null,
+          skinTemp: r.score?.skin_temp_celsius ?? null,
+          sleepPerformance: r.score?.sleep_performance_percentage ?? null,
+        } : null
+
+        const strain = cycleData?.records?.[0]?.score?.strain ?? null
+
+        const scoredSleeps = (sleepData?.records ?? []).filter(
+          (x: any) => x.nap === false && x.score_state === 'SCORED',
+        )
+        const s = scoredSleeps[0]
+        const stage = s?.score?.stage_summary
+        const totalSleepMs = stage
+          ? (stage.total_light_sleep_time_milli ?? 0) +
+            (stage.total_slow_wave_sleep_time_milli ?? 0) +
+            (stage.total_rem_sleep_time_milli ?? 0)
+          : null
+        const sleep = s ? {
+          sleepPerformance: s.score?.sleep_performance_percentage ?? null,
+          totalSleepMs,
+          deepSleepMs: stage?.total_slow_wave_sleep_time_milli ?? null,
+          remSleepMs: stage?.total_rem_sleep_time_milli ?? null,
+          respiratoryRate: s.score?.respiratory_rate ?? null,
+        } : null
+
+        const recoveryHistory = scoredRecs.slice(0, 7).map((x: any) => ({
+          date: localDate(x.created_at, x.timezone_offset),
+          recoveryScore: x.score?.recovery_score ?? null,
+          hrv: x.score?.hrv_rmssd_milli ?? null,
+          restingHR: x.score?.resting_heart_rate ?? null,
+        }))
+        const sleepHistory = scoredSleeps.slice(0, 7).map((x: any) => {
+          const st = x.score?.stage_summary
+          const ms = st
+            ? (st.total_light_sleep_time_milli ?? 0) +
+              (st.total_slow_wave_sleep_time_milli ?? 0) +
+              (st.total_rem_sleep_time_milli ?? 0)
+            : null
+          return {
+            date: localDate(x.end ?? x.start ?? x.created_at, x.timezone_offset),
+            sleepHours: ms != null ? Math.round(ms / 36000) / 100 : null,
+          }
+        })
+
+        return okResponse({ recovery, strain, sleep, recoveryHistory, sleepHistory })
       }
 
       default:

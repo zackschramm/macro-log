@@ -194,19 +194,26 @@ export async function connectWearableForProvider(provider: Provider): Promise<bo
   return connectWearable(provider)
 }
 
+// One proxy call fetches everything Whoop-related (see whoop-proxy 'summary').
+// Single-flight: getWhoopData and getWhoopTrends are called together by the
+// Recovery screen — they share the same in-flight request so the app makes
+// exactly ONE invocation. Firing several proxy calls in parallel used to race
+// Whoop's rotating refresh tokens and permanently invalidate the connection.
+let whoopSummaryInflight: Promise<any> | null = null
+function fetchWhoopSummary(): Promise<any> {
+  if (!whoopSummaryInflight) {
+    whoopSummaryInflight = callProxy('whoop-proxy', { action: 'summary' })
+      .finally(() => { setTimeout(() => { whoopSummaryInflight = null }, 3000) })
+  }
+  return whoopSummaryInflight
+}
+
 export async function getWhoopData(userId: string): Promise<WhoopData | null> {
   try {
-    const [recoveryResp, strainResp, sleepResp] = await Promise.all([
-      callProxy('whoop-proxy', { action: 'recovery' }),
-      callProxy('whoop-proxy', { action: 'strain' }),
-      callProxy('whoop-proxy', { action: 'sleep' }),
-    ])
-    if (recoveryResp.error) console.error('whoop recovery fetch failed:', recoveryResp.error)
-    if (strainResp.error) console.error('whoop strain fetch failed:', strainResp.error)
-    if (sleepResp.error) console.error('whoop sleep fetch failed:', sleepResp.error)
-    const r = recoveryResp.data
-    const s = strainResp.data
-    const sl = sleepResp.data
+    const resp = await fetchWhoopSummary()
+    if (resp.error) console.error('whoop summary fetch failed:', resp.error)
+    const r = resp.data?.recovery
+    const sl = resp.data?.sleep
     if (!r) return null
     return {
       recoveryScore: r.recoveryScore ?? null,
@@ -215,7 +222,7 @@ export async function getWhoopData(userId: string): Promise<WhoopData | null> {
       spo2: r.spo2 ?? null,
       skinTemp: r.skinTemp ?? null,
       sleepPerformance: r.sleepPerformance ?? null,
-      strain: s?.strain ?? null,
+      strain: resp.data?.strain ?? null,
       sleepHours: sl?.totalSleepMs != null ? Math.round(sl.totalSleepMs / 36000) / 100 : null,
       sleepDeepHours: sl?.deepSleepMs != null ? Math.round(sl.deepSleepMs / 36000) / 100 : null,
       sleepRemHours: sl?.remSleepMs != null ? Math.round(sl.remSleepMs / 36000) / 100 : null,
@@ -232,12 +239,9 @@ export async function getWhoopData(userId: string): Promise<WhoopData | null> {
 // HealthKit's per-source values when Whoop is the connected/authoritative source.
 export async function getWhoopTrends(userId: string): Promise<WhoopTrends> {
   try {
-    const [recResp, sleepResp] = await Promise.all([
-      callProxy('whoop-proxy', { action: 'recovery_history', limit: 7 }),
-      callProxy('whoop-proxy', { action: 'sleep_history', limit: 7 }),
-    ])
-    const recRecords: any[] = recResp.data?.records ?? []
-    const sleepRecords: any[] = sleepResp.data?.records ?? []
+    const resp = await fetchWhoopSummary()
+    const recRecords: any[] = resp.data?.recoveryHistory ?? []
+    const sleepRecords: any[] = resp.data?.sleepHistory ?? []
     const hrvTrend = recRecords
       .filter((r) => r.hrv != null && r.date)
       .map((r) => ({ date: r.date, value: r.hrv }))
