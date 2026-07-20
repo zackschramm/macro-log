@@ -1,4 +1,5 @@
 import * as WebBrowser from 'expo-web-browser'
+import { Linking } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { supabase } from '../constants/supabase'
 
@@ -115,27 +116,17 @@ export async function connectWearable(provider: 'whoop' | 'oura'): Promise<boole
 
   await AsyncStorage.setItem(PENDING_WEARABLE_KEY, provider)
   await AsyncStorage.setItem(PENDING_WEARABLE_STATE_KEY, state)
-  const result = await WebBrowser.openAuthSessionAsync(authUrl, REDIRECT_URI)
-  // If the fallback deep-link handler in App.tsx already consumed the redirect (see
-  // handleWearableRedirect below), the key will already be gone. That path reports its own
-  // result via fuelog_wearable_callback_result, so just defer to it instead of double-reporting.
-  const stillPending = await AsyncStorage.getItem(PENDING_WEARABLE_KEY)
-  await AsyncStorage.removeItem(PENDING_WEARABLE_KEY)
-  await AsyncStorage.removeItem(PENDING_WEARABLE_STATE_KEY)
-  if (!stillPending) return true
-  if (result.type !== 'success') return false
-
-  const parsed = new URLSearchParams(result.url.split('?')[1] ?? '')
-  if (parsed.get('error')) {
-    console.log(`${provider} oauth error:`, parsed.get('error'), parsed.get('error_description'))
-    return false
-  }
-  if (parsed.get('state') !== state) return false
-  const code = parsed.get('code')
-  if (!code) return false
-
-  const resp = await callProxy(`${provider}-proxy`, { action: 'exchange_code', code })
-  return !resp.error
+  // Open the OAuth flow in REAL Safari, not an in-app auth sheet.
+  // Whoop's id.whoop.com login is a JS app that frequently fails to render
+  // inside ASWebAuthenticationSession (blank endless spinner) and its CSRF
+  // handling breaks under ephemeral sessions. The full browser is the only
+  // environment it behaves in. Whoop redirects to fuelog://wearable-callback,
+  // iOS reopens the app, and App.tsx's deep-link handler
+  // (handleWearableRedirect below) finishes the token exchange.
+  await Linking.openURL(authUrl)
+  // Result is reported asynchronously via WEARABLE_CALLBACK_RESULT_KEY when
+  // the redirect lands; returning true just means "flow launched".
+  return true
 }
 
 // Key ProfileScreen polls on mount/foreground to surface the result of a wearable connect
@@ -173,7 +164,9 @@ export async function connectGarmin(): Promise<boolean> {
   if (!tokenResp.data?.authUrl) return false
 
   const { authUrl, requestToken, requestTokenSecret } = tokenResp.data
-  const result = await WebBrowser.openAuthSessionAsync(authUrl, REDIRECT_URI)
+  const result = await WebBrowser.openAuthSessionAsync(authUrl, REDIRECT_URI, {
+    preferEphemeralSession: true,
+  })
   if (result.type !== 'success') return false
 
   const parsed = new URLSearchParams(result.url.split('?')[1] ?? '')

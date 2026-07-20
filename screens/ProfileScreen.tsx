@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet,
-  Alert, ActivityIndicator, Image, Platform, Modal,
+  Alert, ActivityIndicator, Image, Platform, Modal, AppState,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { File, Paths } from 'expo-file-system';
@@ -200,12 +200,14 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
     })();
   }, [health.isAuthorized]);
 
-  // Picks up the result of a wearable connect that finished via App.tsx's fallback deep-link
-  // handler (used when iOS backgrounds the app mid-auth-session and this screen's own
-  // handleConnectWearable promise never resolves).
+  // Picks up the result of a wearable connect that finished via App.tsx's deep-link
+  // handler. Since OAuth now runs in real Safari (the in-app sheet couldn't render
+  // Whoop's login), this fires on mount AND whenever the app returns to foreground —
+  // i.e., the moment the user bounces back from Safari.
   React.useEffect(() => {
     if (!user?.id) return;
-    AsyncStorage.getItem(WEARABLE_CALLBACK_RESULT_KEY).then(async raw => {
+    const check = async () => {
+      const raw = await AsyncStorage.getItem(WEARABLE_CALLBACK_RESULT_KEY);
       if (!raw) return;
       await AsyncStorage.removeItem(WEARABLE_CALLBACK_RESULT_KEY);
       try {
@@ -217,7 +219,17 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
           Alert.alert('Connection failed', `Couldn't connect to ${wearableLabel(provider)}. Please try again.`);
         }
       } catch {}
+    };
+    check();
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        // Deep-link exchange may still be in flight when we foreground — check
+        // now and once more a beat later.
+        check();
+        setTimeout(check, 2500);
+      }
     });
+    return () => sub.remove();
   }, [user?.id]);
 
   const setPreferredTrackerPref = async (value: string) => {
