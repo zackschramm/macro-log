@@ -476,3 +476,14 @@ This rule applies to every build, every session, no exceptions.
 7. **Social tables not in migrations** — RESOLVED 2026-07-19: `supabase/migrations/20260719_social.sql` adds `social_posts`, `post_likes`, `post_comments` (RLS: feed readable by all authenticated users, writes own-rows-only), a `public_profiles` view (id+name only, for user search), and a `get_leaderboard(days)` security-definer RPC (cross-user log counts without opening macro_logs RLS). SocialScreen updated to use the RPC and view. Migration must be applied with `supabase db push` (not yet run as of 2026-07-19).
 
 8. **Android** — HealthKit, WidgetKit, and Siri Shortcuts are iOS-only. The app runs on Android but those features are no-ops. No Android-specific health integration is implemented.
+
+## iOS 27 (Beta) Compatibility Checklist
+
+iOS 27 beta (public July 2026) ships a heavily changed WebKit (Safari 27: 58 features / 525 fixes). Zack's test phone runs the beta; App Review and ~all launch users run stable iOS 26, so beta breakage is NOT a launch blocker — but retest before iOS 27 GA (fall 2026):
+
+1. **Wearable OAuth (KNOWN BROKEN on beta)** — Whoop's id.whoop.com login blank-spins inside ASWebAuthenticationSession on iOS 27 beta (same class of bug as GitHub app login breaking on the preview). Mitigation shipped in build 140: `connectWearable` opens the flow in real Safari via `Linking.openURL` and completes through the fuelog:// deep link (`handleWearableRedirect` in App.tsx). If real Safari also fails on a beta device, connect from a stable-iOS device — nothing app-side can fix beta WebKit.
+2. **On-device AI** (`modules/fuelog-native`, Apple Foundation Models) — verify `isLocalAIAvailable`/`generateLocalAI` against the iOS 27 SDK; Apple evolves this API year over year. Guarded `#available(iOS 26.0, *)`, weak-linked, silent cloud fallback — worst case is fallback to ai-proxy, not a crash.
+3. **WidgetKit widget** — re-verify rendering + App Group data handoff on 27.
+4. **Siri App Intents** — re-verify "Log <food> in Fuelog" intent.
+5. **File Apple Feedback** for the auth-sheet hang while 27 is in beta; check each beta's release notes: https://developer.apple.com/documentation/ios-ipados-release-notes/ios-ipados-27-release-notes
+6. **Never debug wearable/web-auth issues on the beta phone alone** — reproduce on the iOS 26 simulator (`npx expo run:ios`) first to separate app bugs from beta-OS bugs.

@@ -13,7 +13,9 @@ const supabaseAdmin = createClient(
 
 const WHOOP_TOKEN_URL = 'https://api.prod.whoop.com/oauth/oauth2/token'
 const WHOOP_API = 'https://api.prod.whoop.com/developer'
-const REDIRECT_URI = 'fuelog://wearable-callback'
+// Must match the redirect_uri used in the authorize request (utils/wearables.ts
+// WHOOP_REDIRECT_URI) — Whoop validates it again during code exchange.
+const REDIRECT_URI = 'https://fuelog.app/wearable-callback/'
 
 function okResponse(data: unknown) {
   return new Response(JSON.stringify({ data }), {

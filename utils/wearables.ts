@@ -12,6 +12,12 @@ const OURA_CLIENT_ID = '<OURA_CLIENT_ID>'
 const SUPABASE_URL = 'https://zbcxuffgmjuqarapfdwb.supabase.co'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE'
 const REDIRECT_URI = 'fuelog://wearable-callback'
+// Whoop uses an https redirect through fuelog.app instead of the custom
+// scheme: registered in the Whoop dev dashboard 2026-07-19. The bridge page
+// (fuelog-website/public/wearable-callback) forwards code+state into the app
+// via fuelog://wearable-callback, and App.tsx's deep-link handler finishes
+// the exchange. Immune to in-app-sheet/WebKit-beta scheme quirks.
+const WHOOP_REDIRECT_URI = 'https://fuelog.app/wearable-callback/'
 
 // If iOS backgrounds/relaunches the app while the ASWebAuthenticationSession is open,
 // the OAuth redirect can come back through the app's normal deep-link path instead of
@@ -108,7 +114,7 @@ export async function connectWearable(provider: 'whoop' | 'oura'): Promise<boole
   const state = generateState()
   if (provider === 'whoop') {
     const scopes = 'read:recovery read:cycles read:sleep read:workout read:profile'
-    authUrl = `https://api.prod.whoop.com/oauth/oauth2/auth?client_id=${WHOOP_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(scopes)}&response_type=code&state=${state}`
+    authUrl = `https://api.prod.whoop.com/oauth/oauth2/auth?client_id=${WHOOP_CLIENT_ID}&redirect_uri=${encodeURIComponent(WHOOP_REDIRECT_URI)}&scope=${encodeURIComponent(scopes)}&response_type=code&state=${state}`
   } else {
     const scopes = 'daily email personal'
     authUrl = `https://cloud.ouraring.com/oauth/authorize?client_id=${OURA_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(scopes)}&response_type=code&state=${state}`
