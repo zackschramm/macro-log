@@ -28,6 +28,19 @@ function errorResponse(status: number, message: string) {
   })
 }
 
+// Converts a UTC timestamp + Whoop's timezone_offset ("-06:00") into the
+// user's local calendar date (YYYY-MM-DD). Raw UTC dates shifted late-evening
+// bedtimes and early-morning recoveries onto the wrong day.
+function localDate(iso: string | null | undefined, tzOffset: string | null | undefined): string {
+  if (!iso) return ''
+  let offsetMs = 0
+  const m = /^([+-])(\d{2}):(\d{2})$/.exec(tzOffset ?? '')
+  if (m) {
+    offsetMs = (Number(m[2]) * 60 + Number(m[3])) * 60_000 * (m[1] === '-' ? -1 : 1)
+  }
+  return new Date(new Date(iso).getTime() + offsetMs).toISOString().split('T')[0]
+}
+
 async function refreshWhoop(userId: string): Promise<string | null> {
   const { data: row } = await supabaseAdmin
     .from('wearable_tokens')
@@ -140,8 +153,11 @@ serve(async (req) => {
       }
 
       case 'recovery': {
-        const data = await whoopFetch(user.id, '/v2/recovery?limit=1') as any
-        const r = data?.records?.[0]
+        // Fetch a few records and take the newest SCORED one — right after a
+        // sync Whoop returns score_state PENDING with no score, which used to
+        // surface as blank/stale numbers in the app.
+        const data = await whoopFetch(user.id, '/v2/recovery?limit=5') as any
+        const r = (data?.records ?? []).find((x: any) => x.score_state === 'SCORED')
         if (!r) return okResponse(null)
         return okResponse({
           recoveryScore: r.score?.recovery_score ?? null,
@@ -160,8 +176,13 @@ serve(async (req) => {
       }
 
       case 'sleep': {
-        const data = await whoopFetch(user.id, '/v2/activity/sleep?limit=1') as any
-        const s = data?.records?.[0]
+        // Naps are separate sleep activities in Whoop's API — the newest
+        // record after an afternoon nap is the nap, not last night's sleep.
+        // Take the newest scored non-nap record instead.
+        const data = await whoopFetch(user.id, '/v2/activity/sleep?limit=10') as any
+        const s = (data?.records ?? []).find(
+          (x: any) => x.nap === false && x.score_state === 'SCORED',
+        )
         // Duration fields live under score.stage_summary, not directly on score.
         const stage = s?.score?.stage_summary
         const totalSleepMs = stage
@@ -180,31 +201,42 @@ serve(async (req) => {
 
       case 'recovery_history': {
         const limit = Math.min(Math.max(Number(body.limit) || 7, 1), 25)
-        const data = await whoopFetch(user.id, `/v2/recovery?limit=${limit}`) as any
-        const records = (data?.records ?? []).map((r: any) => ({
-          date: (r.created_at ?? '').split('T')[0],
-          recoveryScore: r.score?.recovery_score ?? null,
-          hrv: r.score?.hrv_rmssd_milli ?? null,
-          restingHR: r.score?.resting_heart_rate ?? null,
-        }))
+        // Over-fetch so PENDING/unscored records don't shrink the window.
+        const data = await whoopFetch(user.id, `/v2/recovery?limit=${Math.min(limit * 2, 25)}`) as any
+        const records = (data?.records ?? [])
+          .filter((r: any) => r.score_state === 'SCORED')
+          .slice(0, limit)
+          .map((r: any) => ({
+            date: localDate(r.created_at, r.timezone_offset),
+            recoveryScore: r.score?.recovery_score ?? null,
+            hrv: r.score?.hrv_rmssd_milli ?? null,
+            restingHR: r.score?.resting_heart_rate ?? null,
+          }))
         return okResponse({ records })
       }
 
       case 'sleep_history': {
         const limit = Math.min(Math.max(Number(body.limit) || 7, 1), 25)
-        const data = await whoopFetch(user.id, `/v2/activity/sleep?limit=${limit}`) as any
-        const records = (data?.records ?? []).map((s: any) => {
-          const stage = s.score?.stage_summary
-          const totalMs = stage
-            ? (stage.total_light_sleep_time_milli ?? 0) +
-              (stage.total_slow_wave_sleep_time_milli ?? 0) +
-              (stage.total_rem_sleep_time_milli ?? 0)
-            : null
-          return {
-            date: (s.start ?? s.created_at ?? '').split('T')[0],
-            sleepHours: totalMs != null ? Math.round(totalMs / 36000) / 100 : null,
-          }
-        })
+        // Over-fetch: naps and unscored records are filtered out below.
+        const data = await whoopFetch(user.id, `/v2/activity/sleep?limit=${Math.min(limit * 3, 25)}`) as any
+        const records = (data?.records ?? [])
+          .filter((s: any) => s.nap === false && s.score_state === 'SCORED')
+          .slice(0, limit)
+          .map((s: any) => {
+            const stage = s.score?.stage_summary
+            const totalMs = stage
+              ? (stage.total_light_sleep_time_milli ?? 0) +
+                (stage.total_slow_wave_sleep_time_milli ?? 0) +
+                (stage.total_rem_sleep_time_milli ?? 0)
+              : null
+            return {
+              // Whoop credits sleep to the wake-up day; use the sleep END in
+              // the user's local timezone (raw UTC start pushed late-evening
+              // bedtimes onto the next calendar day).
+              date: localDate(s.end ?? s.start ?? s.created_at, s.timezone_offset),
+              sleepHours: totalMs != null ? Math.round(totalMs / 36000) / 100 : null,
+            }
+          })
         return okResponse({ records })
       }
 
