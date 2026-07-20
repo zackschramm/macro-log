@@ -10,6 +10,7 @@ import { supabase } from '../constants/supabase';
 import BarcodeScanner from '../components/BarcodeScanner';
 import { useAuth } from '../hooks/useAuth';
 import { MC } from '../constants/data';
+import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 
 interface Food {
   id: number;
@@ -25,6 +26,8 @@ interface Food {
 const EMPTY_FORM = { name: '', serving_size: '', calories: '', protein: '', carbs: '', fat: '' };
 
 export default function FoodsScreen() {
+  const { colors } = useTheme();
+  const s = makeStyles(colors);
   const { user } = useAuth();
   const [foods, setFoods] = useState<Food[]>([]);
   const [loading, setLoading] = useState(true);
@@ -191,8 +194,8 @@ export default function FoodsScreen() {
       <View style={s.header}>
         <Text style={s.title}>My Foods</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
-          <TouchableOpacity style={[s.addBtn, { backgroundColor: '#1e1e1e' }]} onPress={() => setUsdaVisible(true)}>
-            <Text style={[s.addBtnText, { color: '#fff' }]}>🔍 Search</Text>
+          <TouchableOpacity style={[s.addBtn, { backgroundColor: colors.card }]} onPress={() => setUsdaVisible(true)}>
+            <Text style={[s.addBtnText, { color: colors.text }]}>🔍 Search</Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.addBtn} onPress={openAdd}>
             <Text style={s.addBtnText}>+ Add</Text>
@@ -202,11 +205,11 @@ export default function FoodsScreen() {
 
       <View style={s.searchWrap}>
         <TextInput style={s.searchInput} value={search} onChangeText={setSearch}
-          placeholder="Search my foods…" placeholderTextColor="#444" clearButtonMode="while-editing" />
+          placeholder="Search my foods…" placeholderTextColor={colors.textTertiary} clearButtonMode="while-editing" />
       </View>
 
       {loading ? (
-        <View style={s.center}><ActivityIndicator color="#fff" /></View>
+        <View style={s.center}><ActivityIndicator color={colors.text} /></View>
       ) : (
         <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
           {filtered.length === 0 && (
@@ -258,7 +261,7 @@ export default function FoodsScreen() {
                   value={usdaQuery}
                   onChangeText={setUsdaQuery}
                   placeholder="Search millions of foods..."
-                  placeholderTextColor="#444"
+                  placeholderTextColor={colors.textTertiary}
                   onSubmitEditing={searchUSDA}
                   returnKeyType="search"
                 />
@@ -266,7 +269,9 @@ export default function FoodsScreen() {
                   style={[s.saveBtn, { marginBottom: 0, paddingHorizontal: 20 }]}
                   onPress={searchUSDA}
                   disabled={usdaSearching}>
-                  {usdaSearching ? <ActivityIndicator color="#000" size="small" /> : <Text style={s.saveBtnText}>Go</Text>}
+                  {usdaSearching
+                    ? <ActivityIndicator color={colors.accentText} size="small" />
+                    : <Text style={s.saveBtnText}>Go</Text>}
                 </TouchableOpacity>
               </View>
             </View>
@@ -291,10 +296,8 @@ export default function FoodsScreen() {
                       <Text style={[s.foodMacro, { color: MC.fat.color }]}>F {food.fat}g</Text>
                     </View>
                   </View>
-                  <TouchableOpacity
-                    style={{ backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}
-                    onPress={() => importUSDAFood(food)}>
-                    <Text style={{ color: '#000', fontWeight: '800', fontSize: 13 }}>+ Add</Text>
+                  <TouchableOpacity style={s.importBtn} onPress={() => importUSDAFood(food)}>
+                    <Text style={s.importBtnText}>+ Add</Text>
                   </TouchableOpacity>
                 </View>
               ))}
@@ -326,32 +329,34 @@ export default function FoodsScreen() {
               </TouchableOpacity>
               <Text style={s.fieldLabel}>Food Name *</Text>
               <TextInput style={s.input} value={form.name} onChangeText={v => setForm(f => ({ ...f, name: v }))}
-                placeholder="e.g. Chicken Breast" placeholderTextColor="#444" />
+                placeholder="e.g. Chicken Breast" placeholderTextColor={colors.textTertiary} />
               <Text style={s.fieldLabel}>Serving Size</Text>
               <TextInput style={s.input} value={form.serving_size} onChangeText={v => setForm(f => ({ ...f, serving_size: v }))}
-                placeholder="e.g. 100g, 1 cup" placeholderTextColor="#444" />
+                placeholder="e.g. 100g, 1 cup" placeholderTextColor={colors.textTertiary} />
               <Text style={s.fieldLabel}>Calories *</Text>
               <TextInput style={s.input} value={form.calories} onChangeText={v => setForm(f => ({ ...f, calories: v }))}
-                placeholder="0" placeholderTextColor="#444" keyboardType="decimal-pad" />
+                placeholder="0" placeholderTextColor={colors.textTertiary} keyboardType="decimal-pad" />
               <View style={s.macroGrid}>
                 <View style={s.macroGridItem}>
                   <Text style={[s.fieldLabel, { color: MC.protein.color }]}>Protein (g)</Text>
                   <TextInput style={s.input} value={form.protein} onChangeText={v => setForm(f => ({ ...f, protein: v }))}
-                    placeholder="0" placeholderTextColor="#444" keyboardType="decimal-pad" />
+                    placeholder="0" placeholderTextColor={colors.textTertiary} keyboardType="decimal-pad" />
                 </View>
                 <View style={s.macroGridItem}>
                   <Text style={[s.fieldLabel, { color: MC.carbs.color }]}>Carbs (g)</Text>
                   <TextInput style={s.input} value={form.carbs} onChangeText={v => setForm(f => ({ ...f, carbs: v }))}
-                    placeholder="0" placeholderTextColor="#444" keyboardType="decimal-pad" />
+                    placeholder="0" placeholderTextColor={colors.textTertiary} keyboardType="decimal-pad" />
                 </View>
                 <View style={s.macroGridItem}>
                   <Text style={[s.fieldLabel, { color: MC.fat.color }]}>Fat (g)</Text>
                   <TextInput style={s.input} value={form.fat} onChangeText={v => setForm(f => ({ ...f, fat: v }))}
-                    placeholder="0" placeholderTextColor="#444" keyboardType="decimal-pad" />
+                    placeholder="0" placeholderTextColor={colors.textTertiary} keyboardType="decimal-pad" />
                 </View>
               </View>
               <TouchableOpacity style={s.saveBtn} onPress={handleSave} disabled={saving || uploadingImage}>
-                {saving || uploadingImage ? <ActivityIndicator color="#000" /> : <Text style={s.saveBtnText}>{editingFood ? 'Save Changes' : 'Add Food'}</Text>}
+                {saving || uploadingImage
+                  ? <ActivityIndicator color={colors.accentText} />
+                  : <Text style={s.saveBtnText}>{editingFood ? 'Save Changes' : 'Add Food'}</Text>}
               </TouchableOpacity>
               {editingFood && (
                 <TouchableOpacity style={s.deleteModalBtn} onPress={() => { setModalVisible(false); handleDelete(editingFood); }}>
@@ -376,50 +381,54 @@ export default function FoodsScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#121212' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
-  title: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: -0.5 },
-  addBtn: { backgroundColor: '#fff', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8 },
-  addBtnText: { color: '#000', fontSize: 14, fontWeight: '800' },
-  searchWrap: { padding: 16, paddingBottom: 8 },
-  searchInput: { backgroundColor: '#1e1e1e', borderRadius: 12, color: '#fff', padding: 12, fontSize: 15 },
-  scroll: { flex: 1 },
-  content: { padding: 16, paddingTop: 8, paddingBottom: 40 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  empty: { alignItems: 'center', paddingVertical: 60 },
-  emptyIcon: { fontSize: 48, marginBottom: 16 },
-  emptyTitle: { fontSize: 18, fontWeight: '800', color: '#fff', marginBottom: 8 },
-  emptySub: { fontSize: 13, color: '#444', fontWeight: '500', textAlign: 'center' },
-  foodCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 14, padding: 12, marginBottom: 8, gap: 12 },
-  foodThumb: { width: 52, height: 52, borderRadius: 10 },
-  foodThumbPlaceholder: { width: 52, height: 52, borderRadius: 10, backgroundColor: '#252525', alignItems: 'center', justifyContent: 'center' },
-  foodThumbEmoji: { fontSize: 24 },
-  foodInfo: { flex: 1 },
-  foodName: { fontSize: 15, fontWeight: '700', color: '#fff', marginBottom: 2 },
-  foodServing: { fontSize: 11, color: '#555', fontWeight: '500', marginBottom: 4 },
-  foodMacros: { flexDirection: 'row', gap: 8 },
-  foodCal: { fontSize: 11, color: '#555', fontWeight: '600' },
-  foodMacro: { fontSize: 11, fontWeight: '600' },
-  deleteBtn: { color: '#333', fontSize: 24, paddingLeft: 8 },
-  modalSafe: { flex: 1, backgroundColor: '#1a1a1a' },
-  handle: { width: 36, height: 4, backgroundColor: '#333', borderRadius: 2, alignSelf: 'center', marginTop: 12, marginBottom: 20 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 20 },
-  modalTitle: { fontSize: 22, fontWeight: '900', color: '#fff' },
-  modalClose: { backgroundColor: '#252525', width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  modalCloseText: { color: '#888', fontSize: 20, lineHeight: 22 },
-  modalScroll: { flex: 1, paddingHorizontal: 20 },
-  photoPicker: { borderRadius: 16, overflow: 'hidden', marginBottom: 20, height: 180, backgroundColor: '#252525' },
-  photoPreview: { width: '100%', height: '100%' },
-  photoPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  photoPlaceholderIcon: { fontSize: 40 },
-  photoPlaceholderText: { fontSize: 16, fontWeight: '700', color: '#fff' },
-  fieldLabel: { fontSize: 11, fontWeight: '700', color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  input: { backgroundColor: '#252525', borderRadius: 12, color: '#fff', padding: 14, fontSize: 15, marginBottom: 16 },
-  macroGrid: { flexDirection: 'row', gap: 10 },
-  macroGridItem: { flex: 1 },
-  saveBtn: { backgroundColor: '#fff', borderRadius: 12, padding: 16, alignItems: 'center', marginBottom: 12 },
-  saveBtnText: { color: '#000', fontSize: 15, fontWeight: '800' },
-  deleteModalBtn: { backgroundColor: '#2a1010', borderRadius: 12, padding: 16, alignItems: 'center' },
-  deleteModalBtnText: { color: '#ff4f4f', fontSize: 15, fontWeight: '700' },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: c.bg },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing.lg, borderBottomWidth: 1, borderBottomColor: c.border },
+    title: { fontSize: 28, fontWeight: weight.heavy, color: c.text, letterSpacing: -0.5 },
+    addBtn: { backgroundColor: c.accent, borderRadius: radius.pill, paddingHorizontal: 16, paddingVertical: 8 },
+    addBtnText: { color: c.accentText, fontSize: 14, fontWeight: weight.heavy },
+    searchWrap: { padding: spacing.lg, paddingBottom: spacing.sm },
+    searchInput: { backgroundColor: c.card, borderRadius: radius.md, color: c.text, padding: spacing.md, fontSize: 15, borderWidth: 1, borderColor: c.border },
+    scroll: { flex: 1 },
+    content: { padding: spacing.lg, paddingTop: spacing.sm, paddingBottom: 40 },
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    empty: { alignItems: 'center', paddingVertical: 60 },
+    emptyIcon: { fontSize: 48, marginBottom: 16 },
+    emptyTitle: { fontSize: 18, fontWeight: weight.heavy, color: c.text, marginBottom: 8 },
+    emptySub: { fontSize: 13, color: c.textTertiary, fontWeight: weight.medium, textAlign: 'center' },
+    foodCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.card, borderRadius: radius.card, padding: spacing.md, marginBottom: 8, gap: 12, borderWidth: 1, borderColor: c.border },
+    foodThumb: { width: 52, height: 52, borderRadius: radius.sm },
+    foodThumbPlaceholder: { width: 52, height: 52, borderRadius: radius.sm, backgroundColor: c.cardAlt, alignItems: 'center', justifyContent: 'center' },
+    foodThumbEmoji: { fontSize: 24 },
+    foodInfo: { flex: 1 },
+    foodName: { fontSize: 15, fontWeight: weight.bold, color: c.text, marginBottom: 2 },
+    foodServing: { fontSize: 11, color: c.textTertiary, fontWeight: weight.medium, marginBottom: 4 },
+    foodMacros: { flexDirection: 'row', gap: 8 },
+    foodCal: { fontSize: 11, color: c.textTertiary, fontWeight: weight.semibold },
+    foodMacro: { fontSize: 11, fontWeight: weight.semibold },
+    deleteBtn: { color: c.textTertiary, fontSize: 24, paddingLeft: 8 },
+    modalSafe: { flex: 1, backgroundColor: c.bgSecondary },
+    handle: { width: 36, height: 4, backgroundColor: c.borderStrong, borderRadius: 2, alignSelf: 'center', marginTop: 12, marginBottom: 20 },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, marginBottom: 20 },
+    modalTitle: { fontSize: 22, fontWeight: weight.heavy, color: c.text },
+    modalClose: { backgroundColor: c.cardAlt, width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+    modalCloseText: { color: c.textSecondary, fontSize: 20, lineHeight: 22 },
+    modalScroll: { flex: 1, paddingHorizontal: spacing.xl },
+    photoPicker: { borderRadius: radius.card, overflow: 'hidden', marginBottom: 20, height: 180, backgroundColor: c.cardAlt },
+    photoPreview: { width: '100%', height: '100%' },
+    photoPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
+    photoPlaceholderIcon: { fontSize: 40 },
+    photoPlaceholderText: { fontSize: 16, fontWeight: weight.bold, color: c.text },
+    fieldLabel: { fontSize: 11, fontWeight: weight.bold, color: c.textTertiary, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+    input: { backgroundColor: c.card, borderRadius: radius.md, color: c.text, padding: 14, fontSize: 15, marginBottom: 16, borderWidth: 1, borderColor: c.border },
+    macroGrid: { flexDirection: 'row', gap: 10 },
+    macroGridItem: { flex: 1 },
+    saveBtn: { backgroundColor: c.accent, borderRadius: radius.md, padding: 16, alignItems: 'center', marginBottom: 12 },
+    saveBtnText: { color: c.accentText, fontSize: 15, fontWeight: weight.heavy },
+    importBtn: { backgroundColor: c.accent, borderRadius: radius.sm, paddingHorizontal: 12, paddingVertical: 8 },
+    importBtnText: { color: c.accentText, fontWeight: weight.heavy, fontSize: 13 },
+    deleteModalBtn: { backgroundColor: c.dangerSoft, borderRadius: radius.md, padding: 16, alignItems: 'center' },
+    deleteModalBtnText: { color: c.danger, fontSize: 15, fontWeight: weight.bold },
+  });
+}

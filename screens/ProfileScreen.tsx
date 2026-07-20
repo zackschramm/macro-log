@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet,
-  Alert, ActivityIndicator, Image, Platform,
+  Alert, ActivityIndicator, Image, Platform, Modal,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import AchievementBadges from '../components/AchievementBadges';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -12,11 +16,23 @@ import FoodsScreen from './FoodsScreen';
 import MealPlanScreen from './MealPlanScreen';
 import NotificationsScreen from './NotificationsScreen';
 import MineralsScreen from './MineralsScreen';
+import ReferralScreen from './ReferralScreen';
 import { useAuth } from '../hooks/useAuth';
 import { calculateTargets, MC } from '../constants/data';
 import { useUnits, UnitSystem, KG_PER_LB, CM_PER_IN } from '../constants/units';
 import { colors, radius, weight } from '../constants/theme';
-import { useHealthKit, STORAGE_PREFERRED_TRACKER } from '../hooks/useHealthKit';
+import { useHealthKit, STORAGE_PREFERRED_TRACKER, STORAGE_HK_SOURCES, SOURCE_PREF_KEYS } from '../hooks/useHealthKit';
+import { useRestTimer } from '../contexts/RestTimerContext';
+import { WATER_GOAL_KEY, DEFAULT_WATER_GOAL } from '../components/WaterTracker';
+import { getOllamaSettings, setOllamaSettings, pingOllama, DEFAULT_OLLAMA_ENDPOINT, DEFAULT_OLLAMA_MODEL } from '../constants/ollama';
+import {
+  getConnectedWearables, connectWearableForProvider, disconnectWearable,
+  WEARABLE_CALLBACK_RESULT_KEY, type Provider,
+} from '../utils/wearables';
+import { toLocalDateString } from '../utils/dateUtils';
+
+const wearableLabel = (provider: Provider) =>
+  provider === 'whoop' ? 'Whoop' : provider === 'oura' ? 'Oura Ring' : 'Garmin';
 
 const ACTIVITY_OPTIONS = [
   { key: 'sedentary', label: 'Sedentary' },
@@ -48,7 +64,7 @@ const SPORT_OPTIONS = [
   { key: 'wrestling',    label: 'Wrestling/MMA',  emoji: '🥊' },
 ];
 
-type SubScreen = 'foods' | 'plan' | 'minerals' | 'notifs';
+type SubScreen = 'foods' | 'plan' | 'minerals' | 'notifs' | 'referral';
 
 function SubScreenHeader({ title, onBack }: { title: string; onBack: () => void }) {
   return (
@@ -67,8 +83,11 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   const { user, signOut } = useAuth();
   const health = useHealthKit();
   const u = useUnits();
+  const restTimer = useRestTimer();
   const [preferredTracker, setPreferredTracker] = useState('auto');
   const [availableTrackers, setAvailableTrackers] = useState<string[]>([]);
+  const [hkSources, setHkSources] = useState<Record<string, string>>({});
+  const [sourceSyncTimes, setSourceSyncTimes] = useState<Record<string, number>>({});
   const [name, setName] = useState(profile.name || '');
   const [age, setAge] = useState(String(profile.age || ''));
   const [weight, setWeight] = useState(profile.weight_lbs ? String(u.dispWeight(profile.weight_lbs)) : '');
@@ -88,14 +107,42 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   const [customFat, setCustomFat] = useState(profile.custom_goals ? String(profile.fat || '') : '');
   const [saved, setSaved] = useState(false);
   const [subScreen, setSubScreen] = useState<SubScreen | null>(null);
+
+  // Periodization
+  const pd = profile.periodization_settings;
+  const [periodizationEnabled, setPeriodizationEnabled] = useState(!!(pd?.enabled));
+  const [trainCal, setTrainCal] = useState(pd?.trainingDay?.calories ? String(pd.trainingDay.calories) : '');
+  const [trainProtein, setTrainProtein] = useState(pd?.trainingDay?.protein ? String(pd.trainingDay.protein) : '');
+  const [trainCarbs, setTrainCarbs] = useState(pd?.trainingDay?.carbs ? String(pd.trainingDay.carbs) : '');
+  const [trainFat, setTrainFat] = useState(pd?.trainingDay?.fat ? String(pd.trainingDay.fat) : '');
+  const [restCal, setRestCal] = useState(pd?.restDay?.calories ? String(pd.restDay.calories) : '');
+  const [restProtein, setRestProtein] = useState(pd?.restDay?.protein ? String(pd.restDay.protein) : '');
+  const [restCarbs, setRestCarbs] = useState(pd?.restDay?.carbs ? String(pd.restDay.carbs) : '');
+  const [restFat, setRestFat] = useState(pd?.restDay?.fat ? String(pd.restDay.fat) : '');
   const [avatarUri, setAvatarUri] = useState(profile.avatar_url || null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [todayNutrients, setTodayNutrients] = useState<Record<string, number>>({});
+  const [waterGoalCups, setWaterGoalCups] = useState(DEFAULT_WATER_GOAL);
+  const [exporting, setExporting] = useState(false);
+  const [connectedWearables, setConnectedWearables] = useState<Provider[]>([]);
+  const [wearableConnecting, setWearableConnecting] = useState<Provider | null>(null);
+  const [dexcomConnected, setDexcomConnected] = useState(false);
+  const [dexcomConnecting, setDexcomConnecting] = useState(false);
+  const [cycleTrackingEnabled, setCycleTrackingEnabled] = useState(false);
+  const [showCycleSetup, setShowCycleSetup] = useState(false);
+  const [cycleSetupLastPeriod, setCycleSetupLastPeriod] = useState('');
+  const [cycleSetupLength, setCycleSetupLength] = useState('28');
+
+  // Local AI (Ollama)
+  const [ollamaEnabled, setOllamaEnabled] = useState(false);
+  const [ollamaEndpoint, setOllamaEndpoint] = useState(DEFAULT_OLLAMA_ENDPOINT);
+  const [ollamaModel, setOllamaModel] = useState(DEFAULT_OLLAMA_MODEL);
+  const [ollamaTestStatus, setOllamaTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
 
   React.useEffect(() => {
     if (subScreen !== 'minerals' || !user?.id) return;
     (async () => {
-      const today = new Date().toISOString().split('T')[0];
+      const today = toLocalDateString();
       const { data } = await supabase.from('macro_logs').select('*').eq('user_id', user.id).eq('date', today);
       if (!data) return;
       const totals: Record<string, number> = {};
@@ -128,24 +175,228 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
     })();
   }, [subScreen, user?.id]);
 
-  // Load the saved "Preferred fitness tracker" choice, and detect which
-  // source names (e.g. "Whoop", "Apple Watch") Apple Health currently has
-  // data from, so the picker can offer real options instead of guesses.
+  // Load tracker prefs, per-metric source overrides, per-device sync times, and wearable connections.
   React.useEffect(() => {
     if (Platform.OS !== 'ios') return;
     AsyncStorage.getItem(STORAGE_PREFERRED_TRACKER).then(val => { if (val) setPreferredTracker(val); });
+    AsyncStorage.getItem(STORAGE_HK_SOURCES).then(val => { if (val) { try { setHkSources(JSON.parse(val)); } catch {} } });
+    if (user?.id) {
+      getConnectedWearables(user.id).then(setConnectedWearables);
+      supabase.from('wearable_tokens').select('provider').eq('user_id', user.id).eq('provider', 'dexcom').maybeSingle()
+        .then(({ data }) => setDexcomConnected(!!data));
+      supabase.from('cycle_settings').select('tracking_enabled').eq('user_id', user.id).maybeSingle()
+        .then(({ data }) => { if (data) setCycleTrackingEnabled(data.tracking_enabled ?? false); });
+    }
     (async () => {
       if (!health.isAuthorized) return;
-      const sources = await health.getAvailableSources();
+      const [sources, syncTimes] = await Promise.all([
+        health.getAvailableSources(),
+        health.getSourceSyncTimes(),
+      ]);
       const names = new Set<string>();
-      Object.values(sources).forEach(list => list.forEach(n => names.add(n)));
+      (Object.values(sources) as string[][]).forEach(list => list.forEach((n: string) => names.add(n)));
       setAvailableTrackers([...names].sort());
+      setSourceSyncTimes(syncTimes);
     })();
   }, [health.isAuthorized]);
+
+  // Picks up the result of a wearable connect that finished via App.tsx's fallback deep-link
+  // handler (used when iOS backgrounds the app mid-auth-session and this screen's own
+  // handleConnectWearable promise never resolves).
+  React.useEffect(() => {
+    if (!user?.id) return;
+    AsyncStorage.getItem(WEARABLE_CALLBACK_RESULT_KEY).then(async raw => {
+      if (!raw) return;
+      await AsyncStorage.removeItem(WEARABLE_CALLBACK_RESULT_KEY);
+      try {
+        const { provider, success } = JSON.parse(raw) as { provider: Provider; success: boolean };
+        if (success) {
+          setConnectedWearables(await getConnectedWearables(user.id));
+          Alert.alert('Connected', `${wearableLabel(provider)} is now connected.`);
+        } else {
+          Alert.alert('Connection failed', `Couldn't connect to ${wearableLabel(provider)}. Please try again.`);
+        }
+      } catch {}
+    });
+  }, [user?.id]);
 
   const setPreferredTrackerPref = async (value: string) => {
     setPreferredTracker(value);
     await AsyncStorage.setItem(STORAGE_PREFERRED_TRACKER, value);
+  };
+
+  const handleConnectWearable = async (provider: Provider) => {
+    setWearableConnecting(provider);
+    try {
+      const success = await connectWearableForProvider(provider);
+      if (success && user?.id) {
+        setConnectedWearables(await getConnectedWearables(user.id));
+      } else if (!success) {
+        Alert.alert('Connection failed', `Couldn't connect to ${wearableLabel(provider)}. Please try again.`);
+      }
+    } catch (e) {
+      console.log('wearable connect error:', e);
+      Alert.alert('Connection failed', `Couldn't connect to ${wearableLabel(provider)}. Please try again.`);
+    } finally {
+      setWearableConnecting(null);
+    }
+  };
+
+  const handleDisconnectWearable = (provider: Provider) => {
+    const label = wearableLabel(provider);
+    Alert.alert('Disconnect', `Remove ${label} connection?`, [
+      { text: 'Cancel' },
+      {
+        text: 'Disconnect', style: 'destructive', onPress: async () => {
+          await disconnectWearable(provider);
+          if (user?.id) setConnectedWearables(await getConnectedWearables(user.id));
+        },
+      },
+    ]);
+  };
+
+  const DEXCOM_CLIENT_ID = 'YOUR_DEXCOM_CLIENT_ID';
+  const DEXCOM_REDIRECT_URI = 'fuelog://wearable-callback';
+  const DEXCOM_SUPABASE_URL = 'https://zbcxuffgmjuqarapfdwb.supabase.co';
+  const DEXCOM_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE';
+
+  const connectDexcom = async () => {
+    setDexcomConnecting(true);
+    try {
+      const authUrl = `https://api.dexcom.com/v2/oauth2/login?client_id=${DEXCOM_CLIENT_ID}&redirect_uri=${encodeURIComponent(DEXCOM_REDIRECT_URI)}&scope=offline_access&response_type=code`;
+      const result = await WebBrowser.openAuthSessionAsync(authUrl, DEXCOM_REDIRECT_URI);
+      if (result.type !== 'success') return;
+      const parsed = new URLSearchParams(result.url.split('?')[1] ?? '');
+      const code = parsed.get('code');
+      if (!code) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch(`${DEXCOM_SUPABASE_URL}/functions/v1/cgm-proxy`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session?.access_token ?? ''}`,
+          apikey: DEXCOM_ANON_KEY,
+        },
+        body: JSON.stringify({ action: 'exchange_code', code }),
+      });
+      const data = await resp.json();
+      if (!data.error) setDexcomConnected(true);
+    } catch (e) {
+      console.log('Dexcom connect error:', e);
+    } finally {
+      setDexcomConnecting(false);
+    }
+  };
+
+  const disconnectDexcom = () => {
+    Alert.alert('Disconnect', 'Remove Dexcom CGM connection?', [
+      { text: 'Cancel' },
+      {
+        text: 'Disconnect', style: 'destructive', onPress: async () => {
+          if (!user?.id) return;
+          await supabase.from('wearable_tokens').delete().eq('user_id', user.id).eq('provider', 'dexcom');
+          setDexcomConnected(false);
+        },
+      },
+    ]);
+  };
+
+  React.useEffect(() => {
+    AsyncStorage.getItem(WATER_GOAL_KEY).then(val => {
+      if (val) setWaterGoalCups(parseInt(val, 10) || DEFAULT_WATER_GOAL);
+    });
+  }, []);
+
+  React.useEffect(() => {
+    getOllamaSettings().then(s => {
+      setOllamaEnabled(s.enabled);
+      setOllamaEndpoint(s.endpoint);
+      setOllamaModel(s.model);
+    });
+  }, []);
+
+  const toggleOllamaEnabled = async () => {
+    const next = !ollamaEnabled;
+    setOllamaEnabled(next);
+    setOllamaTestStatus('idle');
+    await setOllamaSettings({ enabled: next });
+  };
+
+  const saveOllamaEndpoint = async (value: string) => {
+    setOllamaEndpoint(value);
+    setOllamaTestStatus('idle');
+    await setOllamaSettings({ endpoint: value });
+  };
+
+  const saveOllamaModel = async (value: string) => {
+    setOllamaModel(value);
+    await setOllamaSettings({ model: value });
+  };
+
+  const testOllamaConnection = async () => {
+    setOllamaTestStatus('testing');
+    const ok = await pingOllama(ollamaEndpoint);
+    setOllamaTestStatus(ok ? 'ok' : 'fail');
+  };
+
+  const changeWaterGoal = async (delta: number) => {
+    const next = Math.min(16, Math.max(4, waterGoalCups + delta));
+    setWaterGoalCups(next);
+    await AsyncStorage.setItem(WATER_GOAL_KEY, String(next));
+  };
+
+  const exportData = async () => {
+    if (!user) return;
+    setExporting(true);
+    try {
+      const [macroRes, workoutRes, inbodyRes] = await Promise.all([
+        supabase.from('macro_logs').select('date, meal, food, calories, protein, carbs, fat').eq('user_id', user.id).order('date'),
+        supabase.from('workout_logs').select('date, exercise_name, sets').eq('user_id', user.id).eq('done', true).order('date'),
+        supabase.from('inbody_logs').select('measured_at, body_fat_pct, skeletal_muscle_mass_lb, bmi, weight_lb').eq('user_id', user.id).order('measured_at'),
+      ]);
+
+      const esc = (v: any) => {
+        const str = String(v ?? '');
+        return str.includes(',') || str.includes('"') || str.includes('\n')
+          ? `"${str.replace(/"/g, '""')}"` : str;
+      };
+
+      const macroCsv = [
+        'date,meal_name,calories,protein_g,carbs_g,fat_g',
+        ...(macroRes.data || []).map((r: any) =>
+          `${r.date},${esc(r.food || r.meal)},${r.calories},${r.protein},${r.carbs},${r.fat}`
+        ),
+      ].join('\n');
+
+      const workoutRows = ['date,exercise_name,set_number,reps,weight_lbs'];
+      (workoutRes.data || []).forEach((r: any) => {
+        (r.sets || []).forEach((set: any, i: number) => {
+          workoutRows.push(`${r.date},${esc(r.exercise_name)},${i + 1},${set.reps ?? ''},${set.weight ?? ''}`);
+        });
+      });
+      const workoutCsv = workoutRows.join('\n');
+
+      const LB_TO_KG = 0.453592;
+      const inbodyCsv = [
+        'date,body_fat_pct,muscle_mass_kg,bmi,weight_kg',
+        ...(inbodyRes.data || []).map((r: any) => {
+          const date = r.measured_at ? toLocalDateString(new Date(r.measured_at)) : '';
+          const musKg = r.skeletal_muscle_mass_lb ? (r.skeletal_muscle_mass_lb * LB_TO_KG).toFixed(2) : '';
+          const wtKg = r.weight_lb ? (r.weight_lb * LB_TO_KG).toFixed(2) : '';
+          return `${date},${r.body_fat_pct ?? ''},${musKg},${r.bmi ?? ''},${wtKg}`;
+        }),
+      ].join('\n');
+
+      const combined = `MACRO LOG\n${macroCsv}\n\nWORKOUT LOG\n${workoutCsv}\n\nINBODY SCANS\n${inbodyCsv}`;
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const file = new File(Paths.cache, `fuelog_export_${ts}.txt`);
+      await file.write(combined);
+      await Sharing.shareAsync(file.uri, { mimeType: 'text/plain', dialogTitle: 'Export Fuelog Data' });
+    } catch (e: any) {
+      Alert.alert('Export Failed', e?.message || 'Could not export your data.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const totalHeightIn = Math.round(u.fieldsToInch({ ft: heightFt, in: heightIn, cm: heightCm }));
@@ -197,7 +448,22 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
       carbs: parseInt(customCarbs) || calculateTargets(profileData).carbs,
       fat: parseInt(customFat) || calculateTargets(profileData).fat,
     } : calculateTargets(profileData);
-    const updated = { id: user!.id, name, ...profileData, ...targets, custom_goals: customGoals, updated_at: new Date().toISOString() };
+    const periodization_settings = periodizationEnabled ? {
+      enabled: true,
+      trainingDay: {
+        calories: parseInt(trainCal)    || 0,
+        protein:  parseInt(trainProtein) || 0,
+        carbs:    parseInt(trainCarbs)  || 0,
+        fat:      parseInt(trainFat)    || 0,
+      },
+      restDay: {
+        calories: parseInt(restCal)     || 0,
+        protein:  parseInt(restProtein) || 0,
+        carbs:    parseInt(restCarbs)   || 0,
+        fat:      parseInt(restFat)     || 0,
+      },
+    } : null;
+    const updated = { id: user!.id, name, ...profileData, ...targets, custom_goals: customGoals, periodization_settings, updated_at: new Date().toISOString() };
     const { error } = await supabase.from('profiles').upsert(updated);
     if (error) { Alert.alert('Error', error.message); }
     else { onUpdate(updated); setSaved(true); setTimeout(() => setSaved(false), 2000); }
@@ -211,9 +477,70 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
     sex, activity, goal, sport,
   });
 
+  const handlePeriodizationToggle = () => {
+    const next = !periodizationEnabled;
+    setPeriodizationEnabled(next);
+    if (next && !trainCal) {
+      const base = {
+        calories: profile.calories || autoTargets.calories,
+        protein:  profile.protein  || autoTargets.protein,
+        carbs:    profile.carbs    || autoTargets.carbs,
+        fat:      profile.fat      || autoTargets.fat,
+      };
+      setTrainCal(String(base.calories + 200));
+      setTrainProtein(String(base.protein));
+      setTrainCarbs(String(base.carbs + 50));
+      setTrainFat(String(base.fat));
+      setRestCal(String(Math.max(0, base.calories - 150)));
+      setRestProtein(String(base.protein));
+      setRestCarbs(String(Math.max(0, base.carbs - 40)));
+      setRestFat(String(base.fat));
+    }
+  };
+
   const targets = { calories: profile.calories, protein: profile.protein, carbs: profile.carbs, fat: profile.fat };
 
+  const METRIC_LABELS: Record<string, string> = {
+    hrv: 'HRV', rhr: 'Resting HR', sleep: 'Sleep',
+    steps: 'Steps', activeCal: 'Active Calories', basalCal: 'Resting Calories (BMR)',
+    bloodO2: 'Blood O₂', respRate: 'Respiratory Rate', vo2: 'VO₂ Max', workouts: 'Workouts',
+  };
+
+  const fmtSync = (ms: number | undefined): string => {
+    if (!ms) return '';
+    const mins = Math.round((Date.now() - ms) / 60000);
+    if (mins < 2) return 'just now';
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return new Date(ms).toLocaleDateString();
+  };
+
+  const pickSource = (metricKey: string) => {
+    const opts = ['Auto', ...availableTrackers];
+    Alert.alert(
+      METRIC_LABELS[metricKey] ?? metricKey,
+      'Choose preferred source',
+      [
+        ...opts.map(src => ({
+          text: src === 'Auto' ? 'Auto (let system choose)' : src,
+          onPress: async () => {
+            const next = { ...hkSources };
+            if (src === 'Auto') delete next[metricKey];
+            else next[metricKey] = src;
+            setHkSources(next);
+            await AsyncStorage.setItem(STORAGE_HK_SOURCES, JSON.stringify(next));
+          },
+        })),
+        { text: 'Cancel', style: 'cancel' as const },
+      ]
+    );
+  };
+
   // ── Sub-screens ────────────────────────────────────────────────────────────────
+  if (subScreen === 'referral') return (
+    <ReferralScreen onBack={() => setSubScreen(null)} profile={profile} />
+  );
   if (subScreen === 'foods') return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <SubScreenHeader title="My Foods" onBack={() => setSubScreen(null)} />
@@ -292,6 +619,17 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
 
         {/* Quick links */}
         <View style={s.linksCard}>
+          {/* Referral row — teal accent to stand out */}
+          <TouchableOpacity style={[s.linkRow, s.linkRowBorder]} onPress={() => setSubScreen('referral')} activeOpacity={0.7}>
+            <View style={[s.linkIcon, { backgroundColor: colors.accentMuted }]}>
+              <Ionicons name="gift-outline" size={18} color={colors.accent} />
+            </View>
+            <View style={s.linkText}>
+              <Text style={[s.linkLabel, { color: colors.accent }]}>🎁 Refer a Friend</Text>
+              <Text style={s.linkSub}>Give 1 month free, get 1 month free</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.accent} />
+          </TouchableOpacity>
           {([
             { key: 'foods',    icon: 'nutrition-outline',       label: 'My Foods',       sub: 'Custom food database' },
             { key: 'plan',     icon: 'calendar-outline',        label: 'Meal Plan',      sub: 'AI-generated meal plans' },
@@ -370,6 +708,33 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
           </View>
         </View>
 
+        {/* Hydration */}
+        <Text style={s.sectionLabel}>HYDRATION</Text>
+        <View style={s.formCard}>
+          <View style={s.fieldRow}>
+            <Text style={s.fieldLabel}>Daily Water Goal</Text>
+            <View style={s.stepper}>
+              <TouchableOpacity
+                style={[s.stepBtn, waterGoalCups <= 4 && s.stepBtnDisabled]}
+                onPress={() => changeWaterGoal(-1)}
+                disabled={waterGoalCups <= 4}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={s.stepBtnText}>−</Text>
+              </TouchableOpacity>
+              <Text style={s.stepVal}>{waterGoalCups} cups</Text>
+              <TouchableOpacity
+                style={[s.stepBtn, waterGoalCups >= 16 && s.stepBtnDisabled]}
+                onPress={() => changeWaterGoal(1)}
+                disabled={waterGoalCups >= 16}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={s.stepBtnText}>+</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+
         {/* Training */}
         <Text style={s.sectionLabel}>TRAINING</Text>
         <View style={s.formCard}>
@@ -403,6 +768,21 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
               );
             })}
           </View>
+          <View style={s.fieldDivider} />
+          <Text style={[s.inlineLabel, { marginTop: 12 }]}>Rest Timer</Text>
+          <View style={s.chipRow}>
+            {[60, 90, 120, 180].map(sec => (
+              <TouchableOpacity
+                key={sec}
+                style={[s.chip, restTimer.defaultSeconds === sec && s.chipActive]}
+                onPress={() => restTimer.setDefaultSeconds(sec)}
+              >
+                <Text style={[s.chipText, restTimer.defaultSeconds === sec && s.chipTextActive]}>
+                  {sec}s
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         {/* Health data source */}
@@ -425,12 +805,141 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
               <Text style={s.healthNote}>
                 {availableTrackers.length === 0
                   ? 'Open the Recovery tab once to connect Apple Health and detect your devices (Whoop, Apple Watch, etc.).'
-                  : 'Applies to steps, active calories, HRV, sleep, and workouts pulled from Apple Health. "Automatic" picks the source with the most data for each metric. You can still override individual metrics in Recovery → Customize.'}
+                  : 'Global default for all metrics. Override individual metrics below. You can also override per-metric in Recovery → Customize.'}
               </Text>
               <Text style={s.healthNote}>
-                Even with the right source selected, numbers may differ slightly from a tracker's own app — each device/app calculates calories, sleep stages, etc. with its own algorithm.
+                Numbers may differ slightly from a tracker's own app — each device calculates calories, sleep stages, etc. with its own algorithm.
               </Text>
             </View>
+
+            {availableTrackers.length > 0 && (
+              <>
+                <Text style={s.sectionLabel}>DATA SOURCES</Text>
+                <View style={s.formCard}>
+                  {SOURCE_PREF_KEYS.map((key, i) => {
+                    const currentSource = hkSources[key];
+                    const syncMs = currentSource ? sourceSyncTimes[currentSource] : undefined;
+                    const syncLabel = fmtSync(syncMs);
+                    return (
+                      <React.Fragment key={key}>
+                        {i > 0 && <View style={s.fieldDivider} />}
+                        <TouchableOpacity style={s.sourceRow} onPress={() => pickSource(key)} activeOpacity={0.7}>
+                          <View style={s.sourceRowLeft}>
+                            <Text style={s.fieldLabel}>{METRIC_LABELS[key]}</Text>
+                            {syncLabel ? <Text style={s.sourceSyncLabel}>Synced {syncLabel}</Text> : null}
+                          </View>
+                          <View style={s.sourceRowRight}>
+                            <Text style={s.sourceValue}>{currentSource ?? 'Auto'}</Text>
+                            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                          </View>
+                        </TouchableOpacity>
+                      </React.Fragment>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
+            <Text style={s.sectionLabel}>WEARABLES</Text>
+            <View style={s.formCard}>
+              {([
+                { key: 'whoop' as Provider, label: 'Whoop', icon: '⚡' },
+                { key: 'oura' as Provider, label: 'Oura Ring', icon: '💍' },
+                { key: 'garmin' as Provider, label: 'Garmin', icon: '⌚' },
+              ]).map((w, i) => {
+                const isConnected = connectedWearables.includes(w.key);
+                const isConnecting = wearableConnecting === w.key;
+                return (
+                  <React.Fragment key={w.key}>
+                    {i > 0 && <View style={s.fieldDivider} />}
+                    <View style={s.sourceRow}>
+                      <Text style={s.fieldLabel}>{w.icon} {w.label}</Text>
+                      {isConnected ? (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#C8FF3D' }} />
+                          <Text style={{ fontSize: 13, color: '#C8FF3D', fontWeight: '600' }}>Connected</Text>
+                          <TouchableOpacity
+                            onPress={() => handleDisconnectWearable(w.key)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            <Ionicons name="close-circle-outline" size={18} color={colors.textTertiary} />
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          onPress={() => handleConnectWearable(w.key)}
+                          disabled={isConnecting}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                        >
+                          {isConnecting ? (
+                            <ActivityIndicator size="small" color={colors.accent} />
+                          ) : (
+                            <>
+                              <Text style={{ fontSize: 13, color: colors.accent, fontWeight: '600' }}>Connect</Text>
+                              <Ionicons name="chevron-forward" size={14} color={colors.accent} />
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </React.Fragment>
+                );
+              })}
+              {/* Dexcom CGM row */}
+              <View style={s.fieldDivider} />
+              <View style={s.sourceRow}>
+                <Text style={s.fieldLabel}>📡 Dexcom CGM</Text>
+                {dexcomConnected ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#C8FF3D' }} />
+                    <Text style={{ fontSize: 13, color: '#C8FF3D', fontWeight: '600' }}>Connected</Text>
+                    <TouchableOpacity onPress={disconnectDexcom} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="close-circle-outline" size={18} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    onPress={connectDexcom}
+                    disabled={dexcomConnecting}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                  >
+                    {dexcomConnecting ? (
+                      <ActivityIndicator size="small" color={colors.accent} />
+                    ) : (
+                      <>
+                        <Text style={{ fontSize: 13, color: colors.accent, fontWeight: '600' }}>Connect</Text>
+                        <Ionicons name="chevron-forward" size={14} color={colors.accent} />
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {/* Cycle Tracking */}
+            <Text style={s.sectionLabel}>CYCLE TRACKING</Text>
+            <TouchableOpacity
+              style={s.customGoalsRow}
+              onPress={() => {
+                if (!cycleTrackingEnabled) {
+                  setShowCycleSetup(true);
+                } else {
+                  setCycleTrackingEnabled(false);
+                  if (user?.id) {
+                    supabase.from('cycle_settings').upsert({ user_id: user.id, tracking_enabled: false }, { onConflict: 'user_id' });
+                  }
+                }
+              }}
+              activeOpacity={0.8}
+            >
+              <View>
+                <Text style={s.customGoalsTitle}>Cycle Tracking</Text>
+                <Text style={s.customGoalsSub}>Phase-aware training and nutrition insights</Text>
+              </View>
+              <View style={[s.toggle, cycleTrackingEnabled && s.toggleOn]}>
+                <View style={[s.toggleThumb, cycleTrackingEnabled && s.toggleThumbOn]} />
+              </View>
+            </TouchableOpacity>
           </>
         )}
 
@@ -469,6 +978,121 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
           </View>
         )}
 
+        {/* Nutrition Periodization */}
+        <TouchableOpacity style={s.customGoalsRow} onPress={handlePeriodizationToggle} activeOpacity={0.8}>
+          <View>
+            <Text style={s.customGoalsTitle}>Nutrition Periodization</Text>
+            <Text style={s.customGoalsSub}>Different targets for training vs. rest days</Text>
+          </View>
+          <View style={[s.toggle, periodizationEnabled && s.toggleOn]}>
+            <View style={[s.toggleThumb, periodizationEnabled && s.toggleThumbOn]} />
+          </View>
+        </TouchableOpacity>
+        {periodizationEnabled && (
+          <View style={s.formCard}>
+            <Text style={s.periodLabel}>TRAINING DAY</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.inlineLabel}>Calories</Text>
+                <TextInput style={s.standaloneInput} value={trainCal} onChangeText={setTrainCal} keyboardType="number-pad" placeholderTextColor="#444" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.inlineLabel, { color: MC.protein.color }]}>Protein (g)</Text>
+                <TextInput style={s.standaloneInput} value={trainProtein} onChangeText={setTrainProtein} keyboardType="number-pad" placeholderTextColor="#444" />
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.inlineLabel, { color: MC.carbs.color }]}>Carbs (g)</Text>
+                <TextInput style={s.standaloneInput} value={trainCarbs} onChangeText={setTrainCarbs} keyboardType="number-pad" placeholderTextColor="#444" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.inlineLabel, { color: MC.fat.color }]}>Fat (g)</Text>
+                <TextInput style={s.standaloneInput} value={trainFat} onChangeText={setTrainFat} keyboardType="number-pad" placeholderTextColor="#444" />
+              </View>
+            </View>
+            <View style={[s.fieldDivider, { marginTop: 16, marginBottom: 4 }]} />
+            <Text style={[s.periodLabel, { marginTop: 12 }]}>REST DAY</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.inlineLabel}>Calories</Text>
+                <TextInput style={s.standaloneInput} value={restCal} onChangeText={setRestCal} keyboardType="number-pad" placeholderTextColor="#444" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.inlineLabel, { color: MC.protein.color }]}>Protein (g)</Text>
+                <TextInput style={s.standaloneInput} value={restProtein} onChangeText={setRestProtein} keyboardType="number-pad" placeholderTextColor="#444" />
+              </View>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.inlineLabel, { color: MC.carbs.color }]}>Carbs (g)</Text>
+                <TextInput style={s.standaloneInput} value={restCarbs} onChangeText={setRestCarbs} keyboardType="number-pad" placeholderTextColor="#444" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.inlineLabel, { color: MC.fat.color }]}>Fat (g)</Text>
+                <TextInput style={s.standaloneInput} value={restFat} onChangeText={setRestFat} keyboardType="number-pad" placeholderTextColor="#444" />
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* AI Coach — local LLM */}
+        <Text style={s.sectionLabel}>AI COACH</Text>
+        <TouchableOpacity style={s.customGoalsRow} onPress={toggleOllamaEnabled} activeOpacity={0.8}>
+          <View>
+            <Text style={s.customGoalsTitle}>Use Local AI (Ollama)</Text>
+            <Text style={s.customGoalsSub}>Prefer your own server; falls back to cloud AI automatically</Text>
+          </View>
+          <View style={[s.toggle, ollamaEnabled && s.toggleOn]}>
+            <View style={[s.toggleThumb, ollamaEnabled && s.toggleThumbOn]} />
+          </View>
+        </TouchableOpacity>
+        {ollamaEnabled && (
+          <View style={s.formCard}>
+            <Text style={s.inlineLabel}>Server Address</Text>
+            <TextInput
+              style={s.standaloneInput}
+              value={ollamaEndpoint}
+              onChangeText={saveOllamaEndpoint}
+              placeholder={DEFAULT_OLLAMA_ENDPOINT}
+              placeholderTextColor="#444"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+            />
+            <View style={s.fieldDivider} />
+            <Text style={[s.inlineLabel, { marginTop: 12 }]}>Model</Text>
+            <TextInput
+              style={s.standaloneInput}
+              value={ollamaModel}
+              onChangeText={saveOllamaModel}
+              placeholder={DEFAULT_OLLAMA_MODEL}
+              placeholderTextColor="#444"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <TouchableOpacity style={s.ollamaTestBtn} onPress={testOllamaConnection} activeOpacity={0.8}>
+              {ollamaTestStatus === 'testing'
+                ? <ActivityIndicator color={colors.text} size="small" />
+                : (
+                  <Text style={s.ollamaTestBtnText}>
+                    {ollamaTestStatus === 'ok' ? '✓ Connected'
+                      : ollamaTestStatus === 'fail' ? '✕ Unreachable — check address'
+                      : 'Test Connection'}
+                  </Text>
+                )}
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Privacy & Data */}
+        <Text style={s.sectionLabel}>PRIVACY & DATA</Text>
+        <TouchableOpacity style={s.exportBtn} onPress={exportData} disabled={exporting} activeOpacity={0.8}>
+          {exporting
+            ? <ActivityIndicator color={colors.text} size="small" />
+            : <Text style={s.exportBtnText}>Export My Data</Text>}
+        </TouchableOpacity>
+
         {/* Save */}
         <TouchableOpacity style={s.saveBtn} onPress={handleSave} disabled={loading} activeOpacity={0.8}>
           {loading ? <ActivityIndicator color="#000" /> : <Text style={s.saveBtnText}>{saved ? '✓ Saved!' : 'Save & Recalculate'}</Text>}
@@ -479,7 +1103,72 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
           <Text style={s.signOutText}>Sign Out</Text>
         </TouchableOpacity>
 
+        {/* Achievements */}
+        <Text style={[s.sectionLabel, { marginTop: 16 }]}>ACHIEVEMENTS</Text>
+        <AchievementBadges profile={targets} />
+
       </ScrollView>
+
+      {/* Cycle Tracking Setup Modal */}
+      <Modal visible={showCycleSetup} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowCycleSetup(false)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+          <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text }}>Set Up Cycle Tracking</Text>
+            <TouchableOpacity onPress={() => setShowCycleSetup(false)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close" size={24} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 20, gap: 16 }}>
+            <Text style={{ fontSize: 14, color: colors.textTertiary, lineHeight: 22 }}>
+              Enter your last period start date and average cycle length to enable phase-aware training and nutrition insights.
+            </Text>
+            <View style={s.formCard}>
+              <Text style={s.inlineLabel}>Last Period Start (YYYY-MM-DD)</Text>
+              <TextInput
+                style={s.standaloneInput}
+                value={cycleSetupLastPeriod}
+                onChangeText={setCycleSetupLastPeriod}
+                placeholder="e.g. 2026-06-01"
+                placeholderTextColor="#444"
+                keyboardType="numbers-and-punctuation"
+                autoCapitalize="none"
+              />
+              <View style={s.fieldDivider} />
+              <Text style={[s.inlineLabel, { marginTop: 12 }]}>Average Cycle Length (days)</Text>
+              <TextInput
+                style={s.standaloneInput}
+                value={cycleSetupLength}
+                onChangeText={setCycleSetupLength}
+                keyboardType="number-pad"
+                placeholder="28"
+                placeholderTextColor="#444"
+              />
+            </View>
+            <Text style={{ fontSize: 12, color: colors.textTertiary, lineHeight: 18 }}>
+              You can update these anytime. Cycle tracking is entirely private and stored only in your account.
+            </Text>
+            <TouchableOpacity
+              style={s.saveBtn}
+              onPress={async () => {
+                if (!user?.id || !cycleSetupLastPeriod) return;
+                const len = parseInt(cycleSetupLength, 10) || 28;
+                await supabase.from('cycle_settings').upsert({
+                  user_id: user.id,
+                  tracking_enabled: true,
+                  cycle_length_days: len,
+                  period_length_days: 5,
+                  last_period_start: cycleSetupLastPeriod,
+                }, { onConflict: 'user_id' });
+                setCycleTrackingEnabled(true);
+                setShowCycleSetup(false);
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={s.saveBtnText}>Enable Cycle Tracking</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -509,35 +1198,42 @@ const s = StyleSheet.create({
   avatarInitial: { fontSize: 34, fontWeight: weight.heavy, color: colors.text },
   avatarOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 26, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' },
   heroName: { fontSize: 22, fontWeight: weight.bold, color: colors.text, marginBottom: 3 },
-  heroEmail: { fontSize: 13, color: colors.textMuted, fontWeight: weight.regular },
+  heroEmail: { fontSize: 13, color: colors.textTertiary, fontWeight: weight.regular },
 
   // Targets card
-  targetsCard: { backgroundColor: colors.card, borderRadius: radius.lg, padding: 18, marginBottom: 4, borderWidth: 1, borderColor: colors.borderSubtle },
+  targetsCard: { backgroundColor: colors.card, borderRadius: radius.lg, padding: 18, marginBottom: 4, borderWidth: 1, borderColor: colors.border },
   sectionLabel: { fontSize: 11, fontWeight: weight.semibold, color: colors.textSecondary, letterSpacing: 1.5, marginTop: 8, marginBottom: 6 },
   targetsRow: { flexDirection: 'row', alignItems: 'center' },
   targetItem: { flex: 1, alignItems: 'center' },
   targetDivider: { width: 1, height: 32, backgroundColor: colors.border },
   targetVal: { fontSize: 20, fontWeight: weight.heavy, color: colors.text, letterSpacing: -0.5 },
-  targetLabel: { fontSize: 10, color: colors.textMuted, fontWeight: weight.medium, marginTop: 2 },
+  targetLabel: { fontSize: 10, color: colors.textTertiary, fontWeight: weight.medium, marginTop: 2 },
 
   // Quick links card
-  linksCard: { backgroundColor: colors.card, borderRadius: radius.lg, overflow: 'hidden', marginBottom: 4, borderWidth: 1, borderColor: colors.borderSubtle },
+  linksCard: { backgroundColor: colors.card, borderRadius: radius.lg, overflow: 'hidden', marginBottom: 4, borderWidth: 1, borderColor: colors.border },
   linkRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, gap: 12 },
   linkRowBorder: { borderBottomWidth: 1, borderBottomColor: colors.border },
   linkIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: colors.cardAlt, alignItems: 'center', justifyContent: 'center' },
   linkText: { flex: 1 },
   linkLabel: { fontSize: 15, fontWeight: weight.semibold, color: colors.text },
-  linkSub: { fontSize: 12, color: colors.textMuted, fontWeight: weight.regular, marginTop: 1 },
+  linkSub: { fontSize: 12, color: colors.textTertiary, fontWeight: weight.regular, marginTop: 1 },
 
   // Form card (grouped inputs)
-  formCard: { backgroundColor: colors.card, borderRadius: radius.lg, paddingHorizontal: 16, paddingVertical: 4, marginBottom: 4, borderWidth: 1, borderColor: colors.borderSubtle },
+  formCard: { backgroundColor: colors.card, borderRadius: radius.lg, paddingHorizontal: 16, paddingVertical: 4, marginBottom: 4, borderWidth: 1, borderColor: colors.border },
   fieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
   fieldDivider: { height: 1, backgroundColor: colors.border },
   fieldLabel: { fontSize: 15, fontWeight: weight.medium, color: colors.text },
   fieldInput: { fontSize: 15, color: colors.text, textAlign: 'right', minWidth: 60 },
-  fieldUnit: { fontSize: 13, color: colors.textMuted, fontWeight: weight.medium },
+  fieldUnit: { fontSize: 13, color: colors.textTertiary, fontWeight: weight.medium },
   inlineLabel: { fontSize: 12, fontWeight: weight.semibold, color: colors.textSecondary, letterSpacing: 0.3, marginBottom: 10, marginTop: 4 },
-  healthNote: { fontSize: 11, color: colors.textMuted, fontWeight: weight.regular, lineHeight: 16, marginTop: 4, marginBottom: 8 },
+  healthNote: { fontSize: 11, color: colors.textTertiary, fontWeight: weight.regular, lineHeight: 16, marginTop: 4, marginBottom: 8 },
+
+  // Data Sources rows
+  sourceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12 },
+  sourceRowLeft: { flex: 1, paddingRight: 8 },
+  sourceRowRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  sourceValue: { fontSize: 14, color: colors.textSecondary, fontWeight: weight.medium },
+  sourceSyncLabel: { fontSize: 11, color: colors.textTertiary, fontWeight: weight.regular, marginTop: 2 },
 
   // Chips
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
@@ -554,7 +1250,7 @@ const s = StyleSheet.create({
     paddingVertical: 12, alignItems: 'center', gap: 6,
     borderWidth: 1.5, borderColor: 'transparent',
   },
-  sportCellActive: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
+  sportCellActive: { backgroundColor: colors.accentMuted, borderColor: colors.accent },
   sportEmoji: { fontSize: 22 },
   sportLabel: { fontSize: 11, fontWeight: weight.semibold, color: colors.textSecondary, textAlign: 'center' },
   sportLabelActive: { color: colors.text },
@@ -570,17 +1266,29 @@ const s = StyleSheet.create({
   customGoalsRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     backgroundColor: colors.card, borderRadius: radius.lg, padding: 16, marginTop: 4,
-    borderWidth: 1, borderColor: colors.borderSubtle,
+    borderWidth: 1, borderColor: colors.border,
   },
   customGoalsTitle: { fontSize: 15, fontWeight: weight.semibold, color: colors.text, marginBottom: 2 },
-  customGoalsSub: { fontSize: 12, color: colors.textMuted, fontWeight: weight.regular },
+  customGoalsSub: { fontSize: 12, color: colors.textTertiary, fontWeight: weight.regular },
   toggle: { width: 46, height: 26, borderRadius: 13, backgroundColor: colors.cardAlt, padding: 2, justifyContent: 'center' },
   toggleOn: { backgroundColor: colors.accent },
   toggleThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.white, alignSelf: 'flex-start' },
   toggleThumbOn: { alignSelf: 'flex-end' },
   standaloneInput: { backgroundColor: colors.cardAlt, borderRadius: radius.sm, color: colors.text, padding: 12, fontSize: 15 },
+  ollamaTestBtn: { backgroundColor: colors.cardAlt, borderRadius: radius.sm, paddingVertical: 12, alignItems: 'center', marginTop: 14, marginBottom: 10 },
+  ollamaTestBtnText: { color: colors.text, fontSize: 13, fontWeight: weight.semibold },
+  periodLabel: { fontSize: 11, fontWeight: weight.semibold, color: colors.textSecondary, letterSpacing: 1.5, marginBottom: 8, marginTop: 4 },
+
+  // Stepper
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  stepBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.cardAlt, alignItems: 'center', justifyContent: 'center' },
+  stepBtnDisabled: { opacity: 0.3 },
+  stepBtnText: { fontSize: 20, color: colors.text, fontWeight: weight.bold, lineHeight: 24 },
+  stepVal: { fontSize: 15, fontWeight: weight.semibold, color: colors.text, minWidth: 72, textAlign: 'center' },
 
   // Buttons
+  exportBtn: { backgroundColor: colors.card, borderRadius: radius.md, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: colors.border, marginBottom: 4 },
+  exportBtnText: { color: colors.text, fontSize: 15, fontWeight: weight.semibold },
   saveBtn: { backgroundColor: colors.accent, borderRadius: radius.md, padding: 16, alignItems: 'center', marginTop: 8 },
   saveBtnText: { color: colors.accentText, fontSize: 15, fontWeight: weight.bold },
   signOutBtn: { alignItems: 'center', paddingVertical: 14 },

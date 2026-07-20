@@ -5,8 +5,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../constants/supabase';
+import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 
 export default function AuthScreen() {
+  const { colors } = useTheme();
+  const s = makeStyles(colors);
+
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -71,12 +75,12 @@ export default function AuthScreen() {
 
             <Text style={s.label}>Email</Text>
             <TextInput style={s.input} value={email} onChangeText={setEmail}
-              placeholder="you@example.com" placeholderTextColor="#444"
+              placeholder="you@example.com" placeholderTextColor={colors.textTertiary}
               autoCapitalize="none" keyboardType="email-address" autoCorrect={false} />
 
             <Text style={s.label}>Password</Text>
             <TextInput style={s.input} value={password} onChangeText={setPassword}
-              placeholder="••••••••" placeholderTextColor="#444" secureTextEntry />
+              placeholder="••••••••" placeholderTextColor={colors.textTertiary} secureTextEntry />
 
             {mode === 'login' && (
               <TouchableOpacity onPress={openForgotPassword} style={s.forgotBtn}>
@@ -86,7 +90,7 @@ export default function AuthScreen() {
 
             <TouchableOpacity style={s.btn} onPress={handleAuth} disabled={loading} activeOpacity={0.8}>
               {loading
-                ? <ActivityIndicator color="#000" />
+                ? <ActivityIndicator color={colors.accentText} />
                 : <Text style={s.btnText}>{mode === 'login' ? 'Log In' : 'Create Account'}</Text>}
             </TouchableOpacity>
           </View>
@@ -101,12 +105,12 @@ export default function AuthScreen() {
 
             <Text style={s.label}>Email</Text>
             <TextInput style={s.input} value={resetEmail} onChangeText={setResetEmail}
-              placeholder="you@example.com" placeholderTextColor="#444"
+              placeholder="you@example.com" placeholderTextColor={colors.textTertiary}
               autoCapitalize="none" keyboardType="email-address" autoCorrect={false} />
 
             <TouchableOpacity style={s.btn} onPress={handleSendResetEmail} disabled={resetLoading} activeOpacity={0.8}>
               {resetLoading
-                ? <ActivityIndicator color="#000" />
+                ? <ActivityIndicator color={colors.accentText} />
                 : <Text style={s.btnText}>Send Reset Link</Text>}
             </TouchableOpacity>
 
@@ -120,28 +124,30 @@ export default function AuthScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#121212' },
-  scroll: { flexGrow: 1, padding: 24, justifyContent: 'center' },
-  hero: { alignItems: 'center', marginBottom: 48 },
-  appName: { fontSize: 48, fontWeight: '900', color: '#fff', letterSpacing: -2 },
-  tagline: { fontSize: 15, color: '#444', fontWeight: '500', marginTop: 8 },
-  card: { backgroundColor: '#1a1a1a', borderRadius: 20, padding: 24 },
-  toggle: { flexDirection: 'row', backgroundColor: '#252525', borderRadius: 12, padding: 4, marginBottom: 24 },
-  toggleBtn: { flex: 1, padding: 10, borderRadius: 10, alignItems: 'center' },
-  toggleActive: { backgroundColor: '#fff' },
-  toggleText: { fontSize: 14, fontWeight: '700', color: '#555' },
-  toggleTextActive: { color: '#000' },
-  label: { fontSize: 12, fontWeight: '700', color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  input: { backgroundColor: '#252525', borderRadius: 12, color: '#fff', padding: 14, fontSize: 15, marginBottom: 16 },
-  btn: { backgroundColor: '#fff', borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 8 },
-  btnText: { color: '#000', fontSize: 16, fontWeight: '800' },
-  forgotBtn: { alignSelf: 'flex-end', marginTop: -8, marginBottom: 8 },
-  forgotText: { color: '#888', fontSize: 13, fontWeight: '600' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 24 },
-  modalCard: { backgroundColor: '#1a1a1a', borderRadius: 20, padding: 24 },
-  modalTitle: { fontSize: 20, fontWeight: '800', color: '#fff', marginBottom: 8 },
-  modalSubtitle: { fontSize: 13, color: '#888', marginBottom: 20, lineHeight: 18 },
-  modalCancel: { alignItems: 'center', marginTop: 12, padding: 8 },
-  modalCancelText: { color: '#888', fontSize: 14, fontWeight: '600' },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: c.bg },
+    scroll: { flexGrow: 1, padding: spacing.xl, justifyContent: 'center' },
+    hero: { alignItems: 'center', marginBottom: 48 },
+    appName: { fontSize: 48, fontWeight: weight.heavy, color: c.text, letterSpacing: -2 },
+    tagline: { fontSize: 15, color: c.textSecondary, fontWeight: weight.medium, marginTop: 8 },
+    card: { backgroundColor: c.card, borderRadius: radius.card, padding: spacing.xl, borderWidth: 1, borderColor: c.border },
+    toggle: { flexDirection: 'row', backgroundColor: c.cardAlt, borderRadius: radius.md, padding: 4, marginBottom: spacing.xl },
+    toggleBtn: { flex: 1, paddingVertical: 10, borderRadius: radius.sm, alignItems: 'center' },
+    toggleActive: { backgroundColor: c.accent },
+    toggleText: { fontSize: 14, fontWeight: weight.semibold, color: c.textTertiary },
+    toggleTextActive: { color: c.accentText },
+    label: { fontSize: 11, fontWeight: weight.semibold, color: c.textSecondary, marginBottom: spacing.sm, textTransform: 'uppercase', letterSpacing: 0.5 },
+    input: { backgroundColor: c.cardAlt, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, color: c.text, padding: 14, fontSize: 15, marginBottom: spacing.lg, height: 48 },
+    btn: { backgroundColor: c.accent, borderRadius: radius.card, padding: spacing.lg, alignItems: 'center', marginTop: spacing.sm, height: 52, justifyContent: 'center' },
+    btnText: { color: c.accentText, fontSize: 16, fontWeight: weight.bold },
+    forgotBtn: { alignSelf: 'flex-end', marginTop: -8, marginBottom: spacing.sm },
+    forgotText: { color: c.textSecondary, fontSize: 13, fontWeight: weight.semibold },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', padding: spacing.xl },
+    modalCard: { backgroundColor: c.card, borderRadius: radius.card, padding: spacing.xl, borderWidth: 1, borderColor: c.border },
+    modalTitle: { fontSize: 20, fontWeight: weight.bold, color: c.text, marginBottom: spacing.sm },
+    modalSubtitle: { fontSize: 13, color: c.textSecondary, marginBottom: spacing.xl, lineHeight: 18 },
+    modalCancel: { alignItems: 'center', marginTop: spacing.md, padding: spacing.sm },
+    modalCancelText: { color: c.textSecondary, fontSize: 14, fontWeight: weight.semibold },
+  });
+}

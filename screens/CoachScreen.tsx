@@ -1,23 +1,40 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Linking, Modal,
+  KeyboardAvoidingView, Platform, Linking, Modal, Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { callAI } from '../constants/ai';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { callCoachAI } from '../utils/coachAI';
 import { getSportProfile } from '../constants/sportProfiles';
 import { hasPro } from '../constants/purchases';
 import PaywallScreen from './PaywallScreen';
+import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
+import SkeletonBox from '../components/SkeletonBox';
+import { useAuth } from '../hooks/useAuth';
+import { buildCoachContext } from '../utils/buildCoachContext';
 
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  source?: 'local' | 'cloud';
 }
 
 interface YoutubeLink {
   title: string;
   url: string;
 }
+
+const COACH_MSG_KEY = 'fuelog_coach_message_count';
+const HISTORY_KEY = 'fuelog_coach_history';
+const MAX_HISTORY = 50;
+
+const CHIP_SUGGESTIONS = [
+  "How's my protein intake?",
+  'What should I eat post-workout?',
+  'Analyze my recovery trends',
+  'Help me hit my macro goals',
+];
 
 function extractLinks(text: string): { clean: string; links: YoutubeLink[] } {
   const links: YoutubeLink[] = [];
@@ -59,33 +76,145 @@ When relevant, include YouTube links to reputable coaches in markdown format lik
 Keep responses concise but thorough. Use short paragraphs. Be encouraging and practical. Always tailor advice to the user's sport and goals.`;
 }
 
+function TypingIndicator({ colors, s }: { colors: ThemeColors; s: ReturnType<typeof makeStyles> }) {
+  const dot1 = useRef(new Animated.Value(0.3)).current;
+  const dot2 = useRef(new Animated.Value(0.3)).current;
+  const dot3 = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    const CYCLE = 900;
+    const makeLoop = (dot: Animated.Value, phase: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(phase),
+          Animated.timing(dot, { toValue: 1.0, duration: 300, useNativeDriver: true }),
+          Animated.timing(dot, { toValue: 0.3, duration: 300, useNativeDriver: true }),
+          Animated.delay(CYCLE - 600 - phase),
+        ])
+      );
+    const a1 = makeLoop(dot1, 0);
+    const a2 = makeLoop(dot2, 150);
+    const a3 = makeLoop(dot3, 300);
+    a1.start(); a2.start(); a3.start();
+    return () => { a1.stop(); a2.stop(); a3.stop(); };
+  }, []);
+
+  return (
+    <View style={s.msgWrap}>
+      <Text style={s.aiLabel}>FUELOG AI</Text>
+      <View style={[s.bubble, s.bubbleAssistant]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6, paddingHorizontal: 4 }}>
+          {[dot1, dot2, dot3].map((dot, i) => (
+            <Animated.View
+              key={i}
+              style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.textSecondary, opacity: dot }}
+            />
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function CoachScreen({ initialExercise, profile }: { initialExercise?: string; profile?: any }) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: 'assistant',
-      content: initialExercise
-        ? `Hey! Let's talk about the **${initialExercise}**. I'll break down the form, key cues, and common mistakes. What would you like to know?`
-        : `Hey! I'm your AI coach 💪\n\nAsk me anything — how to do a lift, form tips, what muscles an exercise targets, programming questions, or anything else fitness related.\n\nWhat's on your mind?`,
-    },
-  ]);
+  const { colors } = useTheme();
+  const s = makeStyles(colors);
+  const { user } = useAuth();
+
+  const defaultGreeting: Message = {
+    role: 'assistant',
+    content: initialExercise
+      ? `Hey! Let's talk about the **${initialExercise}**. I'll break down the form, key cues, and common mistakes. What would you like to know?`
+      : `Hey! I'm your AI coach 💪\n\nAsk me anything — how to do a lift, form tips, what muscles an exercise targets, programming questions, or anything else fitness related.\n\nWhat's on your mind?`,
+  };
+
+  const [messages, setMessages] = useState<Message[]>([defaultGreeting]);
   const [input, setInput] = useState(initialExercise ? `How do I do the ${initialExercise} properly?` : '');
   const [loading, setLoading] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [showChips, setShowChips] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(!initialExercise);
+  const [coachContext, setCoachContext] = useState('');
   const scrollRef = useRef<ScrollView>(null);
   const pendingMessageRef = useRef<string | null>(null);
+  const paywallMessageRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     if (initialExercise) {
       setTimeout(() => sendMessage(`How do I do the ${initialExercise} properly?`), 500);
+      return;
     }
+    (async () => {
+      // Check if this session was opened by tapping a proactive notification
+      try {
+        const fromProactive = await AsyncStorage.getItem('fuelog_coach_from_proactive');
+        if (fromProactive === '1') {
+          await AsyncStorage.removeItem('fuelog_coach_from_proactive');
+          const ctxRaw = await AsyncStorage.getItem('fuelog_proactive_notif_context');
+          if (ctxRaw) {
+            const { body } = JSON.parse(ctxRaw);
+            setMessages([{ role: 'assistant', content: body }]);
+            setHistoryLoading(false);
+            return;
+          }
+        }
+      } catch {}
+
+      try {
+        const [historyRaw, countRaw] = await AsyncStorage.multiGet([HISTORY_KEY, COACH_MSG_KEY]);
+        const historyStr = historyRaw[1];
+        const countStr = countRaw[1];
+
+        if (historyStr) {
+          const parsed: Message[] = JSON.parse(historyStr);
+          if (parsed.length > 0) setMessages(parsed);
+        }
+
+        const msgCount = countStr ? parseInt(countStr, 10) : 0;
+        if (msgCount === 0) setShowChips(true);
+      } catch {}
+      setHistoryLoading(false);
+    })();
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    buildCoachContext(user.id).then(setCoachContext).catch(() => {});
+  }, [user?.id]);
+
+  const saveHistory = (msgs: Message[]) => {
+    const trimmed = msgs.slice(-MAX_HISTORY);
+    AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed)).catch(() => {});
+  };
+
+  const clearHistory = () => {
+    setMessages([defaultGreeting]);
+    setShowChips(false);
+    AsyncStorage.removeItem(HISTORY_KEY).catch(() => {});
+  };
 
   const sendMessage = async (text?: string) => {
     const messageText = text || input.trim();
     if (!messageText) return;
 
-    const isPro = await hasPro();
-    if (!isPro) { pendingMessageRef.current = messageText; setShowPaywall(true); return; }
+    const countStr = await AsyncStorage.getItem(COACH_MSG_KEY);
+    const msgCount = countStr ? parseInt(countStr, 10) : 0;
+
+    if (msgCount >= 3) {
+      const isPro = await hasPro();
+      if (!isPro) {
+        pendingMessageRef.current = messageText;
+        paywallMessageRef.current = "You've used your 3 free AI coaching messages. Upgrade to Pro for unlimited coaching.";
+        setShowPaywall(true);
+        return;
+      }
+    }
+
+    if (msgCount < 3) {
+      await AsyncStorage.setItem(COACH_MSG_KEY, String(msgCount + 1));
+    }
+
+    setShowChips(false);
     const userMsg: Message = { role: 'user', content: messageText };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
@@ -94,14 +223,21 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
     scrollRef.current?.scrollToEnd({ animated: true });
 
     try {
-      const reply = await callAI(
+      const systemPrompt = coachContext
+        ? `${coachContext}\n\n---\n\n${buildSystemPrompt(profile)}`
+        : buildSystemPrompt(profile);
+      const { text: reply, source } = await callCoachAI(
         newMessages.map(m => ({ role: m.role, content: m.content })),
-        buildSystemPrompt(profile),
+        systemPrompt,
         1000
       );
-      setMessages(prev => [...prev, { role: 'assistant', content: reply || 'Sorry, I could not get a response.' }]);
+      const finalMessages = [...newMessages, { role: 'assistant' as const, content: reply || 'Sorry, I could not get a response.', source }];
+      setMessages(finalMessages);
+      saveHistory(finalMessages);
     } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Connection error — please try again.' }]);
+      const errMessages = [...newMessages, { role: 'assistant' as const, content: 'Connection error — please try again.' }];
+      setMessages(errMessages);
+      saveHistory(errMessages);
     } finally {
       setLoading(false);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
@@ -111,12 +247,15 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
   const renderMessage = (msg: Message, i: number) => {
     const isUser = msg.role === 'user';
     const { clean, links } = extractLinks(msg.content);
-
-    // Simple bold markdown
     const parts = clean.split(/\*\*([^*]+)\*\*/g);
 
     return (
       <View key={i} style={[s.msgWrap, isUser && s.msgWrapUser]}>
+        {!isUser && (
+          <Text style={s.aiLabel}>
+            FUELOG AI{msg.source === 'local' ? ' · LOCAL' : ''}
+          </Text>
+        )}
         <View style={[s.bubble, isUser ? s.bubbleUser : s.bubbleAssistant]}>
           <Text style={[s.bubbleText, isUser && s.bubbleTextUser]}>
             {parts.map((part, pi) =>
@@ -141,8 +280,10 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
       <Modal visible={showPaywall} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowPaywall(false)}>
         <PaywallScreen
           onClose={() => setShowPaywall(false)}
+          trialMessage={paywallMessageRef.current}
           onUnlock={() => {
             setShowPaywall(false);
+            paywallMessageRef.current = undefined;
             const pending = pendingMessageRef.current;
             pendingMessageRef.current = null;
             if (pending) sendMessage(pending);
@@ -151,27 +292,50 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
       </Modal>
 
       <View style={s.header}>
-        <Text style={s.title}>AI Coach</Text>
-        <Text style={s.subtitle}>Powered by AI</Text>
+        <View>
+          <Text style={s.title}>AI Coach</Text>
+          <Text style={s.subtitle}>Powered by AI</Text>
+        </View>
+        <TouchableOpacity style={s.clearBtn} onPress={clearHistory} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Text style={s.clearBtnText}>🗑</Text>
+        </TouchableOpacity>
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.flex} keyboardVerticalOffset={0}>
-        <ScrollView
-          ref={scrollRef}
-          style={s.scroll}
-          contentContainerStyle={s.scrollContent}
-          showsVerticalScrollIndicator={false}
-          onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
-        >
-          {messages.map(renderMessage)}
-          {loading && (
+        {historyLoading ? (
+          <View style={s.historySkeleton}>
             <View style={s.msgWrap}>
-              <View style={[s.bubble, s.bubbleAssistant, s.loadingBubble]}>
-                <ActivityIndicator color="#555" size="small" />
-              </View>
+              <SkeletonBox width="70%" height={52} borderRadius={radius.lg} />
             </View>
-          )}
-        </ScrollView>
+            <View style={[s.msgWrap, s.msgWrapUser]}>
+              <SkeletonBox width="55%" height={36} borderRadius={radius.lg} />
+            </View>
+            <View style={s.msgWrap}>
+              <SkeletonBox width="80%" height={68} borderRadius={radius.lg} />
+            </View>
+          </View>
+        ) : (
+          <ScrollView
+            ref={scrollRef}
+            style={s.scroll}
+            contentContainerStyle={s.scrollContent}
+            showsVerticalScrollIndicator={false}
+            onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+          >
+            {messages.map(renderMessage)}
+            {loading && <TypingIndicator colors={colors} s={s} />}
+          </ScrollView>
+        )}
+
+        {showChips && !historyLoading && (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipsScroll} contentContainerStyle={s.chipsContent}>
+            {CHIP_SUGGESTIONS.map(chip => (
+              <TouchableOpacity key={chip} style={s.chip} onPress={() => sendMessage(chip)} activeOpacity={0.7}>
+                <Text style={s.chipText}>{chip}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
 
         <View style={s.inputRow}>
           <TextInput
@@ -179,7 +343,7 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
             value={input}
             onChangeText={setInput}
             placeholder="Ask anything about training…"
-            placeholderTextColor="#444"
+            placeholderTextColor={colors.textTertiary}
             multiline
             maxLength={500}
             returnKeyType="send"
@@ -189,7 +353,7 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
             style={[s.sendBtn, (!input.trim() || loading) && s.sendBtnDisabled]}
             onPress={() => sendMessage()}
             disabled={!input.trim() || loading}>
-            <Text style={s.sendBtnText}>↑</Text>
+            <Text style={[s.sendBtnText, (!input.trim() || loading) && s.sendBtnTextDisabled]}>↑</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -197,29 +361,39 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#121212' },
-  flex: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
-  title: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: -0.5 },
-  subtitle: { fontSize: 12, color: '#444', fontWeight: '600', marginTop: 2 },
-  scroll: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 8 },
-  msgWrap: { marginBottom: 12, alignItems: 'flex-start' },
-  msgWrapUser: { alignItems: 'flex-end' },
-  bubble: { maxWidth: '85%', borderRadius: 18, padding: 14 },
-  bubbleAssistant: { backgroundColor: '#1a1a1a', borderBottomLeftRadius: 4 },
-  bubbleUser: { backgroundColor: '#fff', borderBottomRightRadius: 4 },
-  loadingBubble: { paddingVertical: 16, paddingHorizontal: 20 },
-  bubbleText: { fontSize: 15, color: '#fff', lineHeight: 22 },
-  bubbleTextUser: { color: '#000' },
-  bold: { fontWeight: '800' },
-  ytLink: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ff0000', borderRadius: 8, padding: 8, marginTop: 8, gap: 8 },
-  ytIcon: { color: '#fff', fontSize: 12, fontWeight: '900' },
-  ytTitle: { color: '#fff', fontSize: 12, fontWeight: '700', flex: 1 },
-  inputRow: { flexDirection: 'row', padding: 12, gap: 10, borderTopWidth: 1, borderTopColor: '#1e1e1e', alignItems: 'flex-end' },
-  input: { flex: 1, backgroundColor: '#1a1a1a', borderRadius: 20, color: '#fff', paddingHorizontal: 16, paddingVertical: 12, fontSize: 15, maxHeight: 120 },
-  sendBtn: { backgroundColor: '#fff', width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  sendBtnDisabled: { backgroundColor: '#222' },
-  sendBtnText: { color: '#000', fontSize: 20, fontWeight: '900', lineHeight: 22 },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: c.bg },
+    flex: { flex: 1 },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing.lg, borderBottomWidth: 1, borderBottomColor: c.border },
+    title: { fontSize: 28, fontWeight: weight.heavy, color: c.text, letterSpacing: -0.5 },
+    subtitle: { fontSize: 12, color: c.textTertiary, fontWeight: weight.semibold, marginTop: 2 },
+    clearBtn: { backgroundColor: c.cardAlt, width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+    clearBtnText: { fontSize: 16 },
+    historySkeleton: { flex: 1, padding: spacing.lg },
+    scroll: { flex: 1 },
+    scrollContent: { padding: spacing.lg, paddingBottom: spacing.sm },
+    msgWrap: { marginBottom: 12, alignItems: 'flex-start' },
+    msgWrapUser: { alignItems: 'flex-end' },
+    aiLabel: { fontSize: 10, color: c.textTertiary, fontWeight: weight.semibold, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 4, marginLeft: 2 },
+    bubble: { maxWidth: '85%', borderRadius: radius.lg, padding: 14 },
+    bubbleAssistant: { backgroundColor: c.card, borderBottomLeftRadius: 4 },
+    bubbleUser: { backgroundColor: c.accentMuted, borderWidth: 1, borderColor: c.accent, borderBottomRightRadius: 4 },
+    bubbleText: { fontSize: 15, color: c.text, lineHeight: 22 },
+    bubbleTextUser: { color: c.text },
+    bold: { fontWeight: weight.heavy },
+    ytLink: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FF0000', borderRadius: radius.sm, padding: 8, marginTop: 8, gap: 8 },
+    ytIcon: { color: '#fff', fontSize: 12, fontWeight: weight.heavy },
+    ytTitle: { color: '#fff', fontSize: 12, fontWeight: weight.bold, flex: 1 },
+    chipsScroll: { flexGrow: 0, borderTopWidth: 1, borderTopColor: c.border },
+    chipsContent: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, gap: 8 },
+    chip: { backgroundColor: c.card, borderRadius: radius.pill, borderWidth: 1, borderColor: c.accent, paddingHorizontal: 14, paddingVertical: 8 },
+    chipText: { color: c.accent, fontSize: 13, fontWeight: weight.medium },
+    inputRow: { flexDirection: 'row', padding: spacing.md, gap: 10, borderTopWidth: 1, borderTopColor: c.border, alignItems: 'flex-end' },
+    input: { flex: 1, backgroundColor: c.card, borderRadius: radius.pill, borderWidth: 1, borderColor: c.border, color: c.text, paddingHorizontal: spacing.lg, paddingVertical: 12, fontSize: 15, maxHeight: 120 },
+    sendBtn: { backgroundColor: c.accent, width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+    sendBtnDisabled: { backgroundColor: c.cardAlt },
+    sendBtnText: { color: c.accentText, fontSize: 20, fontWeight: weight.heavy, lineHeight: 22 },
+    sendBtnTextDisabled: { color: c.textTertiary },
+  });
+}

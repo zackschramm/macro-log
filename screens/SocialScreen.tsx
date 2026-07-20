@@ -9,6 +9,7 @@ import * as Haptics from 'expo-haptics';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { MC } from '../constants/data';
+import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 
 const fmtTime = (ts: string) => {
   const d = new Date(ts);
@@ -21,15 +22,17 @@ const fmtTime = (ts: string) => {
 };
 
 const POST_TYPES: Record<string, { emoji: string; color: string }> = {
-  progress_photo: { emoji: '📸', color: '#4a9eff' },
-  workout:        { emoji: '💪', color: '#4ade80' },
-  macro:          { emoji: '🍽️', color: '#fbbf24' },
-  milestone:      { emoji: '🏆', color: '#f472b6' },
+  progress_photo: { emoji: '📸', color: '#4F9CFF' },
+  workout:        { emoji: '💪', color: '#C8FF3D' },
+  macro:          { emoji: '🍽️', color: '#F5A623' },
+  milestone:      { emoji: '🏆', color: '#F472B6' },
 };
 
 type SocialView = 'feed' | 'myposts' | 'leaderboard';
 
 export default function SocialScreen({ profile }: { profile: any }) {
+  const { colors } = useTheme();
+  const s = makeStyles(colors);
   const { user } = useAuth();
   const [view, setView] = useState<SocialView>('feed');
   const [posts, setPosts] = useState<any[]>([]);
@@ -72,31 +75,28 @@ export default function SocialScreen({ profile }: { profile: any }) {
   }, [user]);
 
   const fetchLeaderboard = useCallback(async () => {
-    // Leaderboard: most macro logs in last 7 days
-    const since = new Date();
-    since.setDate(since.getDate() - 7);
-    const { data } = await supabase
-      .from('macro_logs')
-      .select('user_id, profiles:user_id(name)')
-      .gte('created_at', since.toISOString());
-
+    // RLS keeps macro_logs own-rows-only, so cross-user counts come from a
+    // security-definer RPC (supabase/migrations/20260719_social.sql).
+    const { data, error } = await supabase.rpc('get_leaderboard', { days: 7 });
+    console.log('Leaderboard fetch:', error?.message || `${data?.length} rows`);
     if (!data) return;
-    const counts: Record<string, { name: string; count: number; userId: string }> = {};
-    data.forEach((row: any) => {
-      const uid = row.user_id;
-      const name = row.profiles?.name || 'Anonymous';
-      if (!counts[uid]) counts[uid] = { name, count: 0, userId: uid };
-      counts[uid].count++;
-    });
-    const sorted = Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 10);
-    setLeaderboard(sorted);
+    setLeaderboard(data.map((row: any) => ({
+      name: row.name || 'Anonymous',
+      count: Number(row.count),
+      userId: row.user_id,
+    })));
   }, []);
 
+  // Social is 18+. Age comes from the user's profile (set during onboarding).
+  // Missing/unknown age is treated as under 18 (fail closed).
+  const socialAllowed = Number(profile?.age) >= 18;
+
   useEffect(() => {
+    if (!socialAllowed) return;
     fetchFeed();
     fetchLeaderboard();
     fetchMyPosts();
-  }, [fetchFeed, fetchLeaderboard, fetchMyPosts]);
+  }, [socialAllowed, fetchFeed, fetchLeaderboard, fetchMyPosts]);
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -162,7 +162,6 @@ export default function SocialScreen({ profile }: { profile: any }) {
     let imageUrl = null;
     console.log('postImage present:', !!postImage);
     if (postImage) {
-      // Store as base64 data URL directly
       imageUrl = postImage;
     }
 
@@ -197,17 +196,37 @@ export default function SocialScreen({ profile }: { profile: any }) {
     setSearchQuery(q);
     if (q.length < 2) { setSearchResults([]); return; }
     setSearching(true);
-    const { data } = await supabase.from('profiles').select('id, name').ilike('name', `%${q}%`).limit(10);
+    // public_profiles view exposes only id + name across users (profiles RLS stays private).
+    const { data } = await supabase.from('public_profiles').select('id, name').ilike('name', `%${q}%`).limit(10);
     setSearchResults((data || []).filter((p: any) => p.id !== user!.id));
     setSearching(false);
   };
 
-  // Simple base64 decode for image upload
   function decode(base64: string): Uint8Array {
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     return bytes;
+  }
+
+  // 18+ gate — rendered in place of the entire social experience.
+  if (!socialAllowed) {
+    return (
+      <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.header}>
+          <Text style={s.title}>Social</Text>
+        </View>
+        <View style={s.empty}>
+          <Text style={s.emptyIcon}>🔞</Text>
+          <Text style={s.emptyTitle}>Social is 18+</Text>
+          <Text style={s.emptySub}>
+            The community feed, sharing, and leaderboard are only available to
+            users 18 or older. All other Fuelog features are fully available to
+            you.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   return (
@@ -236,12 +255,11 @@ export default function SocialScreen({ profile }: { profile: any }) {
       {/* Feed */}
       {view === 'feed' && (
         <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-          {/* Search users */}
           <View style={s.searchWrap}>
             <TextInput
               style={s.searchInput}
               placeholder="Find users by name..."
-              placeholderTextColor="#444"
+              placeholderTextColor={colors.textTertiary}
               value={searchQuery}
               onChangeText={searchUsers}
             />
@@ -257,7 +275,7 @@ export default function SocialScreen({ profile }: { profile: any }) {
             </View>
           )}
 
-          {loading && <ActivityIndicator color="#fff" style={{ marginTop: 40 }} />}
+          {loading && <ActivityIndicator color={colors.text} style={{ marginTop: 40 }} />}
           {!loading && posts.length === 0 && (
             <View style={s.empty}>
               <Text style={s.emptyIcon}>📣</Text>
@@ -389,7 +407,7 @@ export default function SocialScreen({ profile }: { profile: any }) {
                 <View style={s.lbBar}>
                   <View style={[s.lbBarFill, {
                     width: `${Math.round(entry.count / (leaderboard[0]?.count || 1) * 100)}%` as any,
-                    backgroundColor: isMe ? '#4ade80' : '#333',
+                    backgroundColor: isMe ? colors.accent : colors.borderStrong,
                   }]} />
                 </View>
               </View>
@@ -409,8 +427,7 @@ export default function SocialScreen({ profile }: { profile: any }) {
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={{ flex: 1, paddingHorizontal: 20 }} keyboardShouldPersistTaps="handled">
-            {/* Post type */}
+          <ScrollView style={{ flex: 1, paddingHorizontal: spacing.xl }} keyboardShouldPersistTaps="handled">
             <Text style={s.fieldLabel}>What are you sharing?</Text>
             <View style={s.typeGrid}>
               {Object.entries(POST_TYPES).map(([key, val]) => (
@@ -426,7 +443,6 @@ export default function SocialScreen({ profile }: { profile: any }) {
               ))}
             </View>
 
-            {/* Photo */}
             <Text style={s.fieldLabel}>Photo (optional)</Text>
             <TouchableOpacity style={s.photoBtn} onPress={pickImage}>
               {postImage
@@ -434,21 +450,22 @@ export default function SocialScreen({ profile }: { profile: any }) {
                 : <Text style={s.photoBtnText}>📷  Add Photo</Text>}
             </TouchableOpacity>
 
-            {/* Caption */}
             <Text style={s.fieldLabel}>Caption</Text>
             <TextInput
               style={s.captionInput}
               value={postCaption}
               onChangeText={setPostCaption}
               placeholder="What's on your mind?"
-              placeholderTextColor="#444"
+              placeholderTextColor={colors.textTertiary}
               multiline
               maxLength={300}
             />
             <Text style={s.charCount}>{postCaption.length}/300</Text>
 
             <TouchableOpacity style={s.submitBtn} onPress={submitPost} disabled={posting} activeOpacity={0.8}>
-              {posting ? <ActivityIndicator color="#000" /> : <Text style={s.submitBtnText}>Share with Community</Text>}
+              {posting
+                ? <ActivityIndicator color={colors.accentText} />
+                : <Text style={s.submitBtnText}>Share with Community</Text>}
             </TouchableOpacity>
           </ScrollView>
         </SafeAreaView>
@@ -457,75 +474,77 @@ export default function SocialScreen({ profile }: { profile: any }) {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#121212' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
-  title: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: -0.5 },
-  postBtn: { backgroundColor: '#fff', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8 },
-  postBtnText: { color: '#000', fontSize: 14, fontWeight: '800' },
-  subTabs: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 10, gap: 8, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
-  subTab: { flex: 1, backgroundColor: '#1a1a1a', borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
-  subTabActive: { backgroundColor: '#fff' },
-  subTabText: { fontSize: 13, fontWeight: '700', color: '#555' },
-  subTabTextActive: { color: '#000' },
-  scroll: { flex: 1 },
-  content: { padding: 16, paddingBottom: 40 },
-  searchWrap: { marginBottom: 12 },
-  searchInput: { backgroundColor: '#1a1a1a', borderRadius: 12, color: '#fff', padding: 12, fontSize: 14 },
-  searchResults: { backgroundColor: '#1a1a1a', borderRadius: 12, marginBottom: 12, overflow: 'hidden' },
-  searchResult: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10, borderBottomWidth: 1, borderBottomColor: '#222' },
-  searchResultName: { fontSize: 15, fontWeight: '600', color: '#fff' },
-  empty: { alignItems: 'center', paddingVertical: 60, gap: 12 },
-  emptyIcon: { fontSize: 48 },
-  emptyTitle: { fontSize: 20, fontWeight: '900', color: '#fff' },
-  emptySub: { fontSize: 13, color: '#444', textAlign: 'center', lineHeight: 20 },
-  emptyBtn: { backgroundColor: '#fff', borderRadius: 12, paddingHorizontal: 20, paddingVertical: 12, marginTop: 8 },
-  emptyBtnText: { color: '#000', fontSize: 14, fontWeight: '800' },
-  postCard: { backgroundColor: '#1a1a1a', borderRadius: 16, marginBottom: 12, overflow: 'hidden' },
-  postHeader: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 10 },
-  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#2a2a2a', alignItems: 'center', justifyContent: 'center' },
-  avatarMe: { backgroundColor: '#4ade8022' },
-  avatarText: { color: '#fff', fontSize: 15, fontWeight: '800' },
-  postMeta: { flex: 1 },
-  postAuthor: { fontSize: 14, fontWeight: '800', color: '#fff', marginBottom: 2 },
-  postTypeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  postTypeBadge: { fontSize: 11, fontWeight: '700' },
-  postTime: { fontSize: 11, color: '#444', fontWeight: '500' },
-  deletePost: { color: '#333', fontSize: 22 },
-  postImage: { width: '100%', height: 280 },
-  postCaption: { fontSize: 14, color: '#ccc', lineHeight: 22, padding: 14, paddingTop: 8, fontWeight: '400' },
-  postActions: { flexDirection: 'row', paddingHorizontal: 14, paddingBottom: 12, gap: 16 },
-  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  actionIcon: { fontSize: 16 },
-  actionText: { fontSize: 13, color: '#555', fontWeight: '700' },
-  actionTextLiked: { color: '#ff4f4f' },
-  lbTitle: { fontSize: 20, fontWeight: '900', color: '#fff', marginBottom: 4 },
-  lbSub: { fontSize: 12, color: '#444', fontWeight: '500', marginBottom: 20 },
-  lbCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 14, padding: 14, marginBottom: 8, gap: 12 },
-  lbCardMe: { backgroundColor: '#1a2a1a' },
-  lbRank: { fontSize: 18, width: 32, textAlign: 'center' },
-  lbInfo: { flex: 1 },
-  lbName: { fontSize: 15, fontWeight: '700', color: '#fff', marginBottom: 2 },
-  lbNameMe: { color: '#4ade80' },
-  lbCount: { fontSize: 11, color: '#555', fontWeight: '600' },
-  lbBar: { width: 60, height: 4, backgroundColor: '#2a2a2a', borderRadius: 2, overflow: 'hidden' },
-  lbBarFill: { height: 4, borderRadius: 2 },
-  modalSafe: { flex: 1, backgroundColor: '#1a1a1a' },
-  handle: { width: 36, height: 4, backgroundColor: '#333', borderRadius: 2, alignSelf: 'center', marginTop: 12, marginBottom: 20 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 20 },
-  modalTitle: { fontSize: 22, fontWeight: '900', color: '#fff' },
-  modalClose: { backgroundColor: '#252525', width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  modalCloseText: { color: '#888', fontSize: 20, lineHeight: 22 },
-  fieldLabel: { fontSize: 11, fontWeight: '700', color: '#555', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
-  typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
-  typeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#252525', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: 'transparent' },
-  typeChipEmoji: { fontSize: 16 },
-  typeChipText: { fontSize: 13, fontWeight: '700', color: '#555' },
-  photoBtn: { backgroundColor: '#252525', borderRadius: 12, height: 120, alignItems: 'center', justifyContent: 'center', marginBottom: 20, overflow: 'hidden' },
-  photoBtnText: { color: '#555', fontSize: 15, fontWeight: '700' },
-  previewImage: { width: '100%', height: 120 },
-  captionInput: { backgroundColor: '#252525', borderRadius: 12, color: '#fff', padding: 14, fontSize: 15, minHeight: 100, textAlignVertical: 'top', marginBottom: 4 },
-  charCount: { fontSize: 11, color: '#444', textAlign: 'right', marginBottom: 20 },
-  submitBtn: { backgroundColor: '#fff', borderRadius: 12, padding: 16, alignItems: 'center', marginBottom: 20 },
-  submitBtnText: { color: '#000', fontSize: 15, fontWeight: '800' },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: c.bg },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing.lg, borderBottomWidth: 1, borderBottomColor: c.border },
+    title: { fontSize: 28, fontWeight: weight.heavy, color: c.text, letterSpacing: -0.5 },
+    postBtn: { backgroundColor: c.accent, borderRadius: radius.pill, paddingHorizontal: 16, paddingVertical: 8 },
+    postBtnText: { color: c.accentText, fontSize: 14, fontWeight: weight.heavy },
+    subTabs: { flexDirection: 'row', paddingHorizontal: spacing.lg, paddingVertical: 10, gap: 8, borderBottomWidth: 1, borderBottomColor: c.border },
+    subTab: { flex: 1, backgroundColor: c.card, borderRadius: radius.sm, paddingVertical: 10, alignItems: 'center', borderWidth: 1, borderColor: c.border },
+    subTabActive: { backgroundColor: c.accent, borderColor: c.accent },
+    subTabText: { fontSize: 13, fontWeight: weight.bold, color: c.textTertiary },
+    subTabTextActive: { color: c.accentText },
+    scroll: { flex: 1 },
+    content: { padding: spacing.lg, paddingBottom: 40 },
+    searchWrap: { marginBottom: 12 },
+    searchInput: { backgroundColor: c.card, borderRadius: radius.md, color: c.text, padding: spacing.md, fontSize: 14, borderWidth: 1, borderColor: c.border },
+    searchResults: { backgroundColor: c.card, borderRadius: radius.md, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: c.border },
+    searchResult: { flexDirection: 'row', alignItems: 'center', padding: spacing.md, gap: 10, borderBottomWidth: 1, borderBottomColor: c.border },
+    searchResultName: { fontSize: 15, fontWeight: weight.semibold, color: c.text },
+    empty: { alignItems: 'center', paddingVertical: 60, gap: 12 },
+    emptyIcon: { fontSize: 48 },
+    emptyTitle: { fontSize: 20, fontWeight: weight.heavy, color: c.text },
+    emptySub: { fontSize: 13, color: c.textTertiary, textAlign: 'center', lineHeight: 20 },
+    emptyBtn: { backgroundColor: c.accent, borderRadius: radius.md, paddingHorizontal: 20, paddingVertical: 12, marginTop: 8 },
+    emptyBtnText: { color: c.accentText, fontSize: 14, fontWeight: weight.heavy },
+    postCard: { backgroundColor: c.card, borderRadius: radius.card, marginBottom: 12, overflow: 'hidden', borderWidth: 1, borderColor: c.border },
+    postHeader: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 10 },
+    avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.cardAlt, alignItems: 'center', justifyContent: 'center' },
+    avatarMe: { backgroundColor: c.accentMuted },
+    avatarText: { color: c.text, fontSize: 15, fontWeight: weight.heavy },
+    postMeta: { flex: 1 },
+    postAuthor: { fontSize: 14, fontWeight: weight.heavy, color: c.text, marginBottom: 2 },
+    postTypeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    postTypeBadge: { fontSize: 11, fontWeight: weight.bold },
+    postTime: { fontSize: 11, color: c.textTertiary, fontWeight: weight.medium },
+    deletePost: { color: c.textTertiary, fontSize: 22 },
+    postImage: { width: '100%', height: 280 },
+    postCaption: { fontSize: 14, color: c.textSecondary, lineHeight: 22, padding: 14, paddingTop: 8, fontWeight: weight.regular },
+    postActions: { flexDirection: 'row', paddingHorizontal: 14, paddingBottom: 12, gap: 16 },
+    actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    actionIcon: { fontSize: 16 },
+    actionText: { fontSize: 13, color: c.textTertiary, fontWeight: weight.bold },
+    actionTextLiked: { color: c.danger },
+    lbTitle: { fontSize: 20, fontWeight: weight.heavy, color: c.text, marginBottom: 4 },
+    lbSub: { fontSize: 12, color: c.textTertiary, fontWeight: weight.medium, marginBottom: 20 },
+    lbCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.card, borderRadius: radius.card, padding: 14, marginBottom: 8, gap: 12, borderWidth: 1, borderColor: c.border },
+    lbCardMe: { backgroundColor: c.accentMuted, borderColor: c.accentDim },
+    lbRank: { fontSize: 18, width: 32, textAlign: 'center' },
+    lbInfo: { flex: 1 },
+    lbName: { fontSize: 15, fontWeight: weight.bold, color: c.text, marginBottom: 2 },
+    lbNameMe: { color: c.accent },
+    lbCount: { fontSize: 11, color: c.textTertiary, fontWeight: weight.semibold },
+    lbBar: { width: 60, height: 4, backgroundColor: c.border, borderRadius: 2, overflow: 'hidden' },
+    lbBarFill: { height: 4, borderRadius: 2 },
+    modalSafe: { flex: 1, backgroundColor: c.bgSecondary },
+    handle: { width: 36, height: 4, backgroundColor: c.borderStrong, borderRadius: 2, alignSelf: 'center', marginTop: 12, marginBottom: 20 },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, marginBottom: 20 },
+    modalTitle: { fontSize: 22, fontWeight: weight.heavy, color: c.text },
+    modalClose: { backgroundColor: c.cardAlt, width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+    modalCloseText: { color: c.textSecondary, fontSize: 20, lineHeight: 22 },
+    fieldLabel: { fontSize: 11, fontWeight: weight.bold, color: c.textTertiary, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+    typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
+    typeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.cardAlt, borderRadius: radius.sm, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: 'transparent' },
+    typeChipEmoji: { fontSize: 16 },
+    typeChipText: { fontSize: 13, fontWeight: weight.bold, color: c.textTertiary },
+    photoBtn: { backgroundColor: c.cardAlt, borderRadius: radius.md, height: 120, alignItems: 'center', justifyContent: 'center', marginBottom: 20, overflow: 'hidden', borderWidth: 1, borderColor: c.border },
+    photoBtnText: { color: c.textTertiary, fontSize: 15, fontWeight: weight.bold },
+    previewImage: { width: '100%', height: 120 },
+    captionInput: { backgroundColor: c.cardAlt, borderRadius: radius.md, color: c.text, padding: 14, fontSize: 15, minHeight: 100, textAlignVertical: 'top', marginBottom: 4, borderWidth: 1, borderColor: c.border },
+    charCount: { fontSize: 11, color: c.textTertiary, textAlign: 'right', marginBottom: 20 },
+    submitBtn: { backgroundColor: c.accent, borderRadius: radius.md, padding: 16, alignItems: 'center', marginBottom: 20 },
+    submitBtnText: { color: c.accentText, fontSize: 15, fontWeight: weight.heavy },
+  });
+}

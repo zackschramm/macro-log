@@ -11,9 +11,9 @@ export const FOODS = [
 export const MEALS = ['Breakfast', 'Lunch', 'Pre-Workout', 'Drink Mix', 'Supplements', 'Dinner', 'Evening Snack'];
 
 export const MC = {
-  protein: { color: '#4a9eff', bg: 'rgba(74,158,255,0.15)' },
-  carbs:   { color: '#fbbf24', bg: 'rgba(251,191,36,0.15)' },
-  fat:     { color: '#f472b6', bg: 'rgba(244,114,182,0.15)' },
+  protein: { color: '#4A9EFF', bg: 'rgba(74,158,255,0.15)' },
+  carbs:   { color: '#F5A623', bg: 'rgba(245,166,35,0.15)' },
+  fat:     { color: '#F472B6', bg: 'rgba(244,114,182,0.15)' },
 };
 
 export const WORKOUT_PLAN = [
@@ -129,4 +129,23 @@ export function calculateTargets(profile: {
   const carbs = Math.round(baseCarbs * m.carbs);
 
   return { calories, protein, carbs, fat };
+}
+
+// Derive protein/carbs/fat from a known calorie budget (e.g. a measured-burn
+// TDEE target). Unlike calculateTargets, the calorie number is treated as
+// ground truth, so carbs absorb the remainder and the macros always sum to it.
+export function deriveMacrosFromCalories(
+  calories: number,
+  profile?: { weight_lbs?: number | null; sport?: string | null }
+): { calories: number; protein: number; carbs: number; fat: number } {
+  const cal = Math.round(calories);
+  const m = SPORT_MULTIPLIERS[profile?.sport || 'none'] || SPORT_MULTIPLIERS.none;
+  // Protein anchored to bodyweight (0.8 g/lb, sport-adjusted) like
+  // calculateTargets; 30% of calories when weight is unknown.
+  const protein = profile?.weight_lbs
+    ? Math.round(profile.weight_lbs * 0.8 * m.protein)
+    : Math.round((cal * 0.3) / 4);
+  const fat = Math.round((cal * 0.25) / 9);
+  const carbs = Math.max(0, Math.round((cal - protein * 4 - fat * 9) / 4));
+  return { calories: cal, protein, carbs, fat };
 }

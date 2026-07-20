@@ -11,6 +11,9 @@ import { callAI } from '../constants/ai';
 import { getSportProfile } from '../constants/sportProfiles';
 import { hasPro } from '../constants/purchases';
 import PaywallScreen from './PaywallScreen';
+import GroceryListScreen from './GroceryListScreen';
+import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
+import { toLocalDateString } from '../utils/dateUtils';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
@@ -20,10 +23,10 @@ function getMonday() {
   const day = d.getDay();
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   d.setDate(diff);
-  return d.toISOString().split('T')[0];
+  return toLocalDateString(d);
 }
 
-function todayStr() { return new Date().toISOString().split('T')[0]; }
+function todayStr() { return toLocalDateString(); }
 
 interface MealItem {
   name: string;
@@ -48,6 +51,8 @@ export default function MealPlanScreen({ targets, profile }: {
   targets: { calories: number; protein: number; carbs: number; fat: number };
   profile: any;
 }) {
+  const { colors } = useTheme();
+  const s = makeStyles(colors);
   const { user } = useAuth();
   const [plan, setPlan] = useState<DayPlan[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -56,6 +61,10 @@ export default function MealPlanScreen({ targets, profile }: {
   const [logModal, setLogModal] = useState<{ meal: string; items: MealItem[] } | null>(null);
   const [logging, setLogging] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [savedPlans, setSavedPlans] = useState<{ week_start: string; plan: DayPlan[] }[]>([]);
+  const [showSavedPlans, setShowSavedPlans] = useState(false);
+  const [savedMsg, setSavedMsg] = useState(false);
+  const [showGrocery, setShowGrocery] = useState(false);
   const weekStart = getMonday();
 
   const fetchExisting = useCallback(async () => {
@@ -65,6 +74,14 @@ export default function MealPlanScreen({ targets, profile }: {
       .order('created_at', { ascending: false }).limit(1);
     console.log('fetchExisting:', JSON.stringify({ count: data?.length, error: error?.message, weekStart }));
     if (data?.[0]?.plan) setPlan(data[0].plan);
+
+    const { data: allPlans } = await supabase.from('meal_plans')
+      .select('week_start, plan')
+      .eq('user_id', user.id)
+      .order('week_start', { ascending: false })
+      .limit(10);
+    setSavedPlans((allPlans ?? []).filter((p: any) => p.week_start !== weekStart));
+
     setLoadingExisting(false);
   }, [user, weekStart]);
 
@@ -76,7 +93,6 @@ export default function MealPlanScreen({ targets, profile }: {
 
     setLoading(true);
     try {
-      // Fetch user's pantry foods
       const { data: pantryFoods } = await supabase
         .from('user_foods').select('*').eq('user_id', user!.id);
 
@@ -85,6 +101,24 @@ export default function MealPlanScreen({ targets, profile }: {
         : 'No pantry foods — use common healthy foods';
 
       const sport = getSportProfile(profile?.sport);
+
+      const today = todayStr();
+      const { data: todayLogs } = await supabase
+        .from('macro_logs').select('calories,protein,carbs,fat')
+        .eq('user_id', user!.id).eq('date', today);
+      const alreadyEaten = (todayLogs ?? []).reduce(
+        (acc: { cal: number; p: number; c: number; f: number }, r: any) => ({
+          cal: acc.cal + (r.calories ?? 0),
+          p: acc.p + (r.protein ?? 0),
+          c: acc.c + (r.carbs ?? 0),
+          f: acc.f + (r.fat ?? 0),
+        }),
+        { cal: 0, p: 0, c: 0, f: 0 }
+      );
+      const remainingNote = alreadyEaten.cal > 0
+        ? `\nNOTE: The user has already logged ${Math.round(alreadyEaten.cal)}cal, ${Math.round(alreadyEaten.p)}g protein today. Account for this — plan meals that fill the remaining gap, do not exceed the daily total.`
+        : '';
+
       const prompt = `Create a 7-day meal plan as a JSON array. Daily targets: ${targets.calories}cal, ${targets.protein}g protein, ${targets.carbs}g carbs, ${targets.fat}g fat.
 
 ATHLETE CONTEXT:
@@ -102,13 +136,11 @@ RULES:
 - Output ONLY a raw JSON array (no markdown). Each day: 4 meals (Breakfast, Lunch, Dinner, Snack). Max 3 items per meal. Short names. Hit macro targets.
 
 Format: [{"day":"Monday","meals":[{"meal":"Breakfast","items":[{"name":"Oats","serving":"1 cup dry","calories":300,"protein":10,"carbs":54,"fat":6}],"totals":{"calories":300,"protein":10,"carbs":54,"fat":6}}],"totals":{"calories":${targets.calories},"protein":${targets.protein},"carbs":${targets.carbs},"fat":${targets.fat}}}]
-Complete all 7 days. Valid JSON only.`;
+Complete all 7 days. Valid JSON only.${remainingNote}`;
 
       const rawText = await callAI([{ role: 'user', content: prompt }]);
       console.log('AI response length:', rawText.length);
-      console.log('AI response full:', rawText);
 
-      // Strip markdown code blocks
       const cleaned = rawText.replace(/```json|```/g, '').trim();
       const match = cleaned.match(/\[\s*\{[\s\S]*\}/);
       if (!match) throw new Error('Could not parse meal plan response');
@@ -123,7 +155,6 @@ Complete all 7 days. Valid JSON only.`;
         throw new Error('Could not parse meal plan response');
       }
 
-      // Save to Supabase
       const { error: saveError } = await supabase.from('meal_plans').upsert({
         user_id: user!.id,
         week_start: weekStart,
@@ -132,6 +163,13 @@ Complete all 7 days. Valid JSON only.`;
       console.log('Save result:', saveError?.message || 'success');
 
       setPlan(parsed);
+      setSavedMsg(true);
+      setTimeout(() => setSavedMsg(false), 3000);
+      // Refresh saved plans list (exclude current week)
+      const { data: allPlans } = await supabase.from('meal_plans')
+        .select('week_start, plan').eq('user_id', user!.id)
+        .order('week_start', { ascending: false }).limit(10);
+      setSavedPlans((allPlans ?? []).filter((p: any) => p.week_start !== weekStart));
     } catch (e) {
       Alert.alert('Error', 'Could not generate meal plan. Please try again.');
       console.error(e);
@@ -166,9 +204,13 @@ Complete all 7 days. Valid JSON only.`;
   if (loadingExisting) {
     return (
       <SafeAreaView style={s.safe} edges={['top']}>
-        <View style={s.center}><ActivityIndicator color="#fff" size="large" /></View>
+        <View style={s.center}><ActivityIndicator color={colors.text} size="large" /></View>
       </SafeAreaView>
     );
+  }
+
+  if (showGrocery) {
+    return <GroceryListScreen plan={plan} onBack={() => setShowGrocery(false)} />;
   }
 
   return (
@@ -182,9 +224,17 @@ Complete all 7 days. Valid JSON only.`;
 
       <View style={s.header}>
         <Text style={s.title}>Meal Plan</Text>
-        <TouchableOpacity style={s.genBtn} onPress={generatePlan} disabled={loading}>
-          {loading ? <ActivityIndicator color="#000" size="small" /> : <Text style={s.genBtnText}>✨ Generate Week</Text>}
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          {savedMsg && <Text style={s.savedMsg}>Saved ✓</Text>}
+          {plan && (
+            <TouchableOpacity style={s.groceryBtn} onPress={() => setShowGrocery(true)} activeOpacity={0.8}>
+              <Text style={s.groceryBtnText}>🛒</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={s.genBtn} onPress={generatePlan} disabled={loading}>
+            {loading ? <ActivityIndicator color={colors.accentText} size="small" /> : <Text style={s.genBtnText}>✨ Generate Week</Text>}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {!plan && !loading && (
@@ -200,14 +250,13 @@ Complete all 7 days. Valid JSON only.`;
 
       {loading && (
         <View style={s.center}>
-          <ActivityIndicator color="#fff" size="large" />
+          <ActivityIndicator color={colors.accent} size="large" />
           <Text style={s.loadingText}>Building your 7-day plan…{'\n'}This takes about 15 seconds.</Text>
         </View>
       )}
 
       {plan && !loading && (
         <>
-          {/* Day tabs */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.dayPicker} contentContainerStyle={s.dayPickerContent}>
             {DAYS.map((day, i) => (
               <TouchableOpacity key={day} style={[s.dayChip, activeDay === i && s.dayChipActive]} onPress={() => setActiveDay(i)}>
@@ -217,7 +266,28 @@ Complete all 7 days. Valid JSON only.`;
           </ScrollView>
 
           <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-            {/* Day totals */}
+            {savedPlans.length > 0 && (
+              <View style={s.savedPlansSection}>
+                <TouchableOpacity style={s.savedPlansHeader} onPress={() => setShowSavedPlans(v => !v)}>
+                  <Text style={s.savedPlansTitle}>Saved Plans</Text>
+                  <Text style={s.savedPlansChevron}>{showSavedPlans ? '▲' : '▼'}</Text>
+                </TouchableOpacity>
+                {showSavedPlans && savedPlans.map((sp) => {
+                  const weekOf = new Date(sp.week_start + 'T12:00:00');
+                  const label = weekOf.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                  return (
+                    <TouchableOpacity
+                      key={sp.week_start}
+                      style={s.savedPlanRow}
+                      onPress={() => { setPlan(sp.plan); setActiveDay(0); }}
+                    >
+                      <Text style={s.savedPlanLabel}>Week of {label}</Text>
+                      <Text style={s.savedPlanArrow}>›</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
             {dayPlan && (
               <>
                 <View style={s.dayTotals}>
@@ -240,12 +310,11 @@ Complete all 7 days. Valid JSON only.`;
                       <Text style={s.macroLabel}>Fat</Text>
                     </View>
                   </View>
-                  {/* Target comparison bars */}
                   {(['calories', 'protein', 'carbs', 'fat'] as const).map(key => {
                     const val = dayPlan.totals?.[key] || 0;
                     const target = targets[key];
                     const pct = Math.min(100, Math.round(val / (target || 1) * 100));
-                    const color = key === 'calories' ? '#fff' : MC[key as keyof typeof MC]?.color || '#fff';
+                    const color = key === 'calories' ? colors.text : MC[key as keyof typeof MC]?.color || colors.text;
                     return (
                       <View key={key} style={s.targetBar}>
                         <View style={s.targetBarBg}>
@@ -257,7 +326,6 @@ Complete all 7 days. Valid JSON only.`;
                   })}
                 </View>
 
-                {/* Meals */}
                 {dayPlan.meals?.map((mealGroup, mi) => (
                   <View key={mi} style={s.mealCard}>
                     <View style={s.mealCardHeader}>
@@ -289,7 +357,6 @@ Complete all 7 days. Valid JSON only.`;
         </>
       )}
 
-      {/* Log confirmation modal */}
       <Modal visible={!!logModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setLogModal(null)}>
         <SafeAreaView style={s.modalSafe} edges={['top', 'bottom']}>
           <View style={s.handle} />
@@ -318,7 +385,7 @@ Complete all 7 days. Valid JSON only.`;
           </ScrollView>
           <View style={{ padding: 20 }}>
             <TouchableOpacity style={s.confirmBtn} onPress={logMeal} disabled={logging}>
-              {logging ? <ActivityIndicator color="#000" /> : <Text style={s.confirmBtnText}>Log to Today's Diary</Text>}
+              {logging ? <ActivityIndicator color={colors.accentText} /> : <Text style={s.confirmBtnText}>Log to Today's Diary</Text>}
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -327,64 +394,76 @@ Complete all 7 days. Valid JSON only.`;
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#121212' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
-  title: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: -0.5 },
-  genBtn: { backgroundColor: '#fff', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, minWidth: 44, alignItems: 'center' },
-  genBtnText: { color: '#000', fontSize: 13, fontWeight: '800' },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12 },
-  emptyIcon: { fontSize: 56 },
-  emptyTitle: { fontSize: 22, fontWeight: '900', color: '#fff' },
-  emptySub: { fontSize: 14, color: '#444', textAlign: 'center', lineHeight: 22, fontWeight: '500' },
-  genBtnLarge: { backgroundColor: '#fff', borderRadius: 14, paddingHorizontal: 24, paddingVertical: 16, marginTop: 12 },
-  genBtnLargeText: { color: '#000', fontSize: 16, fontWeight: '800' },
-  loadingText: { color: '#444', fontSize: 14, textAlign: 'center', lineHeight: 24, fontWeight: '500' },
-  dayPicker: { maxHeight: 52, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
-  dayPickerContent: { paddingHorizontal: 16, paddingVertical: 10, gap: 8 },
-  dayChip: { backgroundColor: '#1e1e1e', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 6 },
-  dayChipActive: { backgroundColor: '#fff' },
-  dayChipText: { color: '#555', fontSize: 13, fontWeight: '700' },
-  dayChipTextActive: { color: '#000' },
-  scroll: { flex: 1 },
-  content: { padding: 16, paddingBottom: 40 },
-  dayTotals: { backgroundColor: '#1a1a1a', borderRadius: 16, padding: 16, marginBottom: 16 },
-  dayTotalsTitle: { fontSize: 18, fontWeight: '900', color: '#fff', marginBottom: 14, letterSpacing: -0.5 },
-  macroRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
-  macroItem: { alignItems: 'center' },
-  macroVal: { fontSize: 20, fontWeight: '900', color: '#fff' },
-  macroLabel: { fontSize: 10, color: '#555', fontWeight: '600', marginTop: 2 },
-  targetBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  targetBarBg: { flex: 1, backgroundColor: '#2a2a2a', borderRadius: 3, height: 3 },
-  targetBarFill: { height: 3, borderRadius: 3 },
-  targetBarPct: { fontSize: 10, color: '#444', fontWeight: '700', width: 32, textAlign: 'right' },
-  mealCard: { backgroundColor: '#1a1a1a', borderRadius: 16, padding: 16, marginBottom: 10 },
-  mealCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  mealName: { fontSize: 16, fontWeight: '800', color: '#fff' },
-  mealMacros: { flexDirection: 'row', gap: 6 },
-  mealCal: { fontSize: 11, color: '#555', fontWeight: '600' },
-  mealMacro: { fontSize: 11, fontWeight: '700' },
-  foodItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#222' },
-  foodItemInfo: { flex: 1 },
-  foodItemName: { fontSize: 14, fontWeight: '600', color: '#ccc' },
-  foodItemServing: { fontSize: 11, color: '#444', fontWeight: '500', marginTop: 2 },
-  foodItemCal: { fontSize: 12, color: '#555', fontWeight: '600' },
-  logBtn: { backgroundColor: '#252525', borderRadius: 10, padding: 10, alignItems: 'center', marginTop: 12 },
-  logBtnText: { color: '#888', fontSize: 13, fontWeight: '700' },
-  modalSafe: { flex: 1, backgroundColor: '#1a1a1a' },
-  handle: { width: 36, height: 4, backgroundColor: '#333', borderRadius: 2, alignSelf: 'center', marginTop: 12, marginBottom: 20 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 8 },
-  modalTitle: { fontSize: 22, fontWeight: '900', color: '#fff' },
-  modalClose: { backgroundColor: '#252525', width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  modalCloseText: { color: '#888', fontSize: 20, lineHeight: 22 },
-  modalSub: { fontSize: 13, color: '#555', fontWeight: '500', marginBottom: 16, paddingHorizontal: 0 },
-  modalItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#252525', borderRadius: 12, padding: 12, marginBottom: 8 },
-  modalItemName: { fontSize: 14, fontWeight: '700', color: '#fff', marginBottom: 2 },
-  modalItemServing: { fontSize: 11, color: '#555', fontWeight: '500' },
-  modalItemMacros: { alignItems: 'flex-end', gap: 2 },
-  modalItemCal: { fontSize: 12, color: '#555', fontWeight: '600' },
-  modalItemMacro: { fontSize: 11, fontWeight: '700' },
-  confirmBtn: { backgroundColor: '#fff', borderRadius: 12, padding: 16, alignItems: 'center' },
-  confirmBtnText: { color: '#000', fontSize: 15, fontWeight: '800' },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: c.bg },
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20 },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing.lg, borderBottomWidth: 1, borderBottomColor: c.border },
+    title: { fontSize: 28, fontWeight: weight.heavy, color: c.text, letterSpacing: -0.5 },
+    genBtn: { backgroundColor: c.accent, borderRadius: radius.pill, paddingHorizontal: 14, paddingVertical: 8, minWidth: 44, alignItems: 'center' },
+    genBtnText: { color: c.accentText, fontSize: 13, fontWeight: weight.heavy },
+    groceryBtn: { backgroundColor: c.card, borderRadius: radius.pill, width: 36, height: 36, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: c.border },
+    groceryBtnText: { fontSize: 18 },
+    empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12 },
+    emptyIcon: { fontSize: 56 },
+    emptyTitle: { fontSize: 22, fontWeight: weight.heavy, color: c.text },
+    emptySub: { fontSize: 14, color: c.textTertiary, textAlign: 'center', lineHeight: 22, fontWeight: weight.medium },
+    genBtnLarge: { backgroundColor: c.accent, borderRadius: radius.card, paddingHorizontal: 24, paddingVertical: 16, marginTop: 12 },
+    genBtnLargeText: { color: c.accentText, fontSize: 16, fontWeight: weight.heavy },
+    loadingText: { color: c.textTertiary, fontSize: 14, textAlign: 'center', lineHeight: 24, fontWeight: weight.medium, marginTop: 12 },
+    dayPicker: { maxHeight: 52, borderBottomWidth: 1, borderBottomColor: c.border },
+    dayPickerContent: { paddingHorizontal: spacing.lg, paddingVertical: 10, gap: 8 },
+    dayChip: { backgroundColor: c.card, borderRadius: radius.pill, paddingHorizontal: 16, paddingVertical: 6, borderWidth: 1, borderColor: c.border },
+    dayChipActive: { backgroundColor: c.accent, borderColor: c.accent },
+    dayChipText: { color: c.textTertiary, fontSize: 13, fontWeight: weight.bold },
+    dayChipTextActive: { color: c.accentText },
+    scroll: { flex: 1 },
+    content: { padding: spacing.lg, paddingBottom: 40 },
+    dayTotals: { backgroundColor: c.card, borderRadius: radius.card, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: c.border },
+    dayTotalsTitle: { fontSize: 18, fontWeight: weight.heavy, color: c.text, marginBottom: 14, letterSpacing: -0.5 },
+    macroRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
+    macroItem: { alignItems: 'center' },
+    macroVal: { fontSize: 20, fontWeight: weight.heavy, color: c.text },
+    macroLabel: { fontSize: 10, color: c.textTertiary, fontWeight: weight.semibold, marginTop: 2 },
+    targetBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+    targetBarBg: { flex: 1, backgroundColor: c.border, borderRadius: 3, height: 3 },
+    targetBarFill: { height: 3, borderRadius: 3 },
+    targetBarPct: { fontSize: 10, color: c.textTertiary, fontWeight: weight.bold, width: 32, textAlign: 'right' },
+    mealCard: { backgroundColor: c.card, borderRadius: radius.card, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: c.border },
+    mealCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    mealName: { fontSize: 16, fontWeight: weight.heavy, color: c.text },
+    mealMacros: { flexDirection: 'row', gap: 6 },
+    mealCal: { fontSize: 11, color: c.textTertiary, fontWeight: weight.semibold },
+    mealMacro: { fontSize: 11, fontWeight: weight.bold },
+    foodItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderTopWidth: 1, borderTopColor: c.border },
+    foodItemInfo: { flex: 1 },
+    foodItemName: { fontSize: 14, fontWeight: weight.semibold, color: c.text },
+    foodItemServing: { fontSize: 11, color: c.textTertiary, fontWeight: weight.medium, marginTop: 2 },
+    foodItemCal: { fontSize: 12, color: c.textTertiary, fontWeight: weight.semibold },
+    logBtn: { backgroundColor: c.accent, borderRadius: radius.md, padding: 10, alignItems: 'center', marginTop: 12 },
+    logBtnText: { color: c.accentText, fontSize: 13, fontWeight: weight.bold },
+    modalSafe: { flex: 1, backgroundColor: c.card },
+    handle: { width: 36, height: 4, backgroundColor: c.border, borderRadius: 2, alignSelf: 'center', marginTop: 12, marginBottom: 20 },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 8 },
+    modalTitle: { fontSize: 22, fontWeight: weight.heavy, color: c.text },
+    modalClose: { backgroundColor: c.cardAlt, width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+    modalCloseText: { color: c.textSecondary, fontSize: 20, lineHeight: 22 },
+    modalSub: { fontSize: 13, color: c.textTertiary, fontWeight: weight.medium, marginBottom: 16 },
+    modalItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.cardAlt, borderRadius: radius.md, padding: 12, marginBottom: 8 },
+    modalItemName: { fontSize: 14, fontWeight: weight.bold, color: c.text, marginBottom: 2 },
+    modalItemServing: { fontSize: 11, color: c.textTertiary, fontWeight: weight.medium },
+    modalItemMacros: { alignItems: 'flex-end', gap: 2 },
+    modalItemCal: { fontSize: 12, color: c.textTertiary, fontWeight: weight.semibold },
+    modalItemMacro: { fontSize: 11, fontWeight: weight.bold },
+    confirmBtn: { backgroundColor: c.accent, borderRadius: radius.md, padding: 16, alignItems: 'center' },
+    confirmBtnText: { color: c.accentText, fontSize: 15, fontWeight: weight.heavy },
+    savedMsg: { fontSize: 12, color: c.accent, fontWeight: weight.bold },
+    savedPlansSection: { backgroundColor: c.card, borderRadius: radius.card, borderWidth: 1, borderColor: c.border, marginBottom: spacing.lg, overflow: 'hidden' },
+    savedPlansHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: spacing.lg },
+    savedPlansTitle: { fontSize: 13, fontWeight: weight.bold, color: c.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 },
+    savedPlansChevron: { fontSize: 11, color: c.textTertiary },
+    savedPlanRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.lg, paddingVertical: 12, borderTopWidth: 1, borderTopColor: c.border },
+    savedPlanLabel: { fontSize: 14, color: c.text, fontWeight: weight.medium },
+    savedPlanArrow: { fontSize: 18, color: c.textTertiary },
+  });
+}

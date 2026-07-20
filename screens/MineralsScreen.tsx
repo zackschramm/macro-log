@@ -1,11 +1,16 @@
 import React, { useMemo, useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
+import { hasPro } from '../constants/purchases';
 import { useUnits } from '../constants/units';
+import PaywallScreen from './PaywallScreen';
+import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
+import { toLocalDateString } from '../utils/dateUtils';
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE';
 
@@ -63,13 +68,6 @@ const NUTRIENTS = [
   { key: 'electrolytes', name: 'Electrolytes',       unit: 'mg',    category: 'Performance',  emoji: '💧', base: 1000,  perKg: 0,   notes: 'Hydration, nerve & muscle function' },
 ];
 
-// Keys to never show as dynamic/unknown nutrients
-const KNOWN_KEYS = new Set(NUTRIENTS.map(n => n.key));
-const NON_NUTRIENT_KEYS = new Set([
-  'id','user_id','date','meal','food','qty','calories','protein','carbs','fat',
-  'created_at','updated_at','serving_size','amount_per_serving','name',
-]);
-
 function calcRDA(n: typeof NUTRIENTS[0], weightKg: number, age: number, sex: string) {
   let base = n.base + n.perKg * weightKg;
   if (sex === 'female') {
@@ -87,13 +85,11 @@ function calcRDA(n: typeof NUTRIENTS[0], weightKg: number, age: number, sex: str
   return Math.round(base * 10) / 10;
 }
 
-const CAT_COLORS: Record<string, string> = {
-  Vitamins: '#fbbf24', Minerals: '#4a9eff', Performance: '#4ade80',
-};
-
 function ProgressBar({ value, target, color }: { value: number; target: number; color: string }) {
+  const { colors } = useTheme();
+  const pb = makeProgressBarStyles(colors);
   const pct = Math.min(100, target > 0 ? (value / target) * 100 : 0);
-  const barColor = pct >= 100 ? '#4ade80' : pct >= 50 ? color : '#ff4f4f';
+  const barColor = pct >= 100 ? colors.accent : pct >= 50 ? color : colors.danger;
   return (
     <View style={pb.wrap}>
       <View style={[pb.fill, { width: `${pct}%` as any, backgroundColor: barColor }]} />
@@ -101,26 +97,35 @@ function ProgressBar({ value, target, color }: { value: number; target: number; 
   );
 }
 
-const pb = StyleSheet.create({
-  wrap: { height: 4, backgroundColor: '#2a2a2a', borderRadius: 2, marginTop: 6, overflow: 'hidden' },
-  fill: { height: '100%', borderRadius: 2 },
-});
+function makeProgressBarStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    wrap: { height: 4, backgroundColor: c.border, borderRadius: 2, marginTop: 6, overflow: 'hidden' },
+    fill: { height: '100%', borderRadius: 2 },
+  });
+}
 
-const todayStr = () => new Date().toISOString().split('T')[0];
+const todayStr = () => toLocalDateString();
 
 export default function MineralsScreen({ profile }: Props) {
+  const { colors } = useTheme();
+  const s = makeStyles(colors);
   const { user } = useAuth();
   const u = useUnits();
   const [todayIntake, setTodayIntake] = useState<Record<string, number>>({});
   const [bloodworkResults, setBloodworkResults] = useState<Record<string, number>>({});
   const [analyzingBloodwork, setAnalyzingBloodwork] = useState(false);
   const [bloodworkDate, setBloodworkDate] = useState<string | null>(null);
+  const [showPaywall, setShowPaywall] = useState(false);
+
+  const CAT_COLORS: Record<string, string> = {
+    Vitamins: colors.warning,
+    Minerals: colors.info,
+    Performance: colors.accent,
+  };
 
   const weightKg = (profile?.weight_lbs || 170) / 2.205;
   const weightLbs = profile?.weight_lbs || 170;
   const heightIn = profile?.height_in || 70;
-  const heightFt = Math.floor(heightIn / 12);
-  const heightRemIn = heightIn % 12;
   const age = profile?.age || 25;
   const sex = profile?.sex || 'male';
 
@@ -138,7 +143,6 @@ export default function MineralsScreen({ profile }: Props) {
 
   useEffect(() => { fetchTodayIntake(); }, [fetchTodayIntake]);
 
-  // Load saved bloodwork from Supabase
   useEffect(() => {
     const loadBloodwork = async () => {
       if (!user) return;
@@ -151,7 +155,16 @@ export default function MineralsScreen({ profile }: Props) {
     loadBloodwork();
   }, [user]);
 
+  const BLOODWORK_SCAN_KEY = 'fuelog_bloodwork_scan_count';
+
   const uploadBloodwork = useCallback(async () => {
+    const countStr = await AsyncStorage.getItem(BLOODWORK_SCAN_KEY);
+    const scanCount = countStr ? parseInt(countStr, 10) : 0;
+    if (scanCount >= 3) {
+      const isPro = await hasPro();
+      if (!isPro) { setShowPaywall(true); return; }
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
       base64: true, quality: 0.5, allowsEditing: false,
       mediaTypes: ['images'],
@@ -159,8 +172,6 @@ export default function MineralsScreen({ profile }: Props) {
     if (result.canceled || !result.assets[0]?.base64) return;
     setAnalyzingBloodwork(true);
     try {
-      // The picker can return HEIC (default iOS photo format), which Anthropic's
-      // vision API rejects. Re-encode to JPEG so we always send a supported type.
       const jpeg = await ImageManipulator.manipulateAsync(
         result.assets[0].uri, [], { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
       );
@@ -181,8 +192,10 @@ export default function MineralsScreen({ profile }: Props) {
       const text = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
       const parsed = JSON.parse(text);
       if (parsed.error) { Alert.alert('Could not read lab results', 'Please try a clearer image.'); return; }
-      // Save to Supabase
-      const today = new Date().toISOString().split('T')[0];
+      const countStr2 = await AsyncStorage.getItem(BLOODWORK_SCAN_KEY);
+      const currentCount = countStr2 ? parseInt(countStr2, 10) : 0;
+      await AsyncStorage.setItem(BLOODWORK_SCAN_KEY, String(currentCount + 1));
+      const today = toLocalDateString();
       await supabase.from('bloodwork').upsert({ user_id: user!.id, date: today, results: parsed }, { onConflict: 'user_id,date' });
       setBloodworkResults(parsed);
       setBloodworkDate(today);
@@ -202,132 +215,139 @@ export default function MineralsScreen({ profile }: Props) {
   }, []);
 
   return (
-    <SafeAreaView style={s.safe} edges={['top']}>
-      <View style={s.header}>
-        <Text style={s.title}>Vitamins & Minerals</Text>
-        <Text style={s.subtitle}>Daily targets · log foods to track progress</Text>
-      </View>
-      <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-        {/* Bloodwork Upload Banner */}
-        <TouchableOpacity style={s.bloodworkCard} onPress={uploadBloodwork} disabled={analyzingBloodwork}>
-          {analyzingBloodwork ? (
-            <ActivityIndicator color="#fff" size="small" />
-          ) : (
-            <Text style={s.bloodworkIcon}>🩸</Text>
-          )}
-          <View style={s.bloodworkText}>
-            <Text style={s.bloodworkTitle}>
-              {bloodworkDate ? `Blood Work · ${bloodworkDate}` : 'Upload Blood Work'}
-            </Text>
-            <Text style={s.bloodworkSub}>
-              {bloodworkDate
-                ? `${Object.keys(bloodworkResults).length} markers · tap to update`
-                : 'Tap to scan lab results for accurate baselines'}
-            </Text>
-          </View>
-          <Text style={s.bloodworkArrow}>›</Text>
-        </TouchableOpacity>
-
-        <View style={s.statsRow}>
-          <View style={s.statCard}>
-            <Text style={s.statVal}>{u.fmtWeight(weightLbs)}</Text>
-            <Text style={s.statLabel}>Weight</Text>
-          </View>
-          <View style={s.statCard}>
-            <Text style={s.statVal}>{u.fmtHeight(heightIn)}</Text>
-            <Text style={s.statLabel}>Height</Text>
-          </View>
-          <View style={s.statCard}>
-            <Text style={s.statVal}>{age}</Text>
-            <Text style={s.statLabel}>Age</Text>
-          </View>
-          <View style={s.statCard}>
-            <Text style={s.statVal}>{sex === 'male' ? '♂' : '♀'}</Text>
-            <Text style={s.statLabel}>Sex</Text>
-          </View>
+    <>
+      <Modal visible={showPaywall} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowPaywall(false)}>
+        <PaywallScreen
+          onClose={() => setShowPaywall(false)}
+          onUnlock={() => setShowPaywall(false)}
+        />
+      </Modal>
+      <SafeAreaView style={s.safe} edges={['top']}>
+        <View style={s.header}>
+          <Text style={s.title}>Vitamins & Minerals</Text>
+          <Text style={s.subtitle}>Daily targets · log foods to track progress</Text>
         </View>
-
-        {Object.entries(categories).map(([category, nutrients]) => (
-          <View key={category}>
-            <View style={s.categoryHeader}>
-              <View style={[s.categoryDot, { backgroundColor: CAT_COLORS[category] }]} />
-              <Text style={[s.categoryTitle, { color: CAT_COLORS[category] }]}>{category.toUpperCase()}</Text>
+        <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+          <TouchableOpacity style={s.bloodworkCard} onPress={uploadBloodwork} disabled={analyzingBloodwork}>
+            {analyzingBloodwork ? (
+              <ActivityIndicator color={colors.text} size="small" />
+            ) : (
+              <Text style={s.bloodworkIcon}>🩸</Text>
+            )}
+            <View style={s.bloodworkText}>
+              <Text style={s.bloodworkTitle}>
+                {bloodworkDate ? `Blood Work · ${bloodworkDate}` : 'Upload Blood Work'}
+              </Text>
+              <Text style={s.bloodworkSub}>
+                {bloodworkDate
+                  ? `${Object.keys(bloodworkResults).length} markers · tap to update`
+                  : 'Tap to scan lab results for accurate baselines'}
+              </Text>
             </View>
-            {nutrients.map(n => {
-              const rda = calcRDA(n, weightKg, age, sex);
-              const intake = todayIntake[n.key] || 0;
-              const bloodVal = bloodworkResults[n.key];
-              // Use bloodwork value as baseline if available and higher than logged
-              const effectiveIntake = bloodVal != null ? Math.max(intake, bloodVal) : intake;
-              const pct = rda > 0 ? Math.min(100, Math.round((effectiveIntake / rda) * 100)) : 0;
-              return (
-                <View key={n.key} style={s.row}>
-                  <Text style={s.emoji}>{n.emoji}</Text>
-                  <View style={s.info}>
-                    <View style={s.nameRow}>
-                      <Text style={s.name}>{n.name}</Text>
-                      <Text style={[s.pct, { color: pct >= 100 ? '#4ade80' : pct >= 50 ? CAT_COLORS[category] : '#555' }]}>
-                        {pct}%
-                      </Text>
-                    </View>
-                    <Text style={s.notes}>{n.notes}</Text>
-                    <ProgressBar value={effectiveIntake} target={rda} color={CAT_COLORS[category]} />
-                    <View style={s.intakeRow}>
-                      <Text style={s.intakeText}>
-                        {effectiveIntake > 0 ? `${Math.round(effectiveIntake * 10) / 10} / ` : ''}{rda} {n.unit}
-                        {bloodVal != null ? ` 🩸` : ''}
-                      </Text>
+            <Text style={s.bloodworkArrow}>›</Text>
+          </TouchableOpacity>
+
+          <View style={s.statsRow}>
+            <View style={s.statCard}>
+              <Text style={s.statVal}>{u.fmtWeight(weightLbs)}</Text>
+              <Text style={s.statLabel}>Weight</Text>
+            </View>
+            <View style={s.statCard}>
+              <Text style={s.statVal}>{u.fmtHeight(heightIn)}</Text>
+              <Text style={s.statLabel}>Height</Text>
+            </View>
+            <View style={s.statCard}>
+              <Text style={s.statVal}>{age}</Text>
+              <Text style={s.statLabel}>Age</Text>
+            </View>
+            <View style={s.statCard}>
+              <Text style={s.statVal}>{sex === 'male' ? '♂' : '♀'}</Text>
+              <Text style={s.statLabel}>Sex</Text>
+            </View>
+          </View>
+
+          {Object.entries(categories).map(([category, nutrients]) => (
+            <View key={category}>
+              <View style={s.categoryHeader}>
+                <View style={[s.categoryDot, { backgroundColor: CAT_COLORS[category] }]} />
+                <Text style={[s.categoryTitle, { color: CAT_COLORS[category] }]}>{category.toUpperCase()}</Text>
+              </View>
+              {nutrients.map(n => {
+                const rda = calcRDA(n, weightKg, age, sex);
+                const intake = todayIntake[n.key] || 0;
+                const bloodVal = bloodworkResults[n.key];
+                const effectiveIntake = bloodVal != null ? Math.max(intake, bloodVal) : intake;
+                const pct = rda > 0 ? Math.min(100, Math.round((effectiveIntake / rda) * 100)) : 0;
+                const pctColor = pct >= 100 ? colors.accent : pct >= 50 ? CAT_COLORS[category] : colors.textTertiary;
+                return (
+                  <View key={n.key} style={s.row}>
+                    <Text style={s.emoji}>{n.emoji}</Text>
+                    <View style={s.info}>
+                      <View style={s.nameRow}>
+                        <Text style={s.name}>{n.name}</Text>
+                        <Text style={[s.pct, { color: pctColor }]}>{pct}%</Text>
+                      </View>
+                      <Text style={s.notes}>{n.notes}</Text>
+                      <ProgressBar value={effectiveIntake} target={rda} color={CAT_COLORS[category]} />
+                      <View style={s.intakeRow}>
+                        <Text style={s.intakeText}>
+                          {effectiveIntake > 0 ? `${Math.round(effectiveIntake * 10) / 10} / ` : ''}{rda} {n.unit}
+                          {bloodVal != null ? ` 🩸` : ''}
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                </View>
-              );
-            })}
-          </View>
-        ))}
+                );
+              })}
+            </View>
+          ))}
 
-        <View style={s.disclaimer}>
-          <Text style={s.disclaimerText}>
-            ⚠️ Progress bars reflect micronutrients from USDA-imported foods logged today. Manually entered foods won't have micronutrient data. Consult a healthcare provider for personalized recommendations.
-          </Text>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+          <View style={s.disclaimer}>
+            <Text style={s.disclaimerText}>
+              ⚠️ Progress bars reflect micronutrients from USDA-imported foods logged today. Manually entered foods won't have micronutrient data. Consult a healthcare provider for personalized recommendations.
+            </Text>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </>
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#121212' },
-  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
-  title: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: -0.5 },
-  subtitle: { fontSize: 12, color: '#555', fontWeight: '500', marginTop: 2 },
-  scroll: { flex: 1 },
-  content: { padding: 16, paddingBottom: 40 },
-  statsRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
-  statCard: { flex: 1, backgroundColor: '#1a1a1a', borderRadius: 12, padding: 10, alignItems: 'center' },
-  statVal: { fontSize: 13, fontWeight: '900', color: '#fff' },
-  statLabel: { fontSize: 10, color: '#555', fontWeight: '600', marginTop: 2 },
-  categoryHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, marginTop: 8 },
-  categoryDot: { width: 8, height: 8, borderRadius: 4 },
-  categoryTitle: { fontSize: 11, fontWeight: '800', letterSpacing: 1.5 },
-  row: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: '#1a1a1a', borderRadius: 12, padding: 12, marginBottom: 6, gap: 12 },
-  emoji: { fontSize: 20, width: 28, textAlign: 'center', marginTop: 2 },
-  info: { flex: 1 },
-  nameRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  name: { fontSize: 14, fontWeight: '700', color: '#fff' },
-  pct: { fontSize: 13, fontWeight: '800' },
-  notes: { fontSize: 11, color: '#555', fontWeight: '500', marginTop: 2 },
-  intakeRow: { marginTop: 4 },
-  intakeText: { fontSize: 10, color: '#444', fontWeight: '600' },
-  bloodworkCard: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1f2e',
-    borderRadius: 14, padding: 14, marginBottom: 16,
-    borderWidth: 1, borderColor: '#ff4f4f44',
-  },
-  bloodworkIcon: { fontSize: 28, marginRight: 12 },
-  bloodworkText: { flex: 1 },
-  bloodworkTitle: { color: '#fff', fontWeight: '700', fontSize: 14 },
-  bloodworkSub: { color: '#888', fontSize: 12, marginTop: 2 },
-  bloodworkArrow: { color: '#888', fontSize: 22, marginLeft: 8 },
-  disclaimer: { backgroundColor: '#1a1410', borderRadius: 12, padding: 14, marginTop: 8 },
-  disclaimerText: { fontSize: 12, color: '#666', lineHeight: 18 },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: c.bg },
+    header: { paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing.lg, borderBottomWidth: 1, borderBottomColor: c.border },
+    title: { fontSize: 28, fontWeight: weight.heavy, color: c.text, letterSpacing: -0.5 },
+    subtitle: { fontSize: 12, color: c.textTertiary, fontWeight: weight.medium, marginTop: 2 },
+    scroll: { flex: 1 },
+    content: { padding: spacing.lg, paddingBottom: 40 },
+    statsRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
+    statCard: { flex: 1, backgroundColor: c.card, borderRadius: radius.md, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: c.border },
+    statVal: { fontSize: 13, fontWeight: weight.heavy, color: c.text },
+    statLabel: { fontSize: 10, color: c.textTertiary, fontWeight: weight.semibold, marginTop: 2 },
+    categoryHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, marginTop: 8 },
+    categoryDot: { width: 8, height: 8, borderRadius: 4 },
+    categoryTitle: { fontSize: 11, fontWeight: weight.heavy, letterSpacing: 1.5 },
+    row: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: c.card, borderRadius: radius.md, padding: 12, marginBottom: 6, gap: 12, borderWidth: 1, borderColor: c.border },
+    emoji: { fontSize: 20, width: 28, textAlign: 'center', marginTop: 2 },
+    info: { flex: 1 },
+    nameRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    name: { fontSize: 14, fontWeight: weight.bold, color: c.text },
+    pct: { fontSize: 13, fontWeight: weight.heavy },
+    notes: { fontSize: 11, color: c.textTertiary, fontWeight: weight.medium, marginTop: 2 },
+    intakeRow: { marginTop: 4 },
+    intakeText: { fontSize: 10, color: c.textTertiary, fontWeight: weight.semibold },
+    bloodworkCard: {
+      flexDirection: 'row', alignItems: 'center', backgroundColor: c.card,
+      borderRadius: radius.card, padding: 14, marginBottom: 16,
+      borderWidth: 1, borderColor: c.dangerSoft,
+    },
+    bloodworkIcon: { fontSize: 28, marginRight: 12 },
+    bloodworkText: { flex: 1 },
+    bloodworkTitle: { color: c.text, fontWeight: weight.bold, fontSize: 14 },
+    bloodworkSub: { color: c.textSecondary, fontSize: 12, marginTop: 2 },
+    bloodworkArrow: { color: c.textSecondary, fontSize: 22, marginLeft: 8 },
+    disclaimer: { backgroundColor: c.card, borderRadius: radius.md, padding: 14, marginTop: 8, borderWidth: 1, borderColor: c.border },
+    disclaimerText: { fontSize: 12, color: c.textTertiary, lineHeight: 18 },
+  });
+}

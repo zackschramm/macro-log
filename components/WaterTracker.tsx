@@ -1,173 +1,220 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, Alert } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  View, Text, TouchableOpacity, StyleSheet, TextInput, Modal, ScrollView, AppState,
+} from 'react-native';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from '../constants/supabase';
-import { useAuth } from '../hooks/useAuth';
+import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
+import { toLocalDateString } from '../utils/dateUtils';
 
-const DEFAULT_GOAL = 128;
-const QUICK_ADD = [8, 16, 20, 32];
-const GOAL_KEY = 'water_goal_oz';
-const todayStr = () => new Date().toISOString().split('T')[0];
+export const WATER_GOAL_KEY = 'fuelog_water_goal_cups';
+const WATER_LOG_KEY = 'fuelog_water_log';
+const WATER_BLUE = '#3B82F6';
+export const DEFAULT_WATER_GOAL = 8;
+
+type WaterEntry = { time: string; cups: number };
+type WaterLog = { date: string; entries: WaterEntry[] };
+
+function todayStr() { return toLocalDateString(); }
+
+async function loadTodayEntries(): Promise<WaterEntry[]> {
+  const raw = await AsyncStorage.getItem(WATER_LOG_KEY);
+  if (!raw) return [];
+  const log: WaterLog = JSON.parse(raw);
+  return log.date === todayStr() ? log.entries : [];
+}
+
+async function saveEntries(entries: WaterEntry[]): Promise<void> {
+  await AsyncStorage.setItem(WATER_LOG_KEY, JSON.stringify({ date: todayStr(), entries }));
+}
+
+function r1(n: number) { return Math.round(n * 10) / 10; }
 
 export default function WaterTracker() {
-  const { user } = useAuth();
-  const [total, setTotal] = useState(0);
-  const [goal, setGoal] = useState(DEFAULT_GOAL);
-  const [editingGoal, setEditingGoal] = useState(false);
-  const [goalInput, setGoalInput] = useState('');
+  const { colors } = useTheme();
+  const s = makeStyles(colors);
+  const [entries, setEntries] = useState<WaterEntry[]>([]);
+  const [goal, setGoal] = useState(DEFAULT_WATER_GOAL);
+  const [showDetail, setShowDetail] = useState(false);
+  const [customInput, setCustomInput] = useState('');
+  const prevGoalHitRef = useRef(false);
 
-  const fetchWater = useCallback(async () => {
-    if (!user) return;
-    const { data } = await supabase.from('water_logs')
-      .select('oz').eq('user_id', user.id).eq('date', todayStr());
-    const sum = (data || []).reduce((a: number, r: any) => a + r.oz, 0);
-    setTotal(sum);
-  }, [user]);
-
-  const loadGoal = useCallback(async () => {
-    const stored = await AsyncStorage.getItem(GOAL_KEY);
-    if (stored) setGoal(parseInt(stored));
+  const load = useCallback(async () => {
+    const [e, g] = await Promise.all([
+      loadTodayEntries(),
+      AsyncStorage.getItem(WATER_GOAL_KEY),
+    ]);
+    setEntries(e);
+    if (g) setGoal(parseInt(g, 10) || DEFAULT_WATER_GOAL);
   }, []);
 
-  useEffect(() => { fetchWater(); loadGoal(); }, [fetchWater, loadGoal]);
+  useEffect(() => { load(); }, [load]);
 
-  const addWater = async (oz: number) => {
-    await supabase.from('water_logs').insert({ user_id: user!.id, date: todayStr(), oz });
-    setTotal(prev => prev + oz);
+  // Reload goal if it was changed in ProfileScreen when app comes back to foreground
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        AsyncStorage.getItem(WATER_GOAL_KEY).then(g => {
+          if (g) setGoal(parseInt(g, 10) || DEFAULT_WATER_GOAL);
+        });
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  const total = entries.reduce((a, e) => a + e.cups, 0);
+  const pct = Math.min(1, total / goal);
+  const goalHit = pct >= 1;
+  const barColor = goalHit ? colors.accent : WATER_BLUE;
+
+  useEffect(() => {
+    if (goalHit && !prevGoalHitRef.current) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    prevGoalHitRef.current = goalHit;
+  }, [goalHit]);
+
+  const addCups = async (cups: number) => {
+    const next = [...entries, { time: new Date().toISOString(), cups }];
+    setEntries(next);
+    await saveEntries(next);
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
-  const reset = async () => {
-    await supabase.from('water_logs').delete().eq('user_id', user!.id).eq('date', todayStr());
-    setTotal(0);
+  const removeEntry = async (index: number) => {
+    const next = entries.filter((_, i) => i !== index);
+    setEntries(next);
+    await saveEntries(next);
   };
 
-  const saveGoal = async () => {
-    const val = parseInt(goalInput);
-    if (!val || val < 8 || val > 512) {
-      Alert.alert('Invalid Goal', 'Please enter a value between 8 and 512 oz.');
-      return;
-    }
-    setGoal(val);
-    await AsyncStorage.setItem(GOAL_KEY, String(val));
-    setEditingGoal(false);
-    setGoalInput('');
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  const addCustom = async () => {
+    const cups = parseFloat(customInput);
+    if (!cups || cups <= 0) return;
+    await addCups(cups);
+    setCustomInput('');
   };
 
-  const pct = Math.min(1, total / goal);
-  const cups = Math.round(total / 8);
-  const remaining = Math.max(0, goal - total);
+  const fmtTime = (iso: string) =>
+    new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
   return (
-    <View style={s.card}>
-      <View style={s.cardHeader}>
-        <Text style={s.cardTitle}>WATER</Text>
-        <View style={s.headerRight}>
-          <TouchableOpacity onPress={() => { setGoalInput(String(goal)); setEditingGoal(!editingGoal); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={s.goalBtn}>Goal: {goal}oz</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={reset} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={s.resetBtn}>Reset</Text>
-          </TouchableOpacity>
+    <>
+      <View style={s.card}>
+        <View style={s.row}>
+          <Text style={s.label}>WATER</Text>
+          <Text style={s.counter}>
+            <Text style={[s.counterVal, goalHit && s.counterHit]}>{r1(total)}</Text>
+            <Text style={s.counterGoal}> / {goal} cups</Text>
+          </Text>
         </View>
-      </View>
 
-      {/* Goal editor */}
-      {editingGoal && (
-        <View style={s.goalEditor}>
-          <TextInput
-            style={s.goalInput}
-            value={goalInput}
-            onChangeText={setGoalInput}
-            keyboardType="number-pad"
-            placeholder="oz per day"
-            placeholderTextColor="#444"
-            autoFocus
-          />
-          <View style={s.goalPresets}>
-            {[64, 80, 96, 128].map(oz => (
-              <TouchableOpacity key={oz} style={[s.presetBtn, goal === oz && s.presetBtnActive]} onPress={() => setGoalInput(String(oz))}>
-                <Text style={[s.presetText, goal === oz && s.presetTextActive]}>{oz}oz</Text>
-                <Text style={s.presetSub}>{oz === 64 ? '½ gal' : oz === 128 ? '1 gal' : `${(oz/128).toFixed(2).replace(/0+$/, '')}g`}</Text>
-              </TouchableOpacity>
-            ))}
+        <TouchableOpacity onPress={() => setShowDetail(true)} activeOpacity={0.85}>
+          <View style={s.barBg}>
+            <View style={[s.barFill, { width: `${pct * 100}%` as any, backgroundColor: barColor }]} />
           </View>
-          <TouchableOpacity style={s.saveGoalBtn} onPress={saveGoal}>
-            <Text style={s.saveGoalBtnText}>Save Goal</Text>
+          <Text style={s.barSub}>
+            {goalHit ? 'Goal reached! 💧' : `${r1(Math.max(0, goal - total))} cups to go`}
+          </Text>
+        </TouchableOpacity>
+
+        <View style={s.quickAdd}>
+          {([1, 2, 3] as const).map(cups => (
+            <TouchableOpacity key={cups} style={s.addBtn} onPress={() => addCups(cups)} activeOpacity={0.7}>
+              <Text style={[s.addBtnText, { color: barColor }]}>
+                {cups === 3 ? '🍼 +3 cups' : cups === 1 ? '💧 +1 cup' : '💧 +2 cups'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      <Modal visible={showDetail} transparent animationType="slide" onRequestClose={() => setShowDetail(false)}>
+        <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={() => setShowDetail(false)}>
+          <TouchableOpacity activeOpacity={1} style={s.sheet}>
+            <View style={s.sheetHandle} />
+            <Text style={s.sheetTitle}>Water Log</Text>
+            <Text style={s.sheetSub}>{r1(total)} / {goal} cups today</Text>
+
+            <ScrollView style={s.entryList} showsVerticalScrollIndicator={false}>
+              {entries.length === 0 && <Text style={s.empty}>No entries yet</Text>}
+              {[...entries].reverse().map((e, revIdx) => {
+                const realIdx = entries.length - 1 - revIdx;
+                return (
+                  <View key={revIdx} style={s.entryRow}>
+                    <Text style={s.entryTime}>{fmtTime(e.time)}</Text>
+                    <Text style={s.entryAmt}>{r1(e.cups)} cup{e.cups !== 1 ? 's' : ''}</Text>
+                    <TouchableOpacity onPress={() => removeEntry(realIdx)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Text style={s.entryDel}>×</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </ScrollView>
+
+            <View style={s.customRow}>
+              <TextInput
+                style={s.customInput}
+                placeholder="Custom amount (cups)"
+                placeholderTextColor={colors.textTertiary}
+                value={customInput}
+                onChangeText={setCustomInput}
+                keyboardType="decimal-pad"
+                returnKeyType="done"
+                onSubmitEditing={addCustom}
+              />
+              <TouchableOpacity style={[s.customBtn, { backgroundColor: WATER_BLUE }]} onPress={addCustom}>
+                <Text style={s.customBtnText}>Add</Text>
+              </TouchableOpacity>
+            </View>
           </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Progress bar */}
-      <View style={s.progressWrap}>
-        <View style={s.progressBg}>
-          <View style={[s.progressFill, { width: `${pct * 100}%` as any }]} />
-        </View>
-        <Text style={s.progressLabel}>{remaining > 0 ? `${remaining} oz to go` : '🎉 Goal reached!'}</Text>
-      </View>
-
-      {/* Stats */}
-      <View style={s.stats}>
-        <View style={s.stat}>
-          <Text style={s.statVal}>{total}</Text>
-          <Text style={s.statLabel}>oz</Text>
-        </View>
-        <View style={s.stat}>
-          <Text style={s.statVal}>{cups}</Text>
-          <Text style={s.statLabel}>cups</Text>
-        </View>
-        <View style={s.stat}>
-          <Text style={s.statVal}>{(total / 128).toFixed(1)}</Text>
-          <Text style={s.statLabel}>gallons</Text>
-        </View>
-        <View style={s.stat}>
-          <Text style={[s.statVal, { color: pct >= 1 ? '#4ade80' : '#4a9eff' }]}>{Math.round(pct * 100)}%</Text>
-          <Text style={s.statLabel}>of goal</Text>
-        </View>
-      </View>
-
-      {/* Quick add */}
-      <View style={s.quickAdd}>
-        {QUICK_ADD.map(oz => (
-          <TouchableOpacity key={oz} style={s.addBtn} onPress={() => addWater(oz)} activeOpacity={0.7}>
-            <Text style={s.addBtnIcon}>💧</Text>
-            <Text style={s.addBtnText}>+{oz}oz</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
+        </TouchableOpacity>
+      </Modal>
+    </>
   );
 }
 
-const s = StyleSheet.create({
-  card: { backgroundColor: '#1a1a1a', borderRadius: 16, padding: 16, marginBottom: 20 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-  cardTitle: { fontSize: 11, fontWeight: '700', color: '#444', letterSpacing: 1.5 },
-  headerRight: { flexDirection: 'row', gap: 12, alignItems: 'center' },
-  goalBtn: { fontSize: 12, color: '#4a9eff', fontWeight: '700' },
-  resetBtn: { fontSize: 12, color: '#444', fontWeight: '600' },
-  goalEditor: { backgroundColor: '#252525', borderRadius: 12, padding: 14, marginBottom: 14, gap: 12 },
-  goalInput: { backgroundColor: '#1a1a1a', borderRadius: 10, color: '#fff', padding: 12, fontSize: 18, fontWeight: '700', textAlign: 'center' },
-  goalPresets: { flexDirection: 'row', gap: 8 },
-  presetBtn: { flex: 1, backgroundColor: '#1a1a1a', borderRadius: 10, padding: 10, alignItems: 'center' },
-  presetBtnActive: { backgroundColor: '#4a9eff22' },
-  presetText: { fontSize: 13, fontWeight: '800', color: '#555' },
-  presetTextActive: { color: '#4a9eff' },
-  presetSub: { fontSize: 9, color: '#444', fontWeight: '600', marginTop: 2 },
-  saveGoalBtn: { backgroundColor: '#fff', borderRadius: 10, padding: 12, alignItems: 'center' },
-  saveGoalBtnText: { color: '#000', fontSize: 14, fontWeight: '800' },
-  progressWrap: { marginBottom: 14 },
-  progressBg: { backgroundColor: '#2a2a2a', borderRadius: 6, height: 10, marginBottom: 6 },
-  progressFill: { backgroundColor: '#4a9eff', borderRadius: 6, height: 10 },
-  progressLabel: { fontSize: 11, color: '#555', fontWeight: '600' },
-  stats: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
-  stat: { alignItems: 'center' },
-  statVal: { fontSize: 18, fontWeight: '900', color: '#fff' },
-  statLabel: { fontSize: 10, color: '#555', fontWeight: '600', marginTop: 2 },
-  quickAdd: { flexDirection: 'row', gap: 8 },
-  addBtn: { flex: 1, backgroundColor: '#252525', borderRadius: 10, padding: 10, alignItems: 'center', gap: 4 },
-  addBtnIcon: { fontSize: 16 },
-  addBtnText: { fontSize: 11, color: '#4a9eff', fontWeight: '800' },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    card: {
+      backgroundColor: c.card, borderRadius: radius.card, padding: spacing.lg,
+      marginBottom: spacing.xl, borderWidth: 1, borderColor: c.border,
+    },
+    row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+    label: { fontSize: 11, fontWeight: weight.semibold, color: c.textSecondary, letterSpacing: 1.5 },
+    counter: {},
+    counterVal: { fontSize: 18, fontWeight: weight.heavy, color: c.text },
+    counterHit: { color: c.accent },
+    counterGoal: { fontSize: 13, color: c.textSecondary, fontWeight: weight.regular },
+    barBg: { backgroundColor: c.border, borderRadius: 6, height: 10, marginBottom: 6, overflow: 'hidden' },
+    barFill: { height: 10, borderRadius: 6 },
+    barSub: { fontSize: 11, color: c.textSecondary, fontWeight: weight.medium, marginBottom: 14 },
+    quickAdd: { flexDirection: 'row', gap: 8 },
+    addBtn: { flex: 1, backgroundColor: c.cardAlt, borderRadius: radius.sm, paddingVertical: 10, alignItems: 'center' },
+    addBtnText: { fontSize: 12, fontWeight: weight.bold },
+    // Sheet modal
+    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+    sheet: {
+      backgroundColor: c.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl,
+      padding: spacing.xl, paddingBottom: 40, maxHeight: '75%',
+    },
+    sheetHandle: { width: 36, height: 4, backgroundColor: c.border, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+    sheetTitle: { fontSize: 18, fontWeight: weight.heavy, color: c.text, marginBottom: 4 },
+    sheetSub: { fontSize: 13, color: c.textSecondary, marginBottom: 16 },
+    entryList: { maxHeight: 240 },
+    empty: { color: c.textTertiary, fontSize: 13, textAlign: 'center', paddingVertical: 20 },
+    entryRow: {
+      flexDirection: 'row', alignItems: 'center', paddingVertical: 10,
+      borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    entryTime: { flex: 1, fontSize: 13, color: c.textSecondary, fontWeight: weight.medium },
+    entryAmt: { fontSize: 14, fontWeight: weight.semibold, color: c.text, marginRight: 12 },
+    entryDel: { fontSize: 20, color: c.textTertiary, paddingHorizontal: 4 },
+    customRow: { flexDirection: 'row', gap: 10, marginTop: 16 },
+    customInput: {
+      flex: 1, backgroundColor: c.cardAlt, borderRadius: radius.sm,
+      color: c.text, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15,
+    },
+    customBtn: { borderRadius: radius.sm, paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center' },
+    customBtnText: { color: '#fff', fontWeight: weight.bold, fontSize: 14 },
+  });
+}

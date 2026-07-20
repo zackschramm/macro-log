@@ -1,11 +1,37 @@
 import { useState, useEffect } from 'react';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import AppleHealthKit, {
   HealthKitPermissions,
   HealthValue,
 } from 'react-native-health';
+import { toLocalDateString } from '../utils/dateUtils';
 
 const isHealthAvailable = Platform.OS === 'ios' && AppleHealthKit && typeof AppleHealthKit.isAvailable === 'function';
+
+// iOS 27 beta has an ICU/timezone regression that crashes the process natively
+// (EXC_BAD_ACCESS in _xzm_xzone_malloc_tiny, inside NSDateFormatter date-string
+// formatting) whenever react-native-health runs an HKStatisticsCollectionQuery —
+// i.e. getDailyStepCountSamples, getActiveEnergyBurned, getBasalEnergyBurned.
+// The crash happens in native code before any JS callback fires, so it cannot be
+// caught by a JS try/catch or React error boundary. Skip these three calls on
+// affected OS versions and resolve with empty data until Apple/react-native-health
+// fix the underlying bug.
+const STATISTICS_COLLECTION_UNSAFE =
+  Platform.OS === 'ios' && parseInt(String(Platform.Version), 10) >= 27;
+
+function safeGetDailyStepCountSamples(opts: any, cb: (err: any, data: any[]) => void) {
+  if (STATISTICS_COLLECTION_UNSAFE) { cb(null, []); return; }
+  (AppleHealthKit as any).getDailyStepCountSamples(opts, cb);
+}
+function safeGetActiveEnergyBurned(opts: any, cb: (err: any, data: any[]) => void) {
+  if (STATISTICS_COLLECTION_UNSAFE) { cb(null, []); return; }
+  AppleHealthKit.getActiveEnergyBurned(opts, cb);
+}
+function safeGetBasalEnergyBurned(opts: any, cb: (err: any, data: any[]) => void) {
+  if (STATISTICS_COLLECTION_UNSAFE) { cb(null, []); return; }
+  (AppleHealthKit as any).getBasalEnergyBurned(opts, cb);
+}
 
 // --- Shared authorization state (M1) ---
 // `initHealthKit` only needs to succeed once per app session. Previously each
@@ -26,8 +52,13 @@ const setModuleAuthorized = (v: boolean) => {
 // sourceName (e.g. "Whoop", "Apple Watch") to prefer everywhere unless a
 // screen-level/per-metric override (e.g. Recovery's Customize sheet) is set.
 export const STORAGE_PREFERRED_TRACKER = 'health_preferred_tracker';
+// Per-metric source preferences set in ProfileScreen's "Data Sources" section.
+// Layered between global tracker and RecoveryScreen's fine-grained overrides.
+export const STORAGE_HK_SOURCES = 'fuelog_healthkit_sources';
+// ISO timestamp (ms string) written after each successful getRecoveryData() call.
+export const STORAGE_LAST_SYNC = 'fuelog_healthkit_last_sync';
 
-export const SOURCE_PREF_KEYS = ['hrv', 'rhr', 'sleep', 'steps', 'activeCal', 'bloodO2', 'respRate', 'vo2', 'workouts'] as const;
+export const SOURCE_PREF_KEYS = ['hrv', 'rhr', 'sleep', 'steps', 'activeCal', 'basalCal', 'bloodO2', 'respRate', 'vo2', 'workouts'] as const;
 
 // Merge the global "preferred tracker" default with per-metric overrides
 // (e.g. from Recovery's Customize sheet). Per-metric overrides always win.
@@ -170,6 +201,7 @@ export interface RecoveryData {
   sleepRemHours: number | null;
   steps: number | null;         // today
   activeCalories: number | null;
+  basalCalories: number | null; // BMR from single preferred source
   bloodOxygen: number | null;   // %, latest
   respiratoryRate: number | null; // breaths/min
   vo2Max: number | null;
@@ -178,6 +210,109 @@ export interface RecoveryData {
   sleepTrend: { date: string; value: number }[];
   stepsTrend: { date: string; value: number }[];
   sources: Record<string, string>; // metric key → sourceName that provided the value
+}
+
+// Standalone functions — callable from utility code outside React components.
+// They use the module-scoped `moduleAuthorized` flag which is set once any
+// screen has called requestPermissions() via the hook.
+
+export async function getTodayBurn(): Promise<{ bmr: number | null; active: number | null }> {
+  if (!isHealthAvailable || !moduleAuthorized) return { bmr: null, active: null };
+
+  const now = new Date();
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+
+  const [bmr, active] = await Promise.all([
+    new Promise<number | null>((resolve) => {
+      try {
+        safeGetBasalEnergyBurned(
+          { startDate: todayStart.toISOString(), endDate: now.toISOString() },
+          (err: any, data: any[]) => {
+            if (err || !data?.length) return resolve(null);
+            const total = data.reduce((s: number, d: any) => s + (d.value ?? 0), 0);
+            resolve(total > 0 ? Math.round(total) : null);
+          }
+        );
+      } catch { resolve(null); }
+    }),
+    new Promise<number | null>((resolve) => {
+      try {
+        safeGetActiveEnergyBurned(
+          { startDate: todayStart.toISOString(), endDate: now.toISOString() },
+          (err: any, data: any[]) => {
+            if (err || !data?.length) return resolve(null);
+            const bySource: Record<string, number> = {};
+            data.forEach((s: any) => {
+              const src = s.sourceName ?? 'unknown';
+              bySource[src] = (bySource[src] ?? 0) + (s.value ?? 0);
+            });
+            const top = Object.values(bySource).reduce((m, v) => Math.max(m, v), 0);
+            resolve(top > 0 ? Math.round(top) : null);
+          }
+        );
+      } catch { resolve(null); }
+    }),
+  ]);
+
+  return { bmr, active };
+}
+
+export async function getWeeklyBurnData(): Promise<{ date: string; burned: number }[]> {
+  if (!isHealthAvailable || !moduleAuthorized) return [];
+
+  const now = new Date();
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  sevenDaysAgo.setHours(0, 0, 0, 0);
+
+  const [bmrSamples, activeSamples] = await Promise.all([
+    new Promise<any[]>((resolve) => {
+      try {
+        safeGetBasalEnergyBurned(
+          { startDate: sevenDaysAgo.toISOString(), endDate: now.toISOString() },
+          (err: any, data: any[]) => resolve(err ? [] : (data ?? []))
+        );
+      } catch { resolve([]); }
+    }),
+    new Promise<any[]>((resolve) => {
+      try {
+        safeGetActiveEnergyBurned(
+          { startDate: sevenDaysAgo.toISOString(), endDate: now.toISOString() },
+          (err: any, data: any[]) => resolve(err ? [] : (data ?? []))
+        );
+      } catch { resolve([]); }
+    }),
+  ]);
+
+  const bmrByDay: Record<string, number> = {};
+  bmrSamples.forEach((s: any) => {
+    const day = s.startDate ? toLocalDateString(new Date(s.startDate)) : '';
+    if (day) bmrByDay[day] = (bmrByDay[day] ?? 0) + (s.value ?? 0);
+  });
+
+  const activeByDay: Record<string, Record<string, number>> = {};
+  activeSamples.forEach((s: any) => {
+    const day = s.startDate ? toLocalDateString(new Date(s.startDate)) : '';
+    if (!day) return;
+    if (!activeByDay[day]) activeByDay[day] = {};
+    const src = s.sourceName ?? 'unknown';
+    activeByDay[day][src] = (activeByDay[day][src] ?? 0) + (s.value ?? 0);
+  });
+
+  const allDays = new Set([...Object.keys(bmrByDay), ...Object.keys(activeByDay)]);
+  const result: { date: string; burned: number }[] = [];
+
+  allDays.forEach((day) => {
+    const bmr = bmrByDay[day] ?? 0;
+    const activeMap = activeByDay[day] ?? {};
+    const topActive = Object.values(activeMap).length > 0
+      ? Math.max(...Object.values(activeMap)) : 0;
+    const total = Math.round(bmr + topActive);
+    if (total > 0) result.push({ date: day, burned: total });
+  });
+
+  return result.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 export function useHealthKit() {
@@ -235,7 +370,7 @@ export function useHealthKit() {
           catch { res(false); }
         });
       const checks = await Promise.all([
-        any((cb) => (AppleHealthKit as any).getDailyStepCountSamples(opts, cb)),
+        any((cb) => safeGetDailyStepCountSamples(opts, cb)),
         any((cb) => AppleHealthKit.getLatestWeight({ unit: AppleHealthKit.Constants.Units.pound }, cb)),
         any((cb) => AppleHealthKit.getHeartRateVariabilitySamples(opts, cb)),
         any((cb) => (AppleHealthKit as any).getSamples({ type: 'Workout', ...opts }, cb)),
@@ -351,7 +486,7 @@ export function useHealthKit() {
           );
         }),
         new Promise<void>((res) => {
-          (AppleHealthKit as any).getDailyStepCountSamples(
+          safeGetDailyStepCountSamples(
             { startDate: sevenDaysAgo.toISOString(), endDate: now.toISOString() },
             (err: any, data: any[]) => { if (!err && data?.length) addSources('steps', data); res(); }
           );
@@ -380,7 +515,7 @@ export function useHealthKit() {
         // pills for "Active Calories" even though getRecoveryData supports
         // filtering it by source).
         new Promise<void>((res) => {
-          AppleHealthKit.getActiveEnergyBurned(
+          safeGetActiveEnergyBurned(
             { startDate: sevenDaysAgo.toISOString(), endDate: now.toISOString() },
             (err: any, data: any[]) => { if (!err && data?.length) addSources('activeCal', data); res(); }
           );
@@ -392,6 +527,14 @@ export function useHealthKit() {
           (AppleHealthKit as any).getSamples(
             { type: 'Workout', startDate: thirtyDaysAgo.toISOString(), endDate: now.toISOString() },
             (err: any, data: any[]) => { if (!err && data?.length) addSources('workouts', data); res(); }
+          );
+        }),
+        // Basal energy — 7 days so sources are detected even on days the user
+        // didn't open the app.
+        new Promise<void>((res) => {
+          safeGetBasalEnergyBurned(
+            { startDate: sevenDaysAgo.toISOString(), endDate: now.toISOString() },
+            (err: any, data: any[]) => { if (!err && data?.length) addSources('basalCal', data); res(); }
           );
         }),
       ]);
@@ -412,7 +555,7 @@ export function useHealthKit() {
       if (!moduleAuthorized) {
         return resolve({
           hrv: null, restingHR: null, sleepHours: null, sleepDeepHours: null,
-          sleepRemHours: null, steps: null, activeCalories: null,
+          sleepRemHours: null, steps: null, activeCalories: null, basalCalories: null,
           bloodOxygen: null, respiratoryRate: null, vo2Max: null,
           hrvTrend: [], rhrTrend: [], sleepTrend: [], stepsTrend: [], sources: {},
         });
@@ -432,7 +575,7 @@ export function useHealthKit() {
 
       const results: RecoveryData = {
         hrv: null, restingHR: null, sleepHours: null, sleepDeepHours: null,
-        sleepRemHours: null, steps: null, activeCalories: null,
+        sleepRemHours: null, steps: null, activeCalories: null, basalCalories: null,
         bloodOxygen: null, respiratoryRate: null, vo2Max: null,
         hrvTrend: [], rhrTrend: [], sleepTrend: [], stepsTrend: [], sources: {},
       };
@@ -462,7 +605,8 @@ export function useHealthKit() {
               if (!err && filtered?.length > 0) {
                 const byDay: Record<string, number> = {};
                 filtered.forEach((s: any) => {
-                  const day = s.startDate.split('T')[0];
+                  const day = s.startDate ? toLocalDateString(new Date(s.startDate)) : '';
+                  if (!day) return;
                   const ms = Math.round(s.value * 1000);
                   if (!byDay[day] || ms > byDay[day]) byDay[day] = ms;
                 });
@@ -497,7 +641,8 @@ export function useHealthKit() {
                 // Trend: min per day across all samples
                 const byDay: Record<string, { value: number; source: string }> = {};
                 filtered.forEach((s: any) => {
-                  const day = s.startDate.split('T')[0];
+                  const day = s.startDate ? toLocalDateString(new Date(s.startDate)) : '';
+                  if (!day) return;
                   if (!byDay[day] || s.value < byDay[day].value) {
                     byDay[day] = { value: Math.round(s.value), source: s.sourceName ?? '' };
                   }
@@ -547,10 +692,12 @@ export function useHealthKit() {
               if (!err && filtered?.length > 0) {
                 const byDay: Record<string, number> = {};
                 filtered.forEach((s: any) => {
-                  const day = s.startDate.split('T')[0];
+                  const day = s.startDate ? toLocalDateString(new Date(s.startDate)) : '';
+                  if (!day) return;
                   const start = new Date(s.startDate).getTime();
                   const end = new Date(s.endDate).getTime();
                   const dur = end - start;
+                  if (!isFinite(dur)) return;
                   if (s.value === 1 || s.value === 3 || s.value === 4 || s.value === 5) {
                     byDay[day] = (byDay[day] ?? 0) + dur;
                   }
@@ -564,14 +711,21 @@ export function useHealthKit() {
           );
         }),
 
-        // Steps — today
+        // Steps — today, filtered by preferred source.
+        // getStepCount() returns an aggregated total that merges all sources (Apple
+        // Watch + iPhone + Garmin), which inflates the count when multiple devices
+        // are worn simultaneously. getDailyStepCountSamples() returns per-source
+        // entries so we can apply the same filterBySource logic used elsewhere.
         new Promise<void>((res) => {
-          AppleHealthKit.getStepCount(
+          safeGetDailyStepCountSamples(
             { startDate: todayStart.toISOString(), endDate: now.toISOString() },
-            (err: any, data: any) => {
-              if (!err && data?.value != null) {
-                results.steps = Math.round(data.value);
-                results.sources['steps'] = data.sourceName ?? '';
+            (err: any, data: any[]) => {
+              const filtered = filterBySource(data, 'steps');
+              if (!err && filtered?.length > 0) {
+                // Sum all entries for the preferred source (may have multiple segments)
+                const total = filtered.reduce((s: number, d: any) => s + (d.value ?? 0), 0);
+                results.steps = Math.round(total);
+                results.sources['steps'] = filtered[0].sourceName ?? '';
               }
               res();
             }
@@ -580,15 +734,17 @@ export function useHealthKit() {
 
         // Steps trend — last 7 days
         new Promise<void>((res) => {
-          (AppleHealthKit as any).getDailyStepCountSamples(
+          safeGetDailyStepCountSamples(
             { startDate: sevenDaysAgo.toISOString(), endDate: now.toISOString() },
             (err: any, data: any[]) => {
               const filtered = filterBySource(data, 'steps');
               if (!err && filtered?.length > 0) {
-                results.stepsTrend = filtered.map((s: any) => ({
-                  date: s.startDate.split('T')[0],
-                  value: Math.round(s.value),
-                }));
+                results.stepsTrend = filtered
+                  .filter((s: any) => !!s.startDate)
+                  .map((s: any) => ({
+                    date: toLocalDateString(new Date(s.startDate)),
+                    value: Math.round(s.value),
+                  }));
               }
               res();
             }
@@ -601,7 +757,7 @@ export function useHealthKit() {
         // energy, so a naive sum double-counts and inflates today's burn.
         // Respects an explicit source preference if the user set one.
         new Promise<void>((res) => {
-          AppleHealthKit.getActiveEnergyBurned(
+          safeGetActiveEnergyBurned(
             { startDate: todayStart.toISOString(), endDate: now.toISOString() },
             (err: any, data: any[]) => {
               const filtered = filterBySource(data, 'activeCal');
@@ -651,6 +807,30 @@ export function useHealthKit() {
           );
         }),
 
+        // Basal Energy (BMR) — today, single preferred source.
+        // Always pull from one source only: Apple estimates BMR from body metrics
+        // and Whoop/Garmin each compute it independently. Summing them double-counts.
+        new Promise<void>((res) => {
+          safeGetBasalEnergyBurned(
+            { startDate: todayStart.toISOString(), endDate: now.toISOString() },
+            (err: any, data: any[]) => {
+              const filtered = filterBySource(data, 'basalCal');
+              if (!err && filtered?.length > 0) {
+                const bySource: Record<string, number> = {};
+                filtered.forEach((s: any) => {
+                  const src = s.sourceName ?? 'unknown';
+                  bySource[src] = (bySource[src] ?? 0) + (s.value ?? 0);
+                });
+                const [topSource, topTotal] = Object.entries(bySource)
+                  .reduce((max, cur) => (cur[1] > max[1] ? cur : max), ['', 0] as [string, number]);
+                results.basalCalories = Math.round(topTotal);
+                results.sources['basalCal'] = topSource;
+              }
+              res();
+            }
+          );
+        }),
+
         // VO2 Max — latest
         new Promise<void>((res) => {
           (AppleHealthKit as any).getVo2MaxSamples(
@@ -667,6 +847,7 @@ export function useHealthKit() {
         }),
       ]);
 
+      AsyncStorage.setItem(STORAGE_LAST_SYNC, Date.now().toString());
       resolve(results);
     });
   };
@@ -735,7 +916,8 @@ export function useHealthKit() {
       const workouts = await getWorkoutHistory(7, sourcePrefs);
       const byDay: Record<string, { minutes: number; calories: number }> = {};
       workouts.forEach(w => {
-        const day = w.startDate.split('T')[0];
+        const day = w.startDate ? toLocalDateString(new Date(w.startDate)) : '';
+        if (!day) return;
         if (!byDay[day]) byDay[day] = { minutes: 0, calories: 0 };
         byDay[day].minutes += w.duration;
         byDay[day].calories += w.calories ?? 0;
@@ -749,6 +931,73 @@ export function useHealthKit() {
     });
   };
 
+  // Returns the most recent sample timestamp (ms) per HealthKit source name
+  // across all metrics — used by ProfileScreen to show "last synced X min ago".
+  const getSourceSyncTimes = (): Promise<Record<string, number>> => {
+    return new Promise(async (resolve) => {
+      if (!moduleAuthorized) return resolve({});
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now);
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const opts = { startDate: thirtyDaysAgo.toISOString(), endDate: now.toISOString() };
+
+      const syncTimes: Record<string, number> = {};
+      const absorb = (samples: any[]) => {
+        (samples ?? []).forEach((s: any) => {
+          if (!s.sourceName) return;
+          const ts = new Date(s.startDate ?? s.start ?? '').getTime();
+          if (!isNaN(ts) && (!syncTimes[s.sourceName] || ts > syncTimes[s.sourceName])) {
+            syncTimes[s.sourceName] = ts;
+          }
+        });
+      };
+
+      await Promise.allSettled([
+        new Promise<void>((res) => {
+          AppleHealthKit.getHeartRateVariabilitySamples(opts, (e: any, d: any[]) => { absorb(d); res(); });
+        }),
+        new Promise<void>((res) => {
+          (AppleHealthKit as any).getHeartRateSamples(opts, (e: any, d: any[]) => { absorb(d); res(); });
+        }),
+        new Promise<void>((res) => {
+          AppleHealthKit.getSleepSamples(opts, (e: any, d: any[]) => { absorb(d); res(); });
+        }),
+        new Promise<void>((res) => {
+          safeGetDailyStepCountSamples(opts, (e: any, d: any[]) => { absorb(d); res(); });
+        }),
+        new Promise<void>((res) => {
+          safeGetActiveEnergyBurned(opts, (e: any, d: any[]) => { absorb(d); res(); });
+        }),
+        new Promise<void>((res) => {
+          (AppleHealthKit as any).getSamples(
+            { type: 'Workout', ...opts },
+            (e: any, d: any[]) => { absorb(d); res(); }
+          );
+        }),
+      ]);
+
+      resolve(syncTimes);
+    });
+  };
+
+  // Register HealthKit observer queries for data types the react-native-health
+  // library supports. Calls onNewData immediately after observers are set up so
+  // the caller can kick off an initial data fetch; subsequent live updates rely
+  // on the 30-second polling + AppState foreground refresh in the caller since
+  // react-native-health's setObserver does not expose a per-sample JS callback.
+  // Full background delivery requires the HealthKit background delivery
+  // entitlement in Xcode and is handled at the native layer.
+  // HRV, sleep, and steps observers are not available via this API.
+  const registerObservers = (onNewData: () => void): void => {
+    if (!moduleAuthorized || Platform.OS !== 'ios') return;
+    const types = ['Workout', 'HeartRate', 'RestingHeartRate'];
+    types.forEach((type) => {
+      try { (AppleHealthKit as any).setObserver({ type }); } catch {}
+    });
+    // Trigger an immediate refresh so the caller's data is current after setup.
+    onNewData();
+  };
+
   return {
     isAvailable,
     isAuthorized,
@@ -760,6 +1009,8 @@ export function useHealthKit() {
     saveWorkout,
     getRecoveryData,
     getAvailableSources,
+    getSourceSyncTimes,
+    registerObservers,
     getWorkoutHistory,
     getWeeklyTrainingLoad,
   };

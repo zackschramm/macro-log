@@ -7,7 +7,27 @@
       "Bash(eas build:*)",
       "Bash(curl:*)",
       "WebFetch(domain:www.revenuecat.com)",
-      "WebFetch(domain:api.revenuecat.com)"
+      "WebFetch(domain:api.revenuecat.com)",
+      "Bash(python3 -c 'import json;print\\(json.load\\(open\\('\\\\''/Users/zackschramm/.expo/state.json'\\\\''\\)\\)['\\\\''auth'\\\\'']['\\\\''sessionSecret'\\\\'']\\)')",
+      "Bash(python3 -m json.tool)",
+      "Bash(npx eas-cli *)",
+      "Bash(npx tsc *)",
+      "Bash(grep -E \"^-.*\\\\.\\(js|json|config\\)$\")",
+      "Bash(xargs ls -lh)",
+      "Bash(mkdir -p /Users/zackschramm/Downloads/MacroLog/supabase/functions/whoop-proxy /Users/zackschramm/Downloads/MacroLog/supabase/functions/oura-proxy /Users/zackschramm/Downloads/MacroLog/supabase/functions/garmin-proxy)",
+      "Bash(node -e \"const pkg = require\\('/Users/zackschramm/Downloads/MacroLog/package.json'\\); console.log\\(Object.keys\\(pkg.dependencies\\).filter\\(k => k.includes\\('expo'\\)\\).join\\('\\\\n'\\)\\);\")",
+      "Bash(npm install *)",
+      "Bash(eas build:view 2f024570-9d8f-4405-9f02-33be81b82f06 --json)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d['logFiles'][0]\\)\")",
+      "Bash(python3 -c \"import sys,json; data=sys.stdin.read\\(\\).strip\\(\\); lines=data.split\\('\\\\n'\\); json_start=next\\(i for i,l in enumerate\\(lines\\) if l.startswith\\('{'\\)\\); d=json.loads\\('\\\\n'.join\\(lines[json_start:]\\)\\); [print\\(u\\) for u in d.get\\('logFiles',[]\\)]\")",
+      "Bash(eas build:logs 2f024570-9d8f-4405-9f02-33be81b82f06)",
+      "Bash(eas secret:create --scope project --name EXPO_PUBLIC_ANTHROPIC_API_KEY --value \"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\" --type string)",
+      "Bash(eas env:list)",
+      "Bash(eas secret:list)",
+      "Bash(eas --help)",
+      "Bash(python3 -c ' *)",
+      "Bash(deno check *)",
+      "Bash(git -C /Users/zackschramm/Downloads/MacroLog diff --stat -- utils/recipes.ts)"
     ]
   }
 }

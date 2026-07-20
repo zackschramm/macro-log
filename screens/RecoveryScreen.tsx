@@ -4,10 +4,20 @@ import {
   ActivityIndicator, Dimensions, Platform, Modal, Switch,
   TouchableWithoutFeedback, AppState, AppStateStatus,
 } from 'react-native';
+import BreathworkScreen from './BreathworkScreen';
+import GlucoseScreen from './GlucoseScreen';
+import CycleTrackingScreen from './CycleTrackingScreen';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle, Polyline, Line, Text as SvgText } from 'react-native-svg';
-import { useHealthKit, RecoveryData, WeeklyTrainingLoad, STORAGE_PREFERRED_TRACKER, buildSourcePrefs } from '../hooks/useHealthKit';
+import { useHealthKit, RecoveryData, WeeklyTrainingLoad, STORAGE_PREFERRED_TRACKER, STORAGE_HK_SOURCES, STORAGE_LAST_SYNC, buildSourcePrefs } from '../hooks/useHealthKit';
+import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
+import { supabase } from '../constants/supabase';
+import { toLocalDateString } from '../utils/dateUtils';
+import {
+  getConnectedWearables, getWhoopData, getWhoopTrends, getOuraData, getGarminData,
+  type Provider, type WhoopData, type WhoopTrends, type OuraData, type GarminData,
+} from '../utils/wearables';
 
 const { width } = Dimensions.get('window');
 const CHART_W = (width - 64) / 2 - 8;
@@ -15,6 +25,60 @@ const CHART_H = 60;
 
 const STORAGE_SOURCE_PREFS = 'recovery_source_prefs';
 const STORAGE_VISIBLE_METRICS = 'recovery_visible_metrics';
+
+const SUPABASE_URL = 'https://zbcxuffgmjuqarapfdwb.supabase.co';
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE';
+
+async function callCgmProxy(session: { access_token: string } | null | undefined, body: object) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/cgm-proxy`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session?.access_token ?? ''}`,
+      apikey: ANON_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
+function computeCyclePhase(lastPeriodStart: string, cycleLength: number, periodLength: number) {
+  const start = new Date(lastPeriodStart + 'T12:00:00');
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  const daysDiff = Math.floor((today.getTime() - start.getTime()) / 86400000);
+  const cycleDay = (daysDiff % cycleLength) + 1;
+  const daysUntilPeriod = cycleLength - cycleDay + 1;
+  let name: string, emoji: string;
+  if (cycleDay <= periodLength) { name = 'Menstrual'; emoji = '🔴'; }
+  else if (cycleDay <= 13) { name = 'Follicular'; emoji = '🌱'; }
+  else if (cycleDay <= 16) { name = 'Ovulation'; emoji = '⚡'; }
+  else { name = 'Luteal'; emoji = '🌙'; }
+  return { name, emoji, day: cycleDay, totalDays: cycleLength, daysUntilPeriod };
+}
+
+function trendArrowEmoji(trend: string): string {
+  switch (trend) {
+    case 'DOUBLE_UP': return '⬆⬆';
+    case 'SINGLE_UP': return '⬆';
+    case 'FORTY_FIVE_UP': return '↗';
+    case 'FLAT': return '→';
+    case 'FORTY_FIVE_DOWN': return '↘';
+    case 'SINGLE_DOWN': return '⬇';
+    case 'DOUBLE_DOWN': return '⬇⬇';
+    default: return '—';
+  }
+}
+
+function cycleInsight(phase: string): string {
+  switch (phase) {
+    case 'Menstrual': return 'Rest or light movement today. Focus on iron-rich foods.';
+    case 'Follicular': return 'Energy rising — good time for strength and high-intensity work.';
+    case 'Ovulation': return 'Peak power and strength. Ideal for PRs and max efforts.';
+    case 'Luteal': return 'Taper intensity, add complex carbs, manage stress.';
+    default: return '';
+  }
+}
 
 const ALL_METRICS = [
   { key: 'hrv', label: 'HRV' },
@@ -28,6 +92,16 @@ const ALL_METRICS = [
 ] as const;
 
 const DEFAULT_VISIBLE = ALL_METRICS.map(m => m.key);
+
+// Used when HealthKit was never authorized (Whoop-only users) so metrics that
+// have no Whoop equivalent (steps, active cal, blood O2, VO2 max) render as
+// "No data" instead of the screen requiring HealthKit to load at all.
+const EMPTY_RECOVERY_DATA: RecoveryData = {
+  hrv: null, restingHR: null, sleepHours: null, sleepDeepHours: null,
+  sleepRemHours: null, steps: null, activeCalories: null, basalCalories: null,
+  bloodOxygen: null, respiratoryRate: null, vo2Max: null,
+  hrvTrend: [], rhrTrend: [], sleepTrend: [], stepsTrend: [], sources: {},
+};
 
 // ─── Recovery Score ────────────────────────────────────────────────────────────
 function calcScore(data: RecoveryData): number | null {
@@ -56,11 +130,11 @@ function calcScore(data: RecoveryData): number | null {
   return Math.round((score / maxPossible) * 100);
 }
 
-function scoreColor(score: number | null): string {
-  if (score === null) return '#333';
-  if (score >= 70) return '#4ade80';
-  if (score >= 40) return '#fbbf24';
-  return '#ff4f4f';
+function scoreColor(score: number | null, c: ThemeColors): string {
+  if (score === null) return c.textTertiary;
+  if (score >= 70) return c.accent;
+  if (score >= 40) return c.carbs;
+  return c.danger;
 }
 
 function scoreLabel(score: number | null): string {
@@ -72,10 +146,12 @@ function scoreLabel(score: number | null): string {
 
 // ─── Mini Trend Chart ──────────────────────────────────────────────────────────
 function MiniChart({ data, color }: { data: { date: string; value: number }[]; color: string }) {
+  const { colors } = useTheme();
+
   if (data.length < 2) {
     return (
       <View style={{ height: CHART_H, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: '#333', fontSize: 11 }}>Not enough data</Text>
+        <Text style={{ color: colors.textTertiary, fontSize: 11 }}>Not enough data</Text>
       </View>
     );
   }
@@ -96,19 +172,20 @@ function MiniChart({ data, color }: { data: { date: string; value: number }[]; c
 
   return (
     <Svg width={CHART_W} height={CHART_H}>
-      <Line x1={padH} y1={padV + chartH} x2={padH + chartW} y2={padV + chartH} stroke="#222" strokeWidth="1" />
+      <Line x1={padH} y1={padV + chartH} x2={padH + chartW} y2={padV + chartH} stroke={colors.border} strokeWidth="1" />
       <Polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
       {pts.map((d, i) => (
         <Circle key={i} cx={toX(i)} cy={toY(d.value)} r="2.5" fill={color} />
       ))}
-      <SvgText x={padH} y={CHART_H - 1} fill="#333" fontSize="8">{pts[0].date.slice(5)}</SvgText>
-      <SvgText x={padH + chartW} y={CHART_H - 1} fill="#444" fontSize="8" textAnchor="end">{pts[pts.length - 1].date.slice(5)}</SvgText>
+      <SvgText x={padH} y={CHART_H - 1} fill={colors.borderStrong} fontSize="8">{pts[0].date.slice(5)}</SvgText>
+      <SvgText x={padH + chartW} y={CHART_H - 1} fill={colors.textTertiary} fontSize="8" textAnchor="end">{pts[pts.length - 1].date.slice(5)}</SvgText>
     </Svg>
   );
 }
 
 // ─── Wide Trend Chart ──────────────────────────────────────────────────────────
 function WideChart({ data, color }: { data: { date: string; value: number }[]; color: string }) {
+  const { colors } = useTheme();
   const chartW = width - 64;
   if (data.length < 2) return null;
   const pts = data.slice(-7);
@@ -124,11 +201,11 @@ function WideChart({ data, color }: { data: { date: string; value: number }[]; c
   const points = pts.map((d, i) => `${toX(i)},${toY(d.value)}`).join(' ');
   return (
     <Svg width={chartW} height={CHART_H}>
-      <Line x1={padH} y1={padV + cH} x2={padH + cW} y2={padV + cH} stroke="#222" strokeWidth="1" />
+      <Line x1={padH} y1={padV + cH} x2={padH + cW} y2={padV + cH} stroke={colors.border} strokeWidth="1" />
       <Polyline points={points} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
       {pts.map((d, i) => <Circle key={i} cx={toX(i)} cy={toY(d.value)} r="2.5" fill={color} />)}
-      <SvgText x={padH} y={CHART_H - 1} fill="#333" fontSize="8">{pts[0].date.slice(5)}</SvgText>
-      <SvgText x={padH + cW} y={CHART_H - 1} fill="#444" fontSize="8" textAnchor="end">{pts[pts.length - 1].date.slice(5)}</SvgText>
+      <SvgText x={padH} y={CHART_H - 1} fill={colors.borderStrong} fontSize="8">{pts[0].date.slice(5)}</SvgText>
+      <SvgText x={padH + cW} y={CHART_H - 1} fill={colors.textTertiary} fontSize="8" textAnchor="end">{pts[pts.length - 1].date.slice(5)}</SvgText>
     </Svg>
   );
 }
@@ -145,6 +222,8 @@ function StatCard({
   trendData?: { date: string; value: number }[];
   source?: string;
 }) {
+  const { colors } = useTheme();
+  const sc = makeStatCardStyles(colors);
   return (
     <View style={sc.card}>
       <Text style={sc.label}>{label}</Text>
@@ -167,17 +246,6 @@ function StatCard({
   );
 }
 
-const sc = StyleSheet.create({
-  card: { backgroundColor: '#1a1a1a', borderRadius: 16, padding: 14, flex: 1 },
-  label: { fontSize: 10, fontWeight: '700', color: '#444', letterSpacing: 1.2, marginBottom: 6, textTransform: 'uppercase' },
-  valueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
-  value: { fontSize: 26, fontWeight: '900', letterSpacing: -0.5 },
-  unit: { fontSize: 13, color: '#555', fontWeight: '600' },
-  sub: { fontSize: 11, color: '#444', fontWeight: '500', marginTop: 4 },
-  source: { fontSize: 10, color: '#333', fontWeight: '500', marginTop: 2 },
-  noData: { fontSize: 14, color: '#333', fontWeight: '600', marginTop: 4 },
-});
-
 // ─── Customize Sheet ───────────────────────────────────────────────────────────
 function CustomizeSheet({
   visible,
@@ -196,6 +264,8 @@ function CustomizeSheet({
   sourcePrefs: Record<string, string>;
   onSetSource: (key: string, source: string) => void;
 }) {
+  const { colors } = useTheme();
+  const cs = makeCustomizeStyles(colors);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <TouchableWithoutFeedback onPress={onClose}>
@@ -206,7 +276,6 @@ function CustomizeSheet({
         <Text style={cs.sheetTitle}>Customize Recovery</Text>
 
         <ScrollView showsVerticalScrollIndicator={false}>
-          {/* Visibility */}
           <Text style={cs.section}>VISIBLE METRICS</Text>
           {ALL_METRICS.map(({ key, label }) => (
             <View key={key} style={cs.row}>
@@ -214,20 +283,18 @@ function CustomizeSheet({
               <Switch
                 value={visibleMetrics.includes(key)}
                 onValueChange={() => onToggleMetric(key)}
-                trackColor={{ false: '#2a2a2a', true: '#fff' }}
-                thumbColor="#000"
+                trackColor={{ false: colors.border, true: colors.accent }}
+                thumbColor={colors.accentText}
               />
             </View>
           ))}
 
-          {/* Sources */}
           {Object.keys(availableSources).some(k => availableSources[k].length > 1) && (
             <>
               <Text style={[cs.section, { marginTop: 20 }]}>DATA SOURCES</Text>
               <Text style={cs.sourcesNote}>Only shown when multiple apps contribute data for a metric.</Text>
               {ALL_METRICS.filter(({ key }) => (availableSources[key]?.length ?? 0) > 1).map(({ key, label }) => {
                 const sources = availableSources[key] ?? [];
-                const current = sourcePrefs[key] ?? 'Auto';
                 return (
                   <View key={key} style={cs.sourceGroup}>
                     <Text style={cs.sourceMetricLabel}>{label}</Text>
@@ -258,29 +325,155 @@ function CustomizeSheet({
   );
 }
 
-const cs = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
-  sheet: {
-    backgroundColor: '#141414', borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingHorizontal: 20, paddingTop: 12, maxHeight: '80%',
-  },
-  handle: { width: 36, height: 4, backgroundColor: '#333', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
-  sheetTitle: { fontSize: 18, fontWeight: '900', color: '#fff', marginBottom: 20 },
-  section: { fontSize: 10, fontWeight: '700', color: '#444', letterSpacing: 1.5, marginBottom: 12 },
-  sourcesNote: { fontSize: 12, color: '#333', fontWeight: '500', marginBottom: 14, marginTop: -8 },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
-  rowLabel: { fontSize: 15, fontWeight: '600', color: '#ccc' },
-  sourceGroup: { marginBottom: 16 },
-  sourceMetricLabel: { fontSize: 13, fontWeight: '700', color: '#888', marginBottom: 8 },
-  sourcePills: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  pill: { borderRadius: 20, paddingHorizontal: 14, paddingVertical: 6, backgroundColor: '#1e1e1e', borderWidth: 1, borderColor: '#2a2a2a' },
-  pillActive: { backgroundColor: '#fff', borderColor: '#fff' },
-  pillText: { fontSize: 13, fontWeight: '600', color: '#555' },
-  pillTextActive: { color: '#000' },
-});
+// ─── Wearable Cards ────────────────────────────────────────────────────────────
+function WearableStat({ label, value, color }: { label: string; value: string | null; color: string }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flex: 1, minWidth: '45%', backgroundColor: colors.cardAlt, borderRadius: radius.sm, padding: 10 }}>
+      <Text style={{ fontSize: 10, fontWeight: weight.bold, color: colors.textTertiary, letterSpacing: 0.8, textTransform: 'uppercase' }}>{label}</Text>
+      <Text style={{ fontSize: 18, fontWeight: weight.heavy, color: value ? color : colors.textTertiary, marginTop: 4 }}>{value ?? '—'}</Text>
+    </View>
+  );
+}
+
+function WhoopCard({ data }: { data: WhoopData | null }) {
+  const { colors } = useTheme();
+  if (!data || data.recoveryScore === null) return null;
+  const score = data.recoveryScore;
+  const color = score >= 67 ? '#C8FF3D' : score >= 34 ? '#F5A623' : '#FF4444';
+  const size = 80;
+  const r = 34;
+  const circumference = 2 * Math.PI * r;
+  const dashOffset = circumference * (1 - score / 100);
+  return (
+    <View style={{ backgroundColor: colors.card, borderRadius: radius.card, padding: spacing.lg, borderWidth: 1, borderColor: colors.border }}>
+      <Text style={{ fontSize: 10, fontWeight: weight.bold, color: colors.textTertiary, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 }}>WHOOP</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 12 }}>
+        <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
+          <Circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={colors.border} strokeWidth={7} />
+          <Circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={7}
+            strokeDasharray={circumference} strokeDashoffset={dashOffset} strokeLinecap="round" />
+        </Svg>
+        <View>
+          <Text style={{ fontSize: 36, fontWeight: weight.heavy, color }}>{score}%</Text>
+          <Text style={{ fontSize: 12, color: colors.textTertiary, fontWeight: weight.medium }}>Recovery Score</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+        <WearableStat label="HRV" value={data.hrv !== null ? `${data.hrv}ms` : null} color="#a78bfa" />
+        <WearableStat label="Resting HR" value={data.restingHR !== null ? `${data.restingHR} bpm` : null} color={colors.info} />
+        <WearableStat label="Strain" value={data.strain !== null ? data.strain.toFixed(1) : null} color={colors.carbs} />
+        <WearableStat label="SpO₂" value={data.spo2 !== null ? `${data.spo2.toFixed(1)}%` : null} color={colors.accent} />
+      </View>
+    </View>
+  );
+}
+
+function OuraCard({ data }: { data: OuraData | null }) {
+  const { colors } = useTheme();
+  if (!data || data.readinessScore === null) return null;
+  const score = data.readinessScore;
+  const color = score >= 70 ? '#C8FF3D' : score >= 50 ? '#F5A623' : '#FF4444';
+  const size = 80;
+  const r = 34;
+  const circumference = 2 * Math.PI * r;
+  const dashOffset = circumference * (1 - score / 100);
+  const contributorEntries = data.contributors
+    ? Object.entries(data.contributors)
+        .filter(([, v]) => typeof v === 'number')
+        .sort(([, a], [, b]) => (b as number) - (a as number))
+        .slice(0, 4)
+    : [];
+  return (
+    <View style={{ backgroundColor: colors.card, borderRadius: radius.card, padding: spacing.lg, borderWidth: 1, borderColor: colors.border }}>
+      <Text style={{ fontSize: 10, fontWeight: weight.bold, color: colors.textTertiary, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 }}>OURA RING</Text>
+      <View style={{ flexDirection: 'row', gap: 16, marginBottom: 12 }}>
+        <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
+          <Circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={colors.border} strokeWidth={7} />
+          <Circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={7}
+            strokeDasharray={circumference} strokeDashoffset={dashOffset} strokeLinecap="round" />
+        </Svg>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 36, fontWeight: weight.heavy, color }}>{score}</Text>
+          <Text style={{ fontSize: 12, color: colors.textTertiary }}>Readiness</Text>
+          <View style={{ flexDirection: 'row', gap: 12, marginTop: 8 }}>
+            {data.sleepScore !== null && (
+              <View>
+                <Text style={{ fontSize: 18, fontWeight: weight.heavy, color: colors.info }}>{data.sleepScore}</Text>
+                <Text style={{ fontSize: 10, color: colors.textTertiary }}>Sleep</Text>
+              </View>
+            )}
+            {data.activityScore !== null && (
+              <View>
+                <Text style={{ fontSize: 18, fontWeight: weight.heavy, color: colors.accent }}>{data.activityScore}</Text>
+                <Text style={{ fontSize: 10, color: colors.textTertiary }}>Activity</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </View>
+      {contributorEntries.length > 0 && (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {contributorEntries.map(([key, val]) => (
+            <View key={key} style={{ backgroundColor: colors.cardAlt, borderRadius: radius.pill, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: colors.border }}>
+              <Text style={{ fontSize: 11, color: colors.textTertiary, fontWeight: weight.semibold }}>
+                {key.replace(/_/g, ' ')}: {val}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+function GarminCard({ data }: { data: GarminData | null }) {
+  const { colors } = useTheme();
+  if (!data || data.bodyBattery === null) return null;
+  const battery = data.bodyBattery;
+  const batteryColor = battery >= 60 ? '#C8FF3D' : battery >= 30 ? '#F5A623' : '#FF4444';
+  return (
+    <View style={{ backgroundColor: colors.card, borderRadius: radius.card, padding: spacing.lg, borderWidth: 1, borderColor: colors.border }}>
+      <Text style={{ fontSize: 10, fontWeight: weight.bold, color: colors.textTertiary, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 }}>GARMIN</Text>
+      <Text style={{ fontSize: 10, color: colors.textTertiary, fontWeight: weight.medium, marginBottom: 6 }}>Body Battery</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <Text style={{ fontSize: 32, fontWeight: weight.heavy, color: batteryColor }}>{battery}</Text>
+        <View style={{ flex: 1 }}>
+          <View style={{ height: 8, backgroundColor: colors.border, borderRadius: 4 }}>
+            <View style={{ height: 8, backgroundColor: batteryColor, borderRadius: 4, width: `${battery}%` as any }} />
+          </View>
+          <Text style={{ fontSize: 10, color: colors.textTertiary, marginTop: 3 }}>out of 100</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 16 }}>
+        {data.stressLevel !== null && (
+          <View>
+            <Text style={{ fontSize: 18, fontWeight: weight.heavy, color: colors.carbs }}>{data.stressLevel}</Text>
+            <Text style={{ fontSize: 10, color: colors.textTertiary }}>Stress</Text>
+          </View>
+        )}
+        {data.steps !== null && (
+          <View>
+            <Text style={{ fontSize: 18, fontWeight: weight.heavy, color: colors.accent }}>{data.steps.toLocaleString()}</Text>
+            <Text style={{ fontSize: 10, color: colors.textTertiary }}>Steps</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+}
 
 // ─── Main Screen ───────────────────────────────────────────────────────────────
-export default function RecoveryScreen() {
+export default function RecoveryScreen({
+  onNavigateToProfile,
+  onNavigateToCoach,
+}: {
+  onNavigateToProfile?: () => void;
+  onNavigateToCoach?: () => void;
+}) {
+  const { colors } = useTheme();
+  const s = makeStyles(colors);
+  const sc = makeStatCardStyles(colors);
   const health = useHealthKit();
   const [data, setData] = useState<RecoveryData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -293,8 +486,26 @@ export default function RecoveryScreen() {
   const [preferredTracker, setPreferredTracker] = useState<string>('auto');
   const [availableSources, setAvailableSources] = useState<Record<string, string[]>>({});
   const [trainingLoad, setTrainingLoad] = useState<WeeklyTrainingLoad | null>(null);
+  const [showBreathwork, setShowBreathwork] = useState(false);
+  const [lastSyncMs, setLastSyncMs] = useState<number | null>(null);
+  const [connectedWearables, setConnectedWearables] = useState<Provider[]>([]);
+  const [wearablesChecked, setWearablesChecked] = useState(false);
+  const [whoopData, setWhoopData] = useState<WhoopData | null>(null);
+  const [whoopTrends, setWhoopTrends] = useState<WhoopTrends | null>(null);
+  const [ouraData, setOuraData] = useState<OuraData | null>(null);
+  const [garminData, setGarminData] = useState<GarminData | null>(null);
+  const [wearableLoading, setWearableLoading] = useState(false);
+  const [dexcomData, setDexcomData] = useState<{
+    stats: { average: number; timeInRange: number; timeAboveRange: number; timeBelowRange: number; high: number; low: number };
+    currentReading: number | null;
+    currentTrend: string | null;
+  } | null>(null);
+  const [cyclePhase, setCyclePhase] = useState<{
+    name: string; emoji: string; day: number; totalDays: number; daysUntilPeriod: number;
+  } | null>(null);
+  const [showGlucose, setShowGlucose] = useState(false);
+  const [showCycleTracking, setShowCycleTracking] = useState(false);
 
-  // Load persisted prefs on mount
   useEffect(() => {
     AsyncStorage.multiGet([STORAGE_SOURCE_PREFS, STORAGE_VISIBLE_METRICS, STORAGE_PREFERRED_TRACKER]).then(pairs => {
       const [srcRaw, visRaw, trackerRaw] = pairs;
@@ -305,7 +516,6 @@ export default function RecoveryScreen() {
   }, []);
 
   const loadRef = useRef<((prefs?: Record<string, string>, silent?: boolean) => Promise<void>) | null>(null);
-  const isInitialLoad = useRef(true);
 
   const load = useCallback(async (prefs?: Record<string, string>, silent = false) => {
     if (!silent) {
@@ -327,22 +537,24 @@ export default function RecoveryScreen() {
       if (!silent) { setUnavailable(true); setLoading(false); }
       return;
     }
-    // Re-read the global "Preferred fitness tracker" (set on Profile) in
-    // case it changed since this screen mounted, then merge it with any
-    // per-metric overrides from the Customize sheet (those win).
-    const trackerRaw = await AsyncStorage.getItem(STORAGE_PREFERRED_TRACKER);
+    const [trackerRaw, hkSourcesRaw, syncRaw] = await AsyncStorage.multiGet([
+      STORAGE_PREFERRED_TRACKER, STORAGE_HK_SOURCES, STORAGE_LAST_SYNC,
+    ]).then(pairs => pairs.map(p => p[1]));
     const tracker = trackerRaw ?? preferredTracker;
     if (trackerRaw && trackerRaw !== preferredTracker) setPreferredTracker(trackerRaw);
-    const effectivePrefs = buildSourcePrefs(tracker, prefs ?? sourcePrefs);
+    const hkSources = hkSourcesRaw ? (() => { try { return JSON.parse(hkSourcesRaw); } catch { return {}; } })() : {};
+    // Source priority: RecoveryScreen fine-grained override > ProfileScreen per-metric > global tracker
+    const effectivePrefs = buildSourcePrefs(tracker, { ...hkSources, ...(prefs ?? sourcePrefs) });
     const [result, load_] = await Promise.all([
       health.getRecoveryData(effectivePrefs),
       health.getWeeklyTrainingLoad(effectivePrefs),
     ]);
     setData(result);
     setTrainingLoad(load_);
-    // Authorized but every core metric is empty? initHealthKit can't tell
-    // "read denied" from "no data" (H2), so probe a 30-day window. If nothing
-    // comes back, the per-category toggles are almost certainly off.
+    // Update last-sync display (getRecoveryData writes STORAGE_LAST_SYNC on completion)
+    const freshSyncRaw = await AsyncStorage.getItem(STORAGE_LAST_SYNC);
+    const syncMs = freshSyncRaw ? Number(freshSyncRaw) : (syncRaw ? Number(syncRaw) : null);
+    if (syncMs) setLastSyncMs(syncMs);
     const allEmpty = result.hrv == null && result.restingHR == null &&
       result.sleepHours == null && result.steps == null &&
       result.activeCalories == null && (load_?.totalMinutes ?? 0) === 0;
@@ -353,25 +565,75 @@ export default function RecoveryScreen() {
       setNoData(false);
     }
     if (!silent) setLoading(false);
-    // Fetch available sources in background for customize sheet
     health.getAvailableSources().then(setAvailableSources);
-  }, [health.isAuthorized, sourcePrefs]);
+  }, [health.isAuthorized, sourcePrefs, preferredTracker]);
 
-  // Keep ref current so interval/AppState handler always uses latest version
+  const loadWearableData = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setWearablesChecked(true); return; }
+    let connected: Provider[] = [];
+    try {
+      connected = await getConnectedWearables(user.id);
+      setConnectedWearables(connected);
+    } finally {
+      // Always unblock the screen's loading gate, even if the connected-wearables
+      // lookup fails — otherwise a network hiccup here would spin the Recovery
+      // screen forever (unavailable/noData gating waits on this flag).
+      setWearablesChecked(true);
+    }
+    if (connected.length === 0) return;
+    setWearableLoading(true);
+    await Promise.all([
+      connected.includes('whoop') ? getWhoopData(user.id).then(setWhoopData) : null,
+      connected.includes('whoop') ? getWhoopTrends(user.id).then(setWhoopTrends) : null,
+      connected.includes('oura') ? getOuraData(user.id).then(setOuraData) : null,
+      connected.includes('garmin') ? getGarminData(user.id).then(setGarminData) : null,
+    ]);
+    setWearableLoading(false);
+
+    // Load Dexcom CGM data
+    try {
+      const { data: dexRow } = await supabase.from('wearable_tokens')
+        .select('provider').eq('user_id', user.id).eq('provider', 'dexcom').maybeSingle();
+      if (dexRow) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const cgmResp = await callCgmProxy(session, { action: 'readings' });
+        if (cgmResp.data?.stats) {
+          const last = cgmResp.data.readings?.[cgmResp.data.readings.length - 1];
+          setDexcomData({
+            stats: cgmResp.data.stats,
+            currentReading: last?.value ?? null,
+            currentTrend: last?.trend ?? null,
+          });
+        }
+      }
+    } catch {}
+
+    // Load cycle phase
+    try {
+      const { data: cs } = await supabase.from('cycle_settings')
+        .select('tracking_enabled,cycle_length_days,period_length_days,last_period_start')
+        .eq('user_id', user.id).maybeSingle();
+      if (cs?.tracking_enabled && cs.last_period_start) {
+        setCyclePhase(computeCyclePhase(cs.last_period_start, cs.cycle_length_days, cs.period_length_days));
+      }
+    } catch {}
+  }, []);
+
   useEffect(() => { loadRef.current = load; }, [load]);
+  useEffect(() => { load(); loadWearableData(); }, []);
 
-  useEffect(() => { load(); }, []);
-
-  // Live polling — silent refresh every 30s
   useEffect(() => {
     const interval = setInterval(() => { loadRef.current?.(undefined, true); }, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  // Silent refresh when app comes back to foreground
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
-      if (state === 'active') loadRef.current?.(undefined, true);
+      if (state === 'active') {
+        loadRef.current?.(undefined, true);
+        loadWearableData();
+      }
     });
     return () => sub.remove();
   }, []);
@@ -395,8 +657,41 @@ export default function RecoveryScreen() {
 
   const isVisible = (key: string) => visibleMetrics.includes(key);
 
-  const score = data ? calcScore(data) : null;
-  const color = scoreColor(score);
+  const handleNavigateToCoach = useCallback(() => {
+    setShowCycleTracking(false);
+    setShowGlucose(false);
+    onNavigateToCoach?.();
+  }, [onNavigateToCoach]);
+
+  // When Whoop is connected, it's the sole source of truth for recovery
+  // score, HRV, resting HR, and sleep — HealthKit's versions of these can
+  // reflect Apple Watch (or another synced source) and disagree with Whoop's
+  // own algorithm, which is what made this screen look "wrong" when a Whoop
+  // was also connected. Other metrics (steps, active cal, VO2, blood O2) have
+  // no Whoop equivalent surfaced here, so they keep coming from HealthKit.
+  const whoopConnected = connectedWearables.includes('whoop');
+  // Whoop-only users (no HealthKit permission) still get a full recovery
+  // score/HRV/RHR/sleep view — HealthKit is only required as a data source
+  // when Whoop isn't connected, not as a gate on the whole screen.
+  const safeData = data ?? EMPTY_RECOVERY_DATA;
+  const effectiveData: RecoveryData | null = whoopConnected && whoopData
+    ? {
+        ...safeData,
+        hrv: whoopData.hrv,
+        restingHR: whoopData.restingHR,
+        sleepHours: whoopData.sleepHours,
+        sleepDeepHours: whoopData.sleepDeepHours,
+        sleepRemHours: whoopData.sleepRemHours,
+        hrvTrend: whoopTrends?.hrvTrend.length ? whoopTrends.hrvTrend : [],
+        rhrTrend: whoopTrends?.rhrTrend.length ? whoopTrends.rhrTrend : [],
+        sleepTrend: whoopTrends?.sleepTrend.length ? whoopTrends.sleepTrend : [],
+        sources: { ...safeData.sources, hrv: 'Whoop', rhr: 'Whoop', sleep: 'Whoop' },
+      }
+    : data;
+  const score = whoopConnected && whoopData?.recoveryScore != null
+    ? whoopData.recoveryScore
+    : (effectiveData ? calcScore(effectiveData) : null);
+  const color = scoreColor(score, colors);
 
   const fmtSleep = (h: number | null) => {
     if (h === null) return null;
@@ -405,7 +700,21 @@ export default function RecoveryScreen() {
     return `${hrs}h ${mins}m`;
   };
 
-  if (unavailable) {
+  const formatLastSync = (ms: number): string => {
+    const mins = Math.round((Date.now() - ms) / 60000);
+    if (mins < 2) return 'just now';
+    if (mins < 60) return `${mins} min ago`;
+    const date = new Date(ms);
+    const isToday = date.toDateString() === new Date().toDateString();
+    if (isToday) return `today at ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    return date.toLocaleDateString();
+  };
+
+  // HealthKit permission/availability only gates the screen when Whoop isn't
+  // connected — a Whoop-only user has a full recovery view without it. Wait
+  // on wearablesChecked too so this doesn't flash before we know whether
+  // Whoop is connected.
+  if (unavailable && !whoopConnected && wearablesChecked) {
     return (
       <SafeAreaView style={s.safe} edges={['top']}>
         <View style={s.header}>
@@ -414,7 +723,7 @@ export default function RecoveryScreen() {
         <View style={s.center}>
           <Text style={s.emptyIcon}>❤️</Text>
           <Text style={s.emptyTitle}>Apple Health Not Available</Text>
-          <Text style={s.emptySub}>Recovery data requires an iOS device with Apple Health.</Text>
+          <Text style={s.emptySub}>Recovery data requires an iOS device with Apple Health, or a connected Whoop.</Text>
           {healthError && (
             <View style={s.errorBox}>
               <Text style={s.errorText}>Debug: {healthError}</Text>
@@ -428,7 +737,7 @@ export default function RecoveryScreen() {
     );
   }
 
-  if (noData) {
+  if (noData && !whoopConnected && wearablesChecked) {
     return (
       <SafeAreaView style={s.safe} edges={['top']}>
         <View style={s.header}>
@@ -465,22 +774,107 @@ export default function RecoveryScreen() {
         </View>
       </View>
 
-      {loading ? (
+      {loading || !wearablesChecked ? (
         <View style={s.center}>
-          <ActivityIndicator color="#fff" size="large" />
-          <Text style={s.loadingText}>Reading Apple Health…</Text>
+          <ActivityIndicator color={colors.text} size="large" />
+          <Text style={s.loadingText}>Loading recovery data…</Text>
         </View>
-      ) : !data ? (
+      ) : !data && !whoopConnected ? (
         <View style={s.center}>
           <Text style={s.emptyIcon}>❤️</Text>
           <Text style={s.emptyTitle}>Connect Apple Health</Text>
-          <Text style={s.emptySub}>Fuelog reads HRV, sleep, steps, and more from Apple Health. Your Whoop, Garmin, and Apple Watch data all sync here automatically.</Text>
+          <Text style={s.emptySub}>Fuelog reads HRV, sleep, steps, and more from Apple Health. Your Whoop, Garmin, and Apple Watch data all sync here automatically. Or connect a Whoop from your profile to skip Apple Health entirely.</Text>
           <TouchableOpacity style={s.connectBtn} onPress={() => load()}>
             <Text style={s.connectBtnText}>Connect Apple Health</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+
+          {/* Wearable Scores */}
+          {connectedWearables.length > 0 ? (
+            <>
+              <Text style={s.wearableSectionLabel}>WEARABLE SCORES</Text>
+              {wearableLoading ? (
+                <ActivityIndicator color={colors.textTertiary} style={{ alignSelf: 'flex-start', marginBottom: 4 }} />
+              ) : (
+                <>
+                  <WhoopCard data={whoopData} />
+                  <OuraCard data={ouraData} />
+                  <GarminCard data={garminData} />
+                </>
+              )}
+            </>
+          ) : (
+            <TouchableOpacity style={s.wearablePrompt} activeOpacity={0.75} onPress={onNavigateToProfile}>
+              <Text style={s.wearablePromptText}>Connect a wearable for richer scores</Text>
+              <Text style={{ fontSize: 14, color: colors.textTertiary }}>›</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Glucose Card */}
+          {dexcomData && (
+            <TouchableOpacity
+              style={s.wearableDataCard}
+              activeOpacity={0.8}
+              onPress={() => setShowGlucose(true)}
+            >
+              <Text style={s.wearableDataLabel}>GLUCOSE</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                <View>
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+                    <Text style={s.wearableDataBig}>
+                      {dexcomData.currentReading ?? dexcomData.stats.average.toFixed(0)}
+                    </Text>
+                    <Text style={s.wearableDataUnit}>mg/dL</Text>
+                    {dexcomData.currentTrend ? (
+                      <Text style={{ fontSize: 20 }}>{trendArrowEmoji(dexcomData.currentTrend)}</Text>
+                    ) : null}
+                  </View>
+                  <Text style={s.wearableDataSub}>Current reading</Text>
+                </View>
+                <View style={[
+                  s.tirPill,
+                  {
+                    borderColor: dexcomData.stats.timeInRange >= 70 ? '#C8FF3D'
+                      : dexcomData.stats.timeInRange >= 50 ? '#F5A623' : '#FF4444',
+                    backgroundColor: dexcomData.stats.timeInRange >= 70 ? '#C8FF3D18'
+                      : dexcomData.stats.timeInRange >= 50 ? '#F5A62318' : '#FF444418',
+                  },
+                ]}>
+                  <Text style={[
+                    s.tirPillText,
+                    { color: dexcomData.stats.timeInRange >= 70 ? '#C8FF3D' : dexcomData.stats.timeInRange >= 50 ? '#F5A623' : '#FF4444' },
+                  ]}>
+                    {dexcomData.stats.timeInRange}% TIR
+                  </Text>
+                </View>
+              </View>
+              <Text style={s.wearableDataTapHint}>Tap for 24h chart →</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Cycle Phase Card */}
+          {cyclePhase && (
+            <TouchableOpacity
+              style={s.wearableDataCard}
+              activeOpacity={0.8}
+              onPress={() => setShowCycleTracking(true)}
+            >
+              <Text style={s.wearableDataLabel}>CYCLE TRACKING</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                <View>
+                  <Text style={s.wearableDataBig}>{cyclePhase.emoji} {cyclePhase.name}</Text>
+                  <Text style={s.wearableDataSub}>Day {cyclePhase.day} of {cyclePhase.totalDays}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[s.wearableDataBig, { color: '#C8FF3D', fontSize: 28 }]}>{cyclePhase.daysUntilPeriod}</Text>
+                  <Text style={s.wearableDataSub}>days until period</Text>
+                </View>
+              </View>
+              <Text style={[s.wearableDataTapHint, { marginTop: 4 }]}>{cycleInsight(cyclePhase.name)}</Text>
+            </TouchableOpacity>
+          )}
 
           {/* Recovery Score */}
           <View style={[s.scoreCard, { borderColor: color }]}>
@@ -495,69 +889,83 @@ export default function RecoveryScreen() {
           </View>
 
           <Text style={s.sourceNote}>
-            ❤️ From Apple Health · Whoop, Garmin & Apple Watch sync automatically
+            {whoopConnected
+              ? '⌚ Recovery score, HRV, resting HR & sleep from Whoop'
+              : '❤️ From Apple Health · Whoop, Garmin & Apple Watch sync automatically'}
           </Text>
+          {lastSyncMs && (
+            <Text style={s.lastSyncText}>Updated {formatLastSync(lastSyncMs)}</Text>
+          )}
+
+          {/* Breathwork */}
+          <TouchableOpacity style={s.breathCard} onPress={() => setShowBreathwork(true)} activeOpacity={0.8}>
+            <View>
+              <Text style={s.breathCardTitle}>🌬️  Breathwork</Text>
+              <Text style={s.breathCardSub}>Box · 4-7-8 · Physiological Sigh</Text>
+            </View>
+            <Text style={s.breathCardArrow}>›</Text>
+          </TouchableOpacity>
 
           {/* HRV + RHR row */}
-          {(isVisible('hrv') || isVisible('rhr')) && (
+          {(isVisible('hrv') || isVisible('rhr')) && effectiveData && (
             <View style={s.row}>
               {isVisible('hrv') && (
                 <StatCard
                   label="HRV"
-                  value={data.hrv !== null ? String(data.hrv) : null}
+                  value={effectiveData.hrv !== null ? String(effectiveData.hrv) : null}
                   unit="ms"
                   sub="Heart rate variability"
                   color="#a78bfa"
-                  trendData={data.hrvTrend}
-                  source={data.sources['hrv']}
+                  trendData={effectiveData.hrvTrend}
+                  source={effectiveData.sources['hrv']}
                 />
               )}
               {isVisible('rhr') && (
                 <StatCard
                   label="Resting HR"
-                  value={data.restingHR !== null ? String(data.restingHR) : null}
+                  value={effectiveData.restingHR !== null ? String(effectiveData.restingHR) : null}
                   unit="bpm"
                   sub="Lower is better"
-                  color="#4a9eff"
-                  trendData={data.rhrTrend}
-                  source={data.sources['rhr']}
+                  color={colors.info}
+                  trendData={effectiveData.rhrTrend}
+                  source={effectiveData.sources['rhr']}
                 />
               )}
             </View>
           )}
 
           {/* Sleep */}
-          {isVisible('sleep') && (
+          {isVisible('sleep') && effectiveData && (
             <View style={s.sleepCard}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <Text style={s.cardTitle}>SLEEP LAST NIGHT</Text>
-                {data.sources['sleep'] ? <Text style={s.cardSource}>from {data.sources['sleep']}</Text> : null}
+                {effectiveData.sources['sleep'] ? <Text style={s.cardSource}>from {effectiveData.sources['sleep']}</Text> : null}
               </View>
-              {data.sleepHours !== null ? (
+              {effectiveData.sleepHours !== null ? (
                 <>
                   <View style={s.sleepRow}>
                     <View style={s.sleepItem}>
-                      <Text style={[s.sleepVal, { color: '#fff' }]}>{fmtSleep(data.sleepHours)}</Text>
+                      <Text style={[s.sleepVal, { color: colors.text }]}>{fmtSleep(effectiveData.sleepHours)}</Text>
                       <Text style={s.sleepItemLabel}>Total</Text>
                     </View>
-                    {data.sleepDeepHours !== null && data.sleepDeepHours > 0 && (
+                    {effectiveData.sleepDeepHours !== null && effectiveData.sleepDeepHours > 0 && (
                       <View style={s.sleepItem}>
-                        <Text style={[s.sleepVal, { color: '#4a9eff' }]}>{fmtSleep(data.sleepDeepHours)}</Text>
+                        <Text style={[s.sleepVal, { color: colors.info }]}>{fmtSleep(effectiveData.sleepDeepHours)}</Text>
                         <Text style={s.sleepItemLabel}>Deep</Text>
                       </View>
                     )}
-                    {data.sleepRemHours !== null && data.sleepRemHours > 0 && (
+                    {effectiveData.sleepRemHours !== null && effectiveData.sleepRemHours > 0 && (
                       <View style={s.sleepItem}>
-                        <Text style={[s.sleepVal, { color: '#a78bfa' }]}>{fmtSleep(data.sleepRemHours)}</Text>
+                        <Text style={[s.sleepVal, { color: '#a78bfa' }]}>{fmtSleep(effectiveData.sleepRemHours)}</Text>
                         <Text style={s.sleepItemLabel}>REM</Text>
                       </View>
                     )}
                   </View>
-                  <SleepBar total={data.sleepHours} deep={data.sleepDeepHours} rem={data.sleepRemHours} />
-                  {data.sleepTrend.length >= 2 && (
+                  <SleepBar total={effectiveData.sleepHours} deep={effectiveData.sleepDeepHours} rem={effectiveData.sleepRemHours} />
+                  {effectiveData.sleepTrend.length >= 2 && (
                     <View style={{ marginTop: 12 }}>
                       <Text style={[s.cardTitle, { marginBottom: 6 }]}>7-DAY TREND</Text>
-                      <WideChart data={data.sleepTrend} color="#4a9eff" />
+                      <WideChart data={effectiveData.sleepTrend} color={colors.info} />
                     </View>
                   )}
                 </>
@@ -573,19 +981,19 @@ export default function RecoveryScreen() {
               {isVisible('steps') && (
                 <View style={[sc.card, { flex: 1 }]}>
                   <Text style={sc.label}>Steps Today</Text>
-                  {data.steps !== null ? (
+                  {safeData.steps !== null ? (
                     <>
                       <View style={sc.valueRow}>
-                        <Text style={[sc.value, { color: '#4ade80', fontSize: 22 }]}>
-                          {data.steps.toLocaleString()}
+                        <Text style={[sc.value, { color: colors.accent, fontSize: 22 }]}>
+                          {safeData.steps.toLocaleString()}
                         </Text>
                       </View>
-                      <StepsBar steps={data.steps} goal={10000} />
-                      <Text style={sc.sub}>{Math.round((data.steps / 10000) * 100)}% of 10k goal</Text>
-                      {data.sources['steps'] ? <Text style={sc.source}>from {data.sources['steps']}</Text> : null}
-                      {data.stepsTrend.length >= 2 && (
+                      <StepsBar steps={safeData.steps} goal={10000} />
+                      <Text style={sc.sub}>{Math.round((safeData.steps / 10000) * 100)}% of 10k goal</Text>
+                      {safeData.sources['steps'] ? <Text style={sc.source}>from {safeData.sources['steps']}</Text> : null}
+                      {safeData.stepsTrend.length >= 2 && (
                         <View style={{ marginTop: 8 }}>
-                          <MiniChart data={data.stepsTrend} color="#4ade80" />
+                          <MiniChart data={safeData.stepsTrend} color={colors.accent} />
                         </View>
                       )}
                     </>
@@ -597,11 +1005,11 @@ export default function RecoveryScreen() {
               {isVisible('activeCal') && (
                 <StatCard
                   label="Active Cal"
-                  value={data.activeCalories !== null ? data.activeCalories.toLocaleString() : null}
+                  value={safeData.activeCalories !== null ? safeData.activeCalories.toLocaleString() : null}
                   unit="kcal"
                   sub="Burned today · may differ from your tracker's app"
-                  color="#fbbf24"
-                  source={data.sources['activeCal']}
+                  color={colors.carbs}
+                  source={safeData.sources['activeCal']}
                 />
               )}
             </View>
@@ -613,38 +1021,38 @@ export default function RecoveryScreen() {
               {isVisible('bloodO2') && (
                 <StatCard
                   label="Blood O₂"
-                  value={data.bloodOxygen !== null ? String(data.bloodOxygen) : null}
+                  value={safeData.bloodOxygen !== null ? String(safeData.bloodOxygen) : null}
                   unit="%"
-                  sub={data.bloodOxygen !== null ? (data.bloodOxygen >= 95 ? 'Normal range' : 'Below normal') : undefined}
-                  color={data.bloodOxygen !== null && data.bloodOxygen < 95 ? '#ff4f4f' : '#4ade80'}
-                  source={data.sources['bloodO2']}
+                  sub={safeData.bloodOxygen !== null ? (safeData.bloodOxygen >= 95 ? 'Normal range' : 'Below normal') : undefined}
+                  color={safeData.bloodOxygen !== null && safeData.bloodOxygen < 95 ? colors.danger : colors.accent}
+                  source={safeData.sources['bloodO2']}
                 />
               )}
               {isVisible('respRate') && (
                 <StatCard
                   label="Resp. Rate"
-                  value={data.respiratoryRate !== null ? String(data.respiratoryRate) : null}
+                  value={safeData.respiratoryRate !== null ? String(safeData.respiratoryRate) : null}
                   unit="br/min"
                   sub="Breaths per minute"
-                  color="#f472b6"
-                  source={data.sources['respRate']}
+                  color={colors.fat}
+                  source={safeData.sources['respRate']}
                 />
               )}
             </View>
           )}
 
-          {isVisible('vo2') && data.vo2Max !== null && (
+          {isVisible('vo2') && safeData.vo2Max !== null && (
             <View style={s.vo2Card}>
               <View>
                 <Text style={s.cardTitle}>VO₂ MAX</Text>
-                {data.sources['vo2'] ? <Text style={s.cardSource}>from {data.sources['vo2']}</Text> : null}
+                {safeData.sources['vo2'] ? <Text style={s.cardSource}>from {safeData.sources['vo2']}</Text> : null}
                 <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: 6 }}>
-                  <Text style={{ fontSize: 36, fontWeight: '900', color: '#4a9eff' }}>{data.vo2Max}</Text>
-                  <Text style={{ fontSize: 14, color: '#555', fontWeight: '600' }}>mL/kg/min</Text>
+                  <Text style={{ fontSize: 36, fontWeight: weight.heavy, color: colors.info }}>{safeData.vo2Max}</Text>
+                  <Text style={{ fontSize: 14, color: colors.textTertiary, fontWeight: weight.semibold }}>mL/kg/min</Text>
                 </View>
               </View>
               <View style={s.vo2Badge}>
-                <Text style={s.vo2BadgeText}>{vo2Category(data.vo2Max)}</Text>
+                <Text style={s.vo2BadgeText}>{vo2Category(safeData.vo2Max)}</Text>
               </View>
             </View>
           )}
@@ -655,10 +1063,10 @@ export default function RecoveryScreen() {
           )}
 
           {/* Recovery tips */}
-          {score !== null && (
+          {score !== null && effectiveData && (
             <View style={s.tipsCard}>
               <Text style={s.cardTitle}>TODAY'S RECOMMENDATION</Text>
-              <Text style={s.tipsText}>{recoveryTip(score, data, trainingLoad)}</Text>
+              <Text style={s.tipsText}>{recoveryTip(score, effectiveData, trainingLoad)}</Text>
             </View>
           )}
 
@@ -674,12 +1082,25 @@ export default function RecoveryScreen() {
         sourcePrefs={sourcePrefs}
         onSetSource={handleSetSource}
       />
+
+      <Modal visible={showBreathwork} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowBreathwork(false)}>
+        <BreathworkScreen onClose={() => setShowBreathwork(false)} />
+      </Modal>
+
+      <Modal visible={showGlucose} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowGlucose(false)}>
+        <GlucoseScreen onClose={() => setShowGlucose(false)} />
+      </Modal>
+
+      <Modal visible={showCycleTracking} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowCycleTracking(false)}>
+        <CycleTrackingScreen onClose={() => setShowCycleTracking(false)} onNavigateToCoach={handleNavigateToCoach} />
+      </Modal>
     </SafeAreaView>
   );
 }
 
 // ─── Score Ring ────────────────────────────────────────────────────────────────
 function ScoreRing({ score, color }: { score: number | null; color: string }) {
+  const { colors } = useTheme();
   const size = 90;
   const strokeWidth = 8;
   const r = (size - strokeWidth) / 2;
@@ -689,7 +1110,7 @@ function ScoreRing({ score, color }: { score: number | null; color: string }) {
 
   return (
     <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
-      <Circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#222" strokeWidth={strokeWidth} />
+      <Circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={colors.border} strokeWidth={strokeWidth} />
       {score !== null && (
         <Circle
           cx={size / 2} cy={size / 2} r={r} fill="none"
@@ -705,6 +1126,7 @@ function ScoreRing({ score, color }: { score: number | null; color: string }) {
 
 // ─── Sleep Bar ─────────────────────────────────────────────────────────────────
 function SleepBar({ total, deep, rem }: { total: number | null; deep: number | null; rem: number | null }) {
+  const { colors } = useTheme();
   if (!total) return null;
   const maxHrs = 10;
   const totalPct = Math.min(100, (total / maxHrs) * 100);
@@ -714,23 +1136,23 @@ function SleepBar({ total, deep, rem }: { total: number | null; deep: number | n
 
   return (
     <View style={{ marginTop: 12, marginBottom: 4 }}>
-      <View style={{ height: 8, backgroundColor: '#222', borderRadius: 4, flexDirection: 'row', overflow: 'hidden', width: '100%' }}>
-        <View style={{ width: `${corePct}%` as any, backgroundColor: '#4a9eff', opacity: 0.6 }} />
-        <View style={{ width: `${deepPct}%` as any, backgroundColor: '#4a9eff' }} />
+      <View style={{ height: 8, backgroundColor: colors.border, borderRadius: 4, flexDirection: 'row', overflow: 'hidden', width: '100%' }}>
+        <View style={{ width: `${corePct}%` as any, backgroundColor: colors.info, opacity: 0.6 }} />
+        <View style={{ width: `${deepPct}%` as any, backgroundColor: colors.info }} />
         <View style={{ width: `${remPct}%` as any, backgroundColor: '#a78bfa' }} />
       </View>
       <View style={{ flexDirection: 'row', gap: 12, marginTop: 6 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#4a9eff', opacity: 0.6 }} />
-          <Text style={{ fontSize: 10, color: '#444', fontWeight: '600' }}>Core</Text>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.info, opacity: 0.6 }} />
+          <Text style={{ fontSize: 10, color: colors.textTertiary, fontWeight: weight.semibold }}>Core</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#4a9eff' }} />
-          <Text style={{ fontSize: 10, color: '#444', fontWeight: '600' }}>Deep</Text>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.info }} />
+          <Text style={{ fontSize: 10, color: colors.textTertiary, fontWeight: weight.semibold }}>Deep</Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#a78bfa' }} />
-          <Text style={{ fontSize: 10, color: '#444', fontWeight: '600' }}>REM</Text>
+          <Text style={{ fontSize: 10, color: colors.textTertiary, fontWeight: weight.semibold }}>REM</Text>
         </View>
       </View>
     </View>
@@ -739,11 +1161,12 @@ function SleepBar({ total, deep, rem }: { total: number | null; deep: number | n
 
 // ─── Steps Bar ─────────────────────────────────────────────────────────────────
 function StepsBar({ steps, goal }: { steps: number; goal: number }) {
+  const { colors } = useTheme();
   const pct = Math.min(100, (steps / goal) * 100);
   return (
     <View style={{ marginTop: 8, marginBottom: 2 }}>
-      <View style={{ height: 4, backgroundColor: '#222', borderRadius: 2 }}>
-        <View style={{ height: 4, backgroundColor: '#4ade80', borderRadius: 2, width: `${pct}%` as any }} />
+      <View style={{ height: 4, backgroundColor: colors.border, borderRadius: 2 }}>
+        <View style={{ height: 4, backgroundColor: colors.accent, borderRadius: 2, width: `${pct}%` as any }} />
       </View>
     </View>
   );
@@ -751,17 +1174,18 @@ function StepsBar({ steps, goal }: { steps: number; goal: number }) {
 
 // ─── Training Load Card ────────────────────────────────────────────────────────
 function TrainingLoadCard({ load }: { load: WeeklyTrainingLoad }) {
+  const { colors } = useTheme();
+  const tl = makeTrainingLoadStyles(colors);
   const loadLabel = load.totalMinutes > 300 ? 'High' : load.totalMinutes > 150 ? 'Moderate' : 'Low';
-  const loadColor = load.totalMinutes > 300 ? '#ff4f4f' : load.totalMinutes > 150 ? '#fbbf24' : '#4ade80';
+  const loadColor = load.totalMinutes > 300 ? colors.danger : load.totalMinutes > 150 ? colors.carbs : colors.accent;
   const maxMin = Math.max(...load.dailyLoad.map(d => d.minutes), 1);
   const barW = Math.floor((width - 96) / 7);
 
-  // Fill all 7 days (including days with no workouts)
   const days: { date: string; minutes: number }[] = [];
   for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const key = d.toISOString().split('T')[0];
+    const key = toLocalDateString(d);
     const found = load.dailyLoad.find(x => x.date === key);
     days.push({ date: key, minutes: found?.minutes ?? 0 });
   }
@@ -796,21 +1220,6 @@ function TrainingLoadCard({ load }: { load: WeeklyTrainingLoad }) {
     </View>
   );
 }
-
-const tl = StyleSheet.create({
-  card: { backgroundColor: '#1a1a1a', borderRadius: 16, padding: 16 },
-  label: { fontSize: 10, fontWeight: '700', color: '#444', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 2 },
-  loadLabel: { fontSize: 18, fontWeight: '900' },
-  stat: { fontSize: 22, fontWeight: '900', color: '#fff' },
-  statUnit: { fontSize: 13, color: '#555', fontWeight: '600' },
-  statSub: { fontSize: 11, color: '#444', fontWeight: '500', marginTop: 2 },
-  note: { fontSize: 10, color: '#333', fontWeight: '500', marginTop: 8, lineHeight: 15 },
-  bars: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 16, height: 60 },
-  barCol: { alignItems: 'center', gap: 4 },
-  barBg: { flex: 1, width: '70%', backgroundColor: '#222', borderRadius: 3, justifyContent: 'flex-end', overflow: 'hidden' },
-  barFill: { width: '100%', borderRadius: 3 },
-  barLabel: { fontSize: 9, color: '#444', fontWeight: '600' },
-});
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 function vo2Category(vo2: number): string {
@@ -854,54 +1263,144 @@ function recoveryTip(score: number, data: RecoveryData, load: WeeklyTrainingLoad
   return tips[recoveryLevel][loadLevel];
 }
 
-// ─── Styles ────────────────────────────────────────────────────────────────────
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#121212' },
-  header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16,
-    borderBottomWidth: 1, borderBottomColor: '#1e1e1e',
-  },
-  title: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: -0.5 },
-  iconBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#1e1e1e', alignItems: 'center', justifyContent: 'center' },
-  iconBtnText: { color: '#888', fontSize: 18, fontWeight: '700' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12 },
-  loadingText: { color: '#444', fontSize: 14, fontWeight: '500', marginTop: 12 },
-  emptyIcon: { fontSize: 52, marginBottom: 8 },
-  emptyTitle: { fontSize: 20, fontWeight: '900', color: '#fff', textAlign: 'center' },
-  emptySub: { fontSize: 14, color: '#444', textAlign: 'center', lineHeight: 22, fontWeight: '500' },
-  connectBtn: { backgroundColor: '#fff', borderRadius: 14, paddingHorizontal: 24, paddingVertical: 14, marginTop: 8 },
-  connectBtnText: { color: '#000', fontSize: 15, fontWeight: '800' },
-  errorBox: { backgroundColor: '#1a0000', borderRadius: 10, padding: 12, marginTop: 8, borderWidth: 1, borderColor: '#ff4f4f44', maxWidth: 300 },
-  errorText: { color: '#ff6b6b', fontSize: 12, fontFamily: 'monospace', textAlign: 'left', lineHeight: 18 },
-  scroll: { flex: 1 },
-  content: { padding: 16, paddingBottom: 48, gap: 10 },
-  scoreCard: {
-    backgroundColor: '#1a1a1a', borderRadius: 20, padding: 20,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    borderWidth: 1.5,
-  },
-  scoreLeft: { flex: 1 },
-  scoreSmall: { fontSize: 10, fontWeight: '700', color: '#444', letterSpacing: 1.5, marginBottom: 4 },
-  scoreNumber: { fontSize: 64, fontWeight: '900', letterSpacing: -2, lineHeight: 68 },
-  scoreLabel: { fontSize: 18, fontWeight: '800', marginTop: 2 },
-  scoreRight: { marginLeft: 16 },
-  sourceNote: { fontSize: 11, color: '#333', fontWeight: '500', textAlign: 'center', marginTop: -4 },
-  row: { flexDirection: 'row', gap: 10 },
-  cardTitle: { fontSize: 10, fontWeight: '700', color: '#444', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4 },
-  cardSource: { fontSize: 10, color: '#333', fontWeight: '500' },
-  sleepCard: { backgroundColor: '#1a1a1a', borderRadius: 16, padding: 16 },
-  sleepRow: { flexDirection: 'row', gap: 20, marginTop: 8 },
-  sleepItem: { alignItems: 'flex-start' },
-  sleepVal: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
-  sleepItemLabel: { fontSize: 10, color: '#444', fontWeight: '600', marginTop: 2 },
-  noDataText: { fontSize: 13, color: '#333', fontWeight: '500', marginTop: 8, lineHeight: 20 },
-  vo2Card: {
-    backgroundColor: '#1a1a1a', borderRadius: 16, padding: 16,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-  },
-  vo2Badge: { backgroundColor: '#4a9eff22', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: '#4a9eff44' },
-  vo2BadgeText: { color: '#4a9eff', fontSize: 14, fontWeight: '800' },
-  tipsCard: { backgroundColor: '#1a1a2a', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#2a2a4a' },
-  tipsText: { fontSize: 14, color: '#aaa', lineHeight: 22, fontWeight: '500', marginTop: 8 },
-});
+// ─── Style Functions ───────────────────────────────────────────────────────────
+function makeStatCardStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    card: { backgroundColor: c.card, borderRadius: radius.card, padding: 14, flex: 1, borderWidth: 1, borderColor: c.border },
+    label: { fontSize: 10, fontWeight: weight.bold, color: c.textTertiary, letterSpacing: 1.2, marginBottom: 6, textTransform: 'uppercase' },
+    valueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
+    value: { fontSize: 26, fontWeight: weight.heavy, letterSpacing: -0.5 },
+    unit: { fontSize: 13, color: c.textTertiary, fontWeight: weight.semibold },
+    sub: { fontSize: 11, color: c.textTertiary, fontWeight: weight.medium, marginTop: 4 },
+    source: { fontSize: 10, color: c.textTertiary, fontWeight: weight.medium, marginTop: 2 },
+    noData: { fontSize: 14, color: c.textTertiary, fontWeight: weight.semibold, marginTop: 4 },
+  });
+}
+
+function makeCustomizeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' },
+    sheet: {
+      backgroundColor: c.bg, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl,
+      paddingHorizontal: spacing.xl, paddingTop: spacing.md, maxHeight: '80%',
+    },
+    handle: { width: 36, height: 4, backgroundColor: c.borderStrong, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+    sheetTitle: { fontSize: 18, fontWeight: weight.heavy, color: c.text, marginBottom: 20 },
+    section: { fontSize: 10, fontWeight: weight.bold, color: c.textTertiary, letterSpacing: 1.5, marginBottom: 12 },
+    sourcesNote: { fontSize: 12, color: c.textTertiary, fontWeight: weight.medium, marginBottom: 14, marginTop: -8 },
+    row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: c.card },
+    rowLabel: { fontSize: 15, fontWeight: weight.semibold, color: c.textSecondary },
+    sourceGroup: { marginBottom: 16 },
+    sourceMetricLabel: { fontSize: 13, fontWeight: weight.bold, color: c.textSecondary, marginBottom: 8 },
+    sourcePills: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    pill: { borderRadius: radius.pill, paddingHorizontal: 14, paddingVertical: 6, backgroundColor: c.card, borderWidth: 1, borderColor: c.border },
+    pillActive: { backgroundColor: c.accent, borderColor: c.accent },
+    pillText: { fontSize: 13, fontWeight: weight.semibold, color: c.textTertiary },
+    pillTextActive: { color: c.accentText },
+  });
+}
+
+function makeTrainingLoadStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    card: { backgroundColor: c.card, borderRadius: radius.card, padding: spacing.lg, borderWidth: 1, borderColor: c.border },
+    label: { fontSize: 10, fontWeight: weight.bold, color: c.textTertiary, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 2 },
+    loadLabel: { fontSize: 18, fontWeight: weight.heavy },
+    stat: { fontSize: 22, fontWeight: weight.heavy, color: c.text },
+    statUnit: { fontSize: 13, color: c.textTertiary, fontWeight: weight.semibold },
+    statSub: { fontSize: 11, color: c.textTertiary, fontWeight: weight.medium, marginTop: 2 },
+    note: { fontSize: 10, color: c.textTertiary, fontWeight: weight.medium, marginTop: 8, lineHeight: 15 },
+    bars: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: 16, height: 60 },
+    barCol: { alignItems: 'center', gap: 4 },
+    barBg: { flex: 1, width: '70%', backgroundColor: c.border, borderRadius: 3, justifyContent: 'flex-end', overflow: 'hidden' },
+    barFill: { width: '100%', borderRadius: 3 },
+    barLabel: { fontSize: 9, color: c.textTertiary, fontWeight: weight.semibold },
+  });
+}
+
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: c.bg },
+    header: {
+      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+      paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing.lg,
+      borderBottomWidth: 1, borderBottomColor: c.border,
+    },
+    title: { fontSize: 28, fontWeight: weight.heavy, color: c.text, letterSpacing: -0.5 },
+    iconBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: c.card, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: c.border },
+    iconBtnText: { color: c.textSecondary, fontSize: 18, fontWeight: weight.bold },
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40, gap: 12 },
+    loadingText: { color: c.textTertiary, fontSize: 14, fontWeight: weight.medium, marginTop: 12 },
+    emptyIcon: { fontSize: 52, marginBottom: 8 },
+    emptyTitle: { fontSize: 20, fontWeight: weight.heavy, color: c.text, textAlign: 'center' },
+    emptySub: { fontSize: 14, color: c.textTertiary, textAlign: 'center', lineHeight: 22, fontWeight: weight.medium },
+    connectBtn: { backgroundColor: c.accent, borderRadius: radius.md, paddingHorizontal: 24, paddingVertical: 14, marginTop: 8 },
+    connectBtnText: { color: c.accentText, fontSize: 15, fontWeight: weight.heavy },
+    errorBox: { backgroundColor: c.dangerSoft, borderRadius: radius.sm, padding: 12, marginTop: 8, borderWidth: 1, borderColor: 'rgba(255,68,68,0.3)', maxWidth: 300 },
+    errorText: { color: c.danger, fontSize: 12, fontFamily: 'monospace', textAlign: 'left', lineHeight: 18 },
+    scroll: { flex: 1 },
+    content: { padding: spacing.lg, paddingBottom: 48, gap: 10 },
+    scoreCard: {
+      backgroundColor: c.card, borderRadius: radius.xl, padding: spacing.xl,
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      borderWidth: 1.5,
+    },
+    scoreLeft: { flex: 1 },
+    scoreSmall: { fontSize: 10, fontWeight: weight.bold, color: c.textTertiary, letterSpacing: 1.5, marginBottom: 4 },
+    scoreNumber: { fontSize: 64, fontWeight: weight.heavy, letterSpacing: -2, lineHeight: 68 },
+    scoreLabel: { fontSize: 18, fontWeight: weight.heavy, marginTop: 2 },
+    scoreRight: { marginLeft: 16 },
+    sourceNote: { fontSize: 11, color: c.textTertiary, fontWeight: weight.medium, textAlign: 'center', marginTop: -4 },
+    lastSyncText: { fontSize: 11, color: c.textTertiary, fontWeight: weight.regular, textAlign: 'center', marginTop: 2, marginBottom: 4, opacity: 0.7 },
+    row: { flexDirection: 'row', gap: 10 },
+    cardTitle: { fontSize: 10, fontWeight: weight.bold, color: c.textTertiary, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4 },
+    cardSource: { fontSize: 10, color: c.textTertiary, fontWeight: weight.medium },
+    sleepCard: { backgroundColor: c.card, borderRadius: radius.card, padding: spacing.lg, borderWidth: 1, borderColor: c.border },
+    sleepRow: { flexDirection: 'row', gap: 20, marginTop: 8 },
+    sleepItem: { alignItems: 'flex-start' },
+    sleepVal: { fontSize: 22, fontWeight: weight.heavy, letterSpacing: -0.5 },
+    sleepItemLabel: { fontSize: 10, color: c.textTertiary, fontWeight: weight.semibold, marginTop: 2 },
+    noDataText: { fontSize: 13, color: c.textTertiary, fontWeight: weight.medium, marginTop: 8, lineHeight: 20 },
+    vo2Card: {
+      backgroundColor: c.card, borderRadius: radius.card, padding: spacing.lg,
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+      borderWidth: 1, borderColor: c.border,
+    },
+    vo2Badge: { backgroundColor: 'rgba(74,158,255,0.12)', borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(74,158,255,0.25)' },
+    vo2BadgeText: { color: c.info, fontSize: 14, fontWeight: weight.heavy },
+    tipsCard: { backgroundColor: c.card, borderRadius: radius.card, padding: spacing.lg, borderWidth: 1, borderColor: c.border },
+    tipsText: { fontSize: 14, color: c.textSecondary, lineHeight: 22, fontWeight: weight.medium, marginTop: 8 },
+    breathCard: {
+      backgroundColor: c.card, borderRadius: radius.card, padding: spacing.lg,
+      borderWidth: 1, borderColor: c.border,
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    },
+    breathCardTitle: { fontSize: 16, fontWeight: weight.bold, color: c.text, marginBottom: 3 },
+    breathCardSub: { fontSize: 12, color: c.textTertiary, fontWeight: weight.medium },
+    breathCardArrow: { fontSize: 22, color: c.textTertiary, fontWeight: weight.medium },
+    wearableSectionLabel: {
+      fontSize: 10, fontWeight: weight.bold, color: c.textTertiary,
+      letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: -2,
+    },
+    wearablePrompt: {
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      gap: 4, paddingVertical: 12,
+    },
+    wearablePromptText: { fontSize: 13, color: c.textTertiary, fontWeight: weight.medium },
+    wearableDataCard: {
+      backgroundColor: c.card, borderRadius: radius.card, padding: spacing.lg,
+      borderWidth: 1, borderColor: c.border,
+    },
+    wearableDataLabel: {
+      fontSize: 10, fontWeight: weight.bold, color: c.textTertiary,
+      letterSpacing: 1.5, textTransform: 'uppercase',
+    },
+    wearableDataBig: { fontSize: 28, fontWeight: weight.heavy, color: c.text, lineHeight: 32 },
+    wearableDataUnit: { fontSize: 14, color: c.textTertiary, fontWeight: weight.semibold },
+    wearableDataSub: { fontSize: 12, color: c.textTertiary, fontWeight: weight.medium, marginTop: 2 },
+    wearableDataTapHint: { fontSize: 11, color: c.textTertiary, marginTop: 6 },
+    tirPill: {
+      borderRadius: radius.pill, paddingHorizontal: 12, paddingVertical: 6, borderWidth: 1.5,
+    },
+    tirPillText: { fontSize: 14, fontWeight: weight.heavy },
+  });
+}

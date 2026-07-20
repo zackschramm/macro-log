@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -28,6 +29,7 @@ interface NotifSetting {
 }
 
 const DEFAULT_SETTINGS: NotifSetting[] = [
+  { id: 'macro_reminder', label: 'Macro Reminder', emoji: '🥗', description: 'Stay on track with your macros today', hour: 19, minute: 0, enabled: false },
   { id: 'breakfast', label: 'Breakfast Reminder', emoji: '🍳', description: 'Log your breakfast', hour: 8, minute: 0, enabled: false },
   { id: 'lunch', label: 'Lunch Reminder', emoji: '🥗', description: 'Log your lunch', hour: 12, minute: 0, enabled: false },
   { id: 'dinner', label: 'Dinner Reminder', emoji: '🍽️', description: 'Log your dinner', hour: 18, minute: 30, enabled: false },
@@ -49,6 +51,9 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = [0, 15, 30, 45];
 
 export default function NotificationsScreen() {
+  const { colors } = useTheme();
+  const s = makeStyles(colors);
+
   const [settings, setSettings] = useState<NotifSetting[]>(DEFAULT_SETTINGS);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -79,6 +84,12 @@ export default function NotificationsScreen() {
   const saveSettings = async (newSettings: NotifSetting[]) => {
     setSettings(newSettings);
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(newSettings));
+    const macro = newSettings.find(s => s.id === 'macro_reminder');
+    if (macro) {
+      const hh = macro.hour.toString().padStart(2, '0');
+      const mm = macro.minute.toString().padStart(2, '0');
+      await AsyncStorage.setItem('fuelog_daily_reminder_time', `${hh}:${mm}`);
+    }
   };
 
   const scheduleNotification = async (setting: NotifSetting) => {
@@ -131,7 +142,7 @@ export default function NotificationsScreen() {
     }
     try {
       await Notifications.scheduleNotificationAsync({
-        content: { title: '🔔 Fuelog', body: 'Notifications are working!', sound: true },
+        content: { title: 'Fuelog', body: 'Notifications are working!', sound: true },
         trigger: { seconds: 2 } as any,
       });
       Alert.alert('Test Sent', "You'll get a notification in 2 seconds.");
@@ -182,7 +193,7 @@ export default function NotificationsScreen() {
 
             {setting.enabled && (
               <View style={s.timePicker}>
-                <Text style={s.timePickerLabel}>Time</Text>
+                <Text style={s.timePickerLabel}>TIME</Text>
                 <View style={s.timePickerRow}>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.timeChips}>
                     {HOURS.map(h => (
@@ -222,45 +233,47 @@ export default function NotificationsScreen() {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#121212' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
-  title: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: -0.5 },
-  testBtn: { backgroundColor: '#252525', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8 },
-  testBtnText: { color: '#888', fontSize: 13, fontWeight: '700' },
-  permBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a2e', margin: 16, borderRadius: 14, padding: 14, gap: 12 },
-  permBannerIcon: { fontSize: 24 },
-  permBannerTitle: { fontSize: 14, fontWeight: '800', color: '#fff' },
-  permBannerSub: { fontSize: 12, color: '#4a9eff', fontWeight: '500', marginTop: 2 },
-  permBannerArrow: { color: '#4a9eff', fontSize: 20, fontWeight: '700' },
-  scroll: { flex: 1 },
-  content: { padding: 16, paddingBottom: 40 },
-  sectionTitle: { fontSize: 11, fontWeight: '700', color: '#444', letterSpacing: 1.5, marginBottom: 12 },
-  card: { backgroundColor: '#1a1a1a', borderRadius: 16, marginBottom: 10, overflow: 'hidden' },
-  cardRow: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
-  cardEmoji: { fontSize: 26 },
-  cardInfo: { flex: 1 },
-  cardLabel: { fontSize: 15, fontWeight: '700', color: '#fff', marginBottom: 2 },
-  cardDesc: { fontSize: 12, color: '#555', fontWeight: '500' },
-  cardRight: { alignItems: 'flex-end', gap: 6 },
-  cardTime: { fontSize: 12, color: '#444', fontWeight: '700' },
-  cardTimeActive: { color: '#4ade80' },
-  toggle: { width: 44, height: 26, borderRadius: 13, backgroundColor: '#2a2a2a', padding: 2, justifyContent: 'center' },
-  toggleOn: { backgroundColor: '#4ade80' },
-  toggleThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#555', alignSelf: 'flex-start' },
-  toggleThumbOn: { backgroundColor: '#fff', alignSelf: 'flex-end' },
-  timePicker: { borderTopWidth: 1, borderTopColor: '#222', paddingHorizontal: 16, paddingBottom: 14, paddingTop: 12 },
-  timePickerLabel: { fontSize: 10, fontWeight: '700', color: '#444', letterSpacing: 1, marginBottom: 10, textTransform: 'uppercase' },
-  timePickerRow: { marginBottom: 10 },
-  timeChips: { gap: 6, paddingRight: 8 },
-  timeChip: { backgroundColor: '#252525', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
-  timeChipActive: { backgroundColor: '#fff' },
-  timeChipText: { color: '#555', fontSize: 12, fontWeight: '700' },
-  timeChipTextActive: { color: '#000' },
-  minuteRow: { flexDirection: 'row', gap: 8 },
-  minuteChip: { backgroundColor: '#252525', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
-  minuteChipActive: { backgroundColor: '#fff' },
-  minuteChipText: { color: '#555', fontSize: 13, fontWeight: '700' },
-  minuteChipTextActive: { color: '#000' },
-  footnote: { fontSize: 12, color: '#333', textAlign: 'center', marginTop: 16, lineHeight: 20, fontWeight: '500' },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: c.bg },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing.lg, borderBottomWidth: 1, borderBottomColor: c.border },
+    title: { fontSize: 28, fontWeight: weight.heavy, color: c.text, letterSpacing: -0.5 },
+    testBtn: { backgroundColor: c.cardAlt, borderRadius: radius.pill, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+    testBtnText: { color: c.textSecondary, fontSize: 13, fontWeight: weight.semibold },
+    permBanner: { flexDirection: 'row', alignItems: 'center', backgroundColor: c.accentMuted, margin: spacing.lg, borderRadius: radius.card, padding: 14, gap: 12, borderWidth: 1, borderColor: c.accent },
+    permBannerIcon: { fontSize: 24 },
+    permBannerTitle: { fontSize: 14, fontWeight: weight.bold, color: c.text },
+    permBannerSub: { fontSize: 12, color: c.accent, fontWeight: weight.medium, marginTop: 2 },
+    permBannerArrow: { color: c.accent, fontSize: 20, fontWeight: weight.semibold },
+    scroll: { flex: 1 },
+    content: { padding: spacing.lg, paddingBottom: 40 },
+    sectionTitle: { fontSize: 11, fontWeight: weight.semibold, color: c.textSecondary, letterSpacing: 1.5, marginBottom: 12, textTransform: 'uppercase' },
+    card: { backgroundColor: c.card, borderRadius: radius.card, marginBottom: 10, overflow: 'hidden', borderWidth: 1, borderColor: c.border },
+    cardRow: { flexDirection: 'row', alignItems: 'center', padding: spacing.lg, gap: 12 },
+    cardEmoji: { fontSize: 24 },
+    cardInfo: { flex: 1 },
+    cardLabel: { fontSize: 15, fontWeight: weight.semibold, color: c.text, marginBottom: 2 },
+    cardDesc: { fontSize: 12, color: c.textSecondary, fontWeight: weight.medium },
+    cardRight: { alignItems: 'flex-end', gap: 6 },
+    cardTime: { fontSize: 12, color: c.textTertiary, fontWeight: weight.semibold },
+    cardTimeActive: { color: c.accent },
+    toggle: { width: 44, height: 26, borderRadius: 13, backgroundColor: c.cardAlt, padding: 2, justifyContent: 'center' },
+    toggleOn: { backgroundColor: c.accent },
+    toggleThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: c.textTertiary, alignSelf: 'flex-start' },
+    toggleThumbOn: { backgroundColor: c.white, alignSelf: 'flex-end' },
+    timePicker: { borderTopWidth: 1, borderTopColor: c.border, paddingHorizontal: spacing.lg, paddingBottom: 14, paddingTop: 12 },
+    timePickerLabel: { fontSize: 10, fontWeight: weight.semibold, color: c.textSecondary, letterSpacing: 1, marginBottom: 10, textTransform: 'uppercase' },
+    timePickerRow: { marginBottom: 10 },
+    timeChips: { gap: 6, paddingRight: 8 },
+    timeChip: { backgroundColor: c.cardAlt, borderRadius: radius.sm, paddingHorizontal: 10, paddingVertical: 6 },
+    timeChipActive: { backgroundColor: c.accent },
+    timeChipText: { color: c.textSecondary, fontSize: 12, fontWeight: weight.semibold },
+    timeChipTextActive: { color: c.accentText },
+    minuteRow: { flexDirection: 'row', gap: 8 },
+    minuteChip: { backgroundColor: c.cardAlt, borderRadius: radius.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+    minuteChipActive: { backgroundColor: c.accent },
+    minuteChipText: { color: c.textSecondary, fontSize: 13, fontWeight: weight.semibold },
+    minuteChipTextActive: { color: c.accentText },
+    footnote: { fontSize: 12, color: c.textTertiary, textAlign: 'center', marginTop: spacing.lg, lineHeight: 20, fontWeight: weight.medium },
+  });
+}

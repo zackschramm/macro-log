@@ -1,8 +1,13 @@
-import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, ActivityIndicator, AppState } from 'react-native';
 import * as Linking from 'expo-linking';
+import * as Notifications from 'expo-notifications';
+import * as WebBrowser from 'expo-web-browser';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import { handleWearableRedirect } from './utils/wearables';
+import { getPendingSiriFoodLog } from './utils/widgetSync';
 import AuthScreen from './screens/AuthScreen';
 import OnboardingScreen from './screens/OnboardingScreen';
 import MainTabs from './screens/MainTabs';
@@ -10,6 +15,12 @@ import ResetPasswordScreen from './screens/ResetPasswordScreen';
 import { supabase } from './constants/supabase';
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from './constants/purchases';
 import { UnitsProvider } from './constants/units';
+import { RestTimerProvider } from './contexts/RestTimerContext';
+import {
+  requestNotificationPermission,
+  scheduleOnboardingNotifications,
+  maybeScheduleProNotification,
+} from './utils/notifications';
 
 // Configure RevenueCat once when the module loads — before any component mounts.
 configureRevenueCat();
@@ -44,17 +55,47 @@ function isPasswordRecoveryUrl(url: string | null): boolean {
   return url.includes('reset-password');
 }
 
+// Extracts a referral code from fuelog://invite/CODE or https://fuelog.app/invite/CODE
+function extractInviteCode(url: string | null): string | null {
+  if (!url) return null;
+  const match = url.match(/invite\/([A-Z0-9]+)/i);
+  return match ? match[1].toUpperCase() : null;
+}
+
 function AppContent() {
   const { session, loading } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const [initialTab, setInitialTab] = useState<string | undefined>(undefined);
+  const [pendingTab, setPendingTab] = useState<string | undefined>(undefined);
+  const [pendingSiriFood, setPendingSiriFood] = useState<string | undefined>(undefined);
+  const notifSetupDone = useRef(false);
 
   // Handle the fuelog://reset-password deep link, both when the app is opened
   // fresh from the link (getInitialURL) and when it's already running (addEventListener).
   useEffect(() => {
     const handleUrl = async (url: string | null) => {
-      if (!isPasswordRecoveryUrl(url) || !url) return;
+      if (!url) return;
+
+      // Store any referral invite code for processing after sign-up
+      const inviteCode = extractInviteCode(url);
+      if (inviteCode) {
+        await AsyncStorage.setItem('fuelog_pending_referral_code', inviteCode);
+      }
+
+      // Whoop/Oura OAuth normally completes inside WebBrowser.openAuthSessionAsync's own
+      // promise (see connectWearable in utils/wearables.ts). But if iOS backgrounds the app
+      // during the auth session, the redirect can come back through this normal deep-link
+      // path instead — without this handler, the code was silently dropped and the user was
+      // just bounced back into the app with nothing connected.
+      if (url.includes('wearable-callback')) {
+        WebBrowser.dismissAuthSession();
+        await handleWearableRedirect(url);
+        return;
+      }
+
+      if (!isPasswordRecoveryUrl(url)) return;
       const params = parseAuthParams(url);
 
       try {
@@ -94,7 +135,7 @@ function AppContent() {
     if (session?.user) {
       loginRevenueCat(session.user.id);
       supabase.from('profiles').select('*').eq('id', session.user.id).single()
-        .then(({ data, error }) => {
+        .then(async ({ data, error }) => {
           if (cancelled) return;
           if (error && error.code !== 'PGRST116') {
             // PGRST116 = "no rows" — expected for brand-new accounts that hit onboarding next.
@@ -102,6 +143,29 @@ function AppContent() {
           }
           setProfile(data ?? null);
           setProfileLoading(false);
+
+          // Link this user as a referee if they signed up via a referral invite
+          if (data && !data.referred_by) {
+            const pendingCode = await AsyncStorage.getItem('fuelog_pending_referral_code');
+            if (pendingCode) {
+              const { data: referrer } = await supabase
+                .from('profiles')
+                .select('id')
+                .eq('referral_code', pendingCode)
+                .single();
+              if (referrer && referrer.id !== session.user.id) {
+                await supabase.from('referrals').insert({
+                  referrer_id: referrer.id,
+                  referee_id: session.user.id,
+                  referral_code: pendingCode,
+                  status: 'signed_up',
+                  signed_up_at: new Date().toISOString(),
+                });
+                await supabase.from('profiles').update({ referred_by: pendingCode }).eq('id', session.user.id);
+              }
+              await AsyncStorage.removeItem('fuelog_pending_referral_code');
+            }
+          }
         });
     } else {
       logoutRevenueCat();
@@ -110,6 +174,65 @@ function AppContent() {
     }
     return () => { cancelled = true; };
   }, [session]);
+
+  const onboarded = profile && profile.weight_lbs;
+
+  // Handle proactive coach notification taps — both cold-start and background→foreground
+  useEffect(() => {
+    if (!session) return;
+    Notifications.getLastNotificationResponseAsync().then(response => {
+      if (response?.notification.request.content.data?.deepLink === 'fuelog://coach') {
+        AsyncStorage.setItem('fuelog_coach_from_proactive', '1').catch(() => {});
+        setInitialTab('coach');
+      }
+    });
+    const sub = Notifications.addNotificationResponseReceivedListener(response => {
+      if (response.notification.request.content.data?.deepLink === 'fuelog://coach') {
+        AsyncStorage.setItem('fuelog_coach_from_proactive', '1').catch(() => {});
+        setPendingTab('coach');
+      }
+    });
+    return () => sub.remove();
+  }, [!!session]);
+
+  // Handle the "Log <food> in Fuelog" Siri App Intent — it hands off the food
+  // description via the shared App Group rather than a deep link, since the
+  // intent runs before the app is guaranteed to be foregrounded. Check on
+  // cold start and every time the app comes back to the foreground.
+  useEffect(() => {
+    if (!session) return;
+    const checkPendingSiriFood = async () => {
+      const pending = await getPendingSiriFoodLog();
+      if (!pending) return;
+      // Ignore stale entries in case the app never got foregrounded to clear
+      // them (e.g. Siri only spoke a confirmation and never actually opened it).
+      if (Date.now() / 1000 - pending.timestamp > 600) return;
+      setPendingSiriFood(pending.food);
+      setPendingTab('log');
+    };
+    checkPendingSiriFood();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') checkPendingSiriFood();
+    });
+    return () => sub.remove();
+  }, [!!session]);
+
+  useEffect(() => {
+    if (!onboarded || notifSetupDone.current) return;
+    notifSetupDone.current = true;
+    (async () => {
+      const notifEnabled = await AsyncStorage.getItem('fuelog_notifications_enabled');
+      if (notifEnabled === null) await requestNotificationPermission();
+
+      const completionDate = await AsyncStorage.getItem('fuelog_onboarding_complete');
+      if (!completionDate) {
+        await AsyncStorage.setItem('fuelog_onboarding_complete', String(Date.now()));
+      }
+
+      await scheduleOnboardingNotifications();
+      await maybeScheduleProNotification();
+    })();
+  }, [onboarded]);
 
   if (loading || (session && profileLoading)) {
     return (
@@ -127,15 +250,23 @@ function AppContent() {
   }
 
   if (!session) return <AuthScreen />;
-  // Gate onboarding on profile completion markers set in OnboardingScreen.handleFinish
-  // (name + weight_lbs). Using `calories` here was unsafe — recalcs could zero it out
-  // and re-onboard a returning user.
-  const onboarded = profile && profile.name && profile.weight_lbs;
-  if (!onboarded) return <OnboardingScreen onComplete={setProfile} />;
+  if (!onboarded) return (
+    <OnboardingScreen onComplete={(p, tab) => { setProfile(p); if (tab) setInitialTab(tab); }} />
+  );
   return (
-    <UnitsProvider initialSystem={profile.unit_system}>
-      <MainTabs profile={profile} onProfileUpdate={setProfile} />
-    </UnitsProvider>
+    <RestTimerProvider>
+      <UnitsProvider initialSystem={profile.unit_system}>
+        <MainTabs
+          profile={profile}
+          onProfileUpdate={setProfile}
+          initialTab={initialTab}
+          forceTab={pendingTab}
+          onTabApplied={() => setPendingTab(undefined)}
+          pendingSiriFood={pendingSiriFood}
+          onSiriFoodApplied={() => setPendingSiriFood(undefined)}
+        />
+      </UnitsProvider>
+    </RestTimerProvider>
   );
 }
 

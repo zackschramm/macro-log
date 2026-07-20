@@ -4,12 +4,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { MC } from '../constants/data';
+import { toLocalDateString } from '../utils/dateUtils';
+import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 
-const todayStr = () => new Date().toISOString().split('T')[0];
+const todayStr = () => toLocalDateString();
 const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 const pct = (v: number, t: number) => Math.min(100, Math.round((v / (t || 1)) * 100));
 
 export default function HistoryScreen({ targets }: { targets: { calories: number; protein: number; carbs: number; fat: number } }) {
+  const { colors } = useTheme();
+  const s = makeStyles(colors);
   const { user } = useAuth();
   const [history, setHistory] = useState<{ date: string; calories: number; protein: number; carbs: number; fat: number }[]>([]);
 
@@ -69,24 +73,26 @@ export default function HistoryScreen({ targets }: { targets: { calories: number
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#121212' },
-  header: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: '#1e1e1e' },
-  title: { fontSize: 28, fontWeight: '900', color: '#fff', letterSpacing: -0.5 },
-  scroll: { flex: 1 },
-  content: { padding: 16, paddingBottom: 40 },
-  sectionTitle: { fontSize: 11, fontWeight: '700', color: '#444', letterSpacing: 1.5, marginBottom: 16 },
-  empty: { textAlign: 'center', color: '#333', fontSize: 14, paddingVertical: 48, lineHeight: 26, fontWeight: '500' },
-  card: { backgroundColor: '#1a1a1a', borderRadius: 16, padding: 16, marginBottom: 10 },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 },
-  cardDate: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  cardCal: { fontSize: 22, fontWeight: '900', color: '#fff' },
-  cardCalOver: { color: '#ff4f4f' },
-  cardCalUnit: { fontSize: 11, fontWeight: '600', color: '#555' },
-  macroRows: { gap: 10 },
-  macroRowTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-  macroLabel: { fontSize: 11, fontWeight: '700' },
-  macroVal: { fontSize: 11, fontWeight: '700', color: '#555' },
-  barBg: { backgroundColor: '#2a2a2a', borderRadius: 3, height: 3 },
-  barFill: { height: 3, borderRadius: 3 },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: c.bg },
+    header: { paddingHorizontal: spacing.xl, paddingTop: spacing.sm, paddingBottom: spacing.lg, borderBottomWidth: 1, borderBottomColor: c.border },
+    title: { fontSize: 28, fontWeight: weight.heavy, color: c.text, letterSpacing: -0.5 },
+    scroll: { flex: 1 },
+    content: { padding: spacing.lg, paddingBottom: 40 },
+    sectionTitle: { fontSize: 11, fontWeight: weight.semibold, color: c.textSecondary, letterSpacing: 1.5, marginBottom: spacing.lg, textTransform: 'uppercase' },
+    empty: { textAlign: 'center', color: c.textTertiary, fontSize: 14, paddingVertical: 48, lineHeight: 26, fontWeight: weight.medium },
+    card: { backgroundColor: c.card, borderRadius: radius.card, padding: spacing.lg, marginBottom: 10, borderWidth: 1, borderColor: c.border },
+    cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 14 },
+    cardDate: { fontSize: 15, fontWeight: weight.bold, color: c.text },
+    cardCal: { fontSize: 22, fontWeight: weight.heavy, color: c.text },
+    cardCalOver: { color: c.danger },
+    cardCalUnit: { fontSize: 11, fontWeight: weight.semibold, color: c.textTertiary },
+    macroRows: { gap: 10 },
+    macroRowTop: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
+    macroLabel: { fontSize: 11, fontWeight: weight.semibold },
+    macroVal: { fontSize: 11, fontWeight: weight.semibold, color: c.textTertiary },
+    barBg: { backgroundColor: c.border, borderRadius: 3, height: 3 },
+    barFill: { height: 3, borderRadius: 3 },
+  });
+}

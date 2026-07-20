@@ -5,12 +5,16 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../constants/supabase';
+import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 
 interface ResetPasswordScreenProps {
   onDone: () => void;
 }
 
 export default function ResetPasswordScreen({ onDone }: ResetPasswordScreenProps) {
+  const { colors } = useTheme();
+  const s = makeStyles(colors);
+
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -54,15 +58,15 @@ export default function ResetPasswordScreen({ onDone }: ResetPasswordScreenProps
           <View style={s.card}>
             <Text style={s.label}>New Password</Text>
             <TextInput style={s.input} value={password} onChangeText={setPassword}
-              placeholder="••••••••" placeholderTextColor="#444" secureTextEntry />
+              placeholder="••••••••" placeholderTextColor={colors.textTertiary} secureTextEntry />
 
             <Text style={s.label}>Confirm Password</Text>
             <TextInput style={s.input} value={confirmPassword} onChangeText={setConfirmPassword}
-              placeholder="••••••••" placeholderTextColor="#444" secureTextEntry />
+              placeholder="••••••••" placeholderTextColor={colors.textTertiary} secureTextEntry />
 
             <TouchableOpacity style={s.btn} onPress={handleSubmit} disabled={loading} activeOpacity={0.8}>
               {loading
-                ? <ActivityIndicator color="#000" />
+                ? <ActivityIndicator color={colors.accentText} />
                 : <Text style={s.btnText}>Update Password</Text>}
             </TouchableOpacity>
           </View>
@@ -72,15 +76,17 @@ export default function ResetPasswordScreen({ onDone }: ResetPasswordScreenProps
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#121212' },
-  scroll: { flexGrow: 1, padding: 24, justifyContent: 'center' },
-  hero: { alignItems: 'center', marginBottom: 48 },
-  appName: { fontSize: 48, fontWeight: '900', color: '#fff', letterSpacing: -2 },
-  tagline: { fontSize: 15, color: '#444', fontWeight: '500', marginTop: 8 },
-  card: { backgroundColor: '#1a1a1a', borderRadius: 20, padding: 24 },
-  label: { fontSize: 12, fontWeight: '700', color: '#555', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  input: { backgroundColor: '#252525', borderRadius: 12, color: '#fff', padding: 14, fontSize: 15, marginBottom: 16 },
-  btn: { backgroundColor: '#fff', borderRadius: 12, padding: 16, alignItems: 'center', marginTop: 8 },
-  btnText: { color: '#000', fontSize: 16, fontWeight: '800' },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: c.bg },
+    scroll: { flexGrow: 1, padding: spacing.xl, justifyContent: 'center' },
+    hero: { alignItems: 'center', marginBottom: 48 },
+    appName: { fontSize: 48, fontWeight: weight.heavy, color: c.text, letterSpacing: -2 },
+    tagline: { fontSize: 15, color: c.textSecondary, fontWeight: weight.medium, marginTop: 8 },
+    card: { backgroundColor: c.card, borderRadius: radius.card, padding: spacing.xl, borderWidth: 1, borderColor: c.border },
+    label: { fontSize: 11, fontWeight: weight.semibold, color: c.textSecondary, marginBottom: spacing.sm, textTransform: 'uppercase', letterSpacing: 0.5 },
+    input: { backgroundColor: c.cardAlt, borderRadius: radius.md, borderWidth: 1, borderColor: c.border, color: c.text, padding: 14, fontSize: 15, marginBottom: spacing.lg, height: 48 },
+    btn: { backgroundColor: c.accent, borderRadius: radius.card, padding: spacing.lg, alignItems: 'center', marginTop: spacing.sm, height: 52, justifyContent: 'center' },
+    btnText: { color: c.accentText, fontSize: 16, fontWeight: weight.bold },
+  });
+}

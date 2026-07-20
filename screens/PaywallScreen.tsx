@@ -6,22 +6,27 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Purchases, { PurchasesPackage } from 'react-native-purchases';
 import { ENTITLEMENT_ID } from '../constants/purchases';
+import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 
 const FEATURES = [
-  { icon: '🤖', label: 'AI Coaching' },
-  { icon: '🥗', label: 'AI Meal Plans' },
-  { icon: '🩸', label: 'Blood Work Upload' },
-  { icon: '📊', label: 'Nutrient Tracking' },
-  { icon: '🏆', label: 'Sport Optimization' },
-  { icon: '📈', label: 'Progress Analytics' },
+  { icon: '🤖', label: 'AI Coaching', desc: 'Unlimited AI-powered nutrition & fitness coach' },
+  { icon: '🥗', label: 'AI Meal Plans', desc: 'Generate personalized weekly meal plans' },
+  { icon: '🩸', label: 'Blood Work AI Scan', desc: 'AI-powered lab results analysis' },
+  { icon: '💪', label: 'AI Workout Fill', desc: 'Auto-fill workouts with AI suggestions' },
+  { icon: '📊', label: 'InBody Segmental Analysis', desc: 'Detailed body composition breakdown' },
+  { icon: '✨', label: '3 Free Messages', desc: 'Try the coach before you buy' },
 ];
 
 interface Props {
   onClose: () => void;
   onUnlock: () => void;
+  trialMessage?: string;
 }
 
-export default function PaywallScreen({ onClose, onUnlock }: Props) {
+export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props) {
+  const { colors } = useTheme();
+  const s = makeStyles(colors);
+
   const [packages, setPackages] = useState<PurchasesPackage[]>([]);
   const [selected, setSelected] = useState<'monthly' | 'yearly'>('yearly');
   const [loading, setLoading] = useState(true);
@@ -94,17 +99,26 @@ export default function PaywallScreen({ onClose, onUnlock }: Props) {
         <Text style={s.title}>Unlock Fuelog Pro</Text>
         <Text style={s.sub}>14-day free trial, then cancel anytime</Text>
 
+        {trialMessage ? (
+          <View style={s.trialMsgBanner}>
+            <Text style={s.trialMsgText}>{trialMessage}</Text>
+          </View>
+        ) : null}
+
         <View style={s.features}>
           {FEATURES.map(f => (
             <View key={f.label} style={s.featureRow}>
               <Text style={s.featureIcon}>{f.icon}</Text>
-              <Text style={s.featureLabel}>{f.label}</Text>
+              <View style={s.featureTextWrap}>
+                <Text style={s.featureLabel}>{f.label}</Text>
+                <Text style={s.featureDesc}>{f.desc}</Text>
+              </View>
             </View>
           ))}
         </View>
 
         {loading ? (
-          <ActivityIndicator color="#fff" style={{ marginVertical: 32 }} />
+          <ActivityIndicator color={colors.accent} style={{ marginVertical: 32 }} />
         ) : (
           <View style={s.plans}>
             <TouchableOpacity
@@ -117,7 +131,7 @@ export default function PaywallScreen({ onClose, onUnlock }: Props) {
                 </View>
                 <Text style={[s.planName, selected === 'yearly' && s.planNameActive]}>Yearly</Text>
                 <Text style={[s.planPrice, selected === 'yearly' && s.planPriceActive]}>{yearlyPrice}</Text>
-                <Text style={[s.planNote, selected === 'yearly' && s.planNoteActive]}>per year · ~{Math.round(1999 / 12 / 100 * 100) / 100 < 2 ? '$1.67' : '$1.67'}/mo</Text>
+                <Text style={[s.planNote, selected === 'yearly' && s.planNoteActive]}>per year · ~$1.67/mo</Text>
               </View>
               {selected === 'yearly' && <View style={s.planCheck}><Text style={s.planCheckText}>✓</Text></View>}
             </TouchableOpacity>
@@ -138,14 +152,14 @@ export default function PaywallScreen({ onClose, onUnlock }: Props) {
 
         <TouchableOpacity style={s.ctaBtn} onPress={purchase} disabled={purchasing || loading}>
           {purchasing
-            ? <ActivityIndicator color="#000" />
+            ? <ActivityIndicator color={colors.accentText} />
             : <Text style={s.ctaBtnText}>Start Free Trial</Text>}
         </TouchableOpacity>
         <Text style={s.trialNote}>14 days free, then {selected === 'yearly' ? yearlyPrice + '/year' : monthlyPrice + '/month'}. Cancel anytime.</Text>
 
         <TouchableOpacity style={s.restoreBtn} onPress={restore} disabled={restoring}>
           {restoring
-            ? <ActivityIndicator color="#555" size="small" />
+            ? <ActivityIndicator color={colors.textTertiary} size="small" />
             : <Text style={s.restoreBtnText}>Restore Purchases</Text>}
         </TouchableOpacity>
       </ScrollView>
@@ -153,36 +167,42 @@ export default function PaywallScreen({ onClose, onUnlock }: Props) {
   );
 }
 
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#0e0e0e' },
-  closeBtn: { position: 'absolute', top: 56, right: 20, zIndex: 10, backgroundColor: '#1e1e1e', width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  closeBtnText: { color: '#888', fontSize: 22, lineHeight: 24 },
-  scroll: { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 40, alignItems: 'center' },
-  badgeWrap: { backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden', marginBottom: 16 },
-  badge: { color: '#000', fontSize: 11, fontWeight: '900', letterSpacing: 2, paddingHorizontal: 10, paddingVertical: 4 },
-  title: { fontSize: 32, fontWeight: '900', color: '#fff', letterSpacing: -0.5, textAlign: 'center', marginBottom: 8 },
-  sub: { fontSize: 14, color: '#555', fontWeight: '600', textAlign: 'center', marginBottom: 32 },
-  features: { width: '100%', gap: 12, marginBottom: 32 },
-  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  featureIcon: { fontSize: 22, width: 30, textAlign: 'center' },
-  featureLabel: { fontSize: 16, color: '#ccc', fontWeight: '600' },
-  plans: { width: '100%', gap: 12, marginBottom: 24 },
-  planCard: { borderRadius: 16, borderWidth: 1.5, borderColor: '#2a2a2a', backgroundColor: '#1a1a1a', padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  planCardActive: { borderColor: '#fff', backgroundColor: '#1e1e1e' },
-  planCardInner: { flex: 1 },
-  bestValueBadge: { backgroundColor: '#fff', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2, alignSelf: 'flex-start', marginBottom: 6 },
-  bestValueText: { color: '#000', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
-  planName: { fontSize: 16, fontWeight: '800', color: '#555' },
-  planNameActive: { color: '#fff' },
-  planPrice: { fontSize: 26, fontWeight: '900', color: '#555', letterSpacing: -0.5, marginTop: 2 },
-  planPriceActive: { color: '#fff' },
-  planNote: { fontSize: 12, color: '#333', fontWeight: '500', marginTop: 2 },
-  planNoteActive: { color: '#555' },
-  planCheck: { backgroundColor: '#fff', width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginLeft: 12 },
-  planCheckText: { color: '#000', fontSize: 13, fontWeight: '900' },
-  ctaBtn: { backgroundColor: '#fff', borderRadius: 14, paddingVertical: 16, width: '100%', alignItems: 'center', marginBottom: 12 },
-  ctaBtnText: { color: '#000', fontSize: 17, fontWeight: '900' },
-  trialNote: { fontSize: 12, color: '#333', fontWeight: '500', textAlign: 'center', marginBottom: 20 },
-  restoreBtn: { paddingVertical: 8 },
-  restoreBtnText: { color: '#444', fontSize: 13, fontWeight: '600' },
-});
+function makeStyles(c: ThemeColors) {
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: c.bg },
+    closeBtn: { position: 'absolute', top: 56, right: 20, zIndex: 10, backgroundColor: c.card, width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+    closeBtnText: { color: c.textSecondary, fontSize: 22, lineHeight: 24 },
+    scroll: { paddingHorizontal: spacing.xxl, paddingTop: 60, paddingBottom: 40, alignItems: 'center' },
+    badgeWrap: { backgroundColor: c.accent, borderRadius: radius.pill, overflow: 'hidden', marginBottom: 16 },
+    badge: { color: c.accentText, fontSize: 11, fontWeight: weight.heavy, letterSpacing: 2, paddingHorizontal: 12, paddingVertical: 4 },
+    title: { fontSize: 32, fontWeight: weight.heavy, color: c.text, letterSpacing: -0.5, textAlign: 'center', marginBottom: 8 },
+    sub: { fontSize: 14, color: c.textTertiary, fontWeight: weight.semibold, textAlign: 'center', marginBottom: 32 },
+    trialMsgBanner: { backgroundColor: c.card, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 16, width: '100%', borderWidth: 1, borderColor: c.border },
+    trialMsgText: { color: c.textSecondary, fontSize: 14, fontWeight: weight.semibold, textAlign: 'center' },
+    features: { width: '100%', gap: 14, marginBottom: 32 },
+    featureRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+    featureIcon: { fontSize: 22, width: 30, textAlign: 'center', marginTop: 1 },
+    featureTextWrap: { flex: 1 },
+    featureLabel: { fontSize: 15, color: c.text, fontWeight: weight.bold },
+    featureDesc: { fontSize: 13, color: c.textSecondary, fontWeight: weight.medium, marginTop: 1 },
+    plans: { width: '100%', gap: 12, marginBottom: 24 },
+    planCard: { borderRadius: radius.card, borderWidth: 1.5, borderColor: c.border, backgroundColor: c.card, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    planCardActive: { borderColor: c.accent, backgroundColor: c.accentMuted },
+    planCardInner: { flex: 1 },
+    bestValueBadge: { backgroundColor: c.accent, borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 2, alignSelf: 'flex-start', marginBottom: 6 },
+    bestValueText: { color: c.accentText, fontSize: 9, fontWeight: weight.heavy, letterSpacing: 1 },
+    planName: { fontSize: 16, fontWeight: weight.heavy, color: c.textTertiary },
+    planNameActive: { color: c.text },
+    planPrice: { fontSize: 26, fontWeight: weight.heavy, color: c.textTertiary, letterSpacing: -0.5, marginTop: 2 },
+    planPriceActive: { color: c.text },
+    planNote: { fontSize: 12, color: c.textTertiary, fontWeight: weight.medium, marginTop: 2 },
+    planNoteActive: { color: c.textSecondary },
+    planCheck: { backgroundColor: c.accent, width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginLeft: 12 },
+    planCheckText: { color: c.accentText, fontSize: 13, fontWeight: weight.heavy },
+    ctaBtn: { backgroundColor: c.accent, borderRadius: radius.card, paddingVertical: 18, width: '100%', alignItems: 'center', marginBottom: 12 },
+    ctaBtnText: { color: c.accentText, fontSize: 17, fontWeight: weight.heavy },
+    trialNote: { fontSize: 12, color: c.textTertiary, fontWeight: weight.medium, textAlign: 'center', marginBottom: 20 },
+    restoreBtn: { paddingVertical: 8 },
+    restoreBtnText: { color: c.textTertiary, fontSize: 13, fontWeight: weight.semibold },
+  });
+}

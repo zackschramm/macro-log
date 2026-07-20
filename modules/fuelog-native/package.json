@@ -1,0 +1,6 @@
+{
+  "name": "fuelog-native",
+  "version": "1.0.0",
+  "description": "Local native module – App Group shared defaults and Siri shortcut donations",
+  "main": "index.ts"
+}

@@ -5,30 +5,41 @@
     "version": "1.0.0",
     "scheme": "fuelog",
     "orientation": "portrait",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0d0d2b"
+      "backgroundColor": "#08090B"
     },
     "ios": {
       "bundleIdentifier": "com.zackschramm.macrolog",
       "supportsTablet": false,
+      "associatedDomains": [
+        "applinks:fuelog.app"
+      ],
+      "entitlements": {
+        "com.apple.security.application-groups": [
+          "group.com.zackschramm.macrolog"
+        ]
+      },
       "infoPlist": {
         "NSCameraUsageDescription": "Fuelog uses your camera to scan food barcodes and take photos of meals.",
         "NSPhotoLibraryUsageDescription": "Fuelog uses your photo library to attach progress photos and food images.",
         "NSUserNotificationsUsageDescription": "Fuelog sends daily reminders to log your meals, water, and workouts.",
         "NSHealthShareUsageDescription": "Fuelog reads your health data — including HRV, sleep, steps, heart rate, and workouts — to show your daily recovery score and sync with your Whoop, Garmin, and Apple Watch.",
         "NSHealthUpdateUsageDescription": "Fuelog writes your weight, nutrition, and workouts to Apple Health.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
       }
     },
     "android": {
       "package": "com.zackschramm.macrolog",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0d0d2b"
+        "backgroundColor": "#08090B"
       },
       "permissions": [
         "android.permission.CAMERA",
@@ -53,11 +64,40 @@
           "color": "#121212"
         }
       ],
-      "react-native-health"
+      "react-native-health",
+      "./plugins/withWidget",
+      "./plugins/withSiriShortcuts",
+      "./plugins/withCodeSigningFix",
+      "expo-web-browser",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          }
+        }
+      ]
     ],
     "extra": {
       "eas": {
-        "projectId": "d47c3758-3b67-47fa-a584-9353dfd02ce0"
+        "projectId": "d47c3758-3b67-47fa-a584-9353dfd02ce0",
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "FuelogWidget",
+                  "bundleIdentifier": "com.zackschramm.macrolog.widget",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.zackschramm.macrolog"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
       }
     },
     "owner": "zackschramm",
