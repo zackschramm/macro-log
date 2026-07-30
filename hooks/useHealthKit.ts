@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Platform } from 'react-native';
+import { bucketByDayAndSource, type RawSample } from '../utils/healthBuckets';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import AppleHealthKit, {
   HealthKitPermissions,
@@ -15,22 +16,65 @@ const isHealthAvailable = Platform.OS === 'ios' && AppleHealthKit && typeof Appl
 // formatting) whenever react-native-health runs an HKStatisticsCollectionQuery —
 // i.e. getDailyStepCountSamples, getActiveEnergyBurned, getBasalEnergyBurned.
 // The crash happens in native code before any JS callback fires, so it cannot be
-// caught by a JS try/catch or React error boundary. Skip these three calls on
-// affected OS versions and resolve with empty data until Apple/react-native-health
-// fix the underlying bug.
+// caught by a JS try/catch or React error boundary.
+//
+// These three used to resolve with EMPTY DATA on affected versions. That stopped
+// the crash but blanked steps, active energy and basal energy — so the Stats page
+// and every TDEE calculation silently showed nothing on iOS 27, and the app was
+// untestable for anyone on the beta. They now fall back to `getSamples`, which
+// reaches the same data through HKSampleQuery (a different native path that does
+// not crash) and is aggregated in JS instead. See `samplesFallback` below.
+//
+// Bucketing lives in utils/healthBuckets.ts so it can be unit-tested without
+// loading react-native-health (which pulls in React Native).
 const STATISTICS_COLLECTION_UNSAFE =
   Platform.OS === 'ios' && parseInt(String(Platform.Version), 10) >= 27;
 
+/**
+ * iOS 27 fallback — same numbers, different query.
+ *
+ * Only the native *aggregation* is broken. `getSamples` reaches the same data
+ * through `HKSampleQuery` (see RCTAppleHealthKit+Queries.m), which is a
+ * different code path and does not crash. So instead of returning nothing on
+ * iOS 27, we pull the raw samples and do the bucketing here.
+ *
+ * Previously these three returned `[]` on iOS 27, which meant no steps, no
+ * active energy and no basal energy — i.e. the entire Stats page and every TDEE
+ * calculation silently went blank on that OS. That was the right emergency
+ * stop; it is not a good permanent answer, and it makes the app untestable for
+ * anyone on the beta.
+ *
+ * Buckets are keyed by (day, source) so all three shapes of caller keep working:
+ * ones that just sum, ones that group by `sourceName` to pick a dominant
+ * source, and ones that want per-day values for a chart.
+ */
+function samplesFallback(
+  type: 'ActiveEnergyBurned' | 'BasalEnergyBurned' | 'StepCount',
+  unit: string,
+  opts: any,
+  cb: (err: any, data: any[]) => void
+) {
+  try {
+    (AppleHealthKit as any).getSamples(
+      { ...opts, type, unit },
+      (err: any, raw: RawSample[]) => {
+        if (err) return cb(null, []);   // fail soft, exactly as before
+        cb(null, bucketByDayAndSource(raw ?? []));
+      }
+    );
+  } catch { cb(null, []); }
+}
+
 function safeGetDailyStepCountSamples(opts: any, cb: (err: any, data: any[]) => void) {
-  if (STATISTICS_COLLECTION_UNSAFE) { cb(null, []); return; }
+  if (STATISTICS_COLLECTION_UNSAFE) { samplesFallback('StepCount', 'count', opts, cb); return; }
   (AppleHealthKit as any).getDailyStepCountSamples(opts, cb);
 }
 function safeGetActiveEnergyBurned(opts: any, cb: (err: any, data: any[]) => void) {
-  if (STATISTICS_COLLECTION_UNSAFE) { cb(null, []); return; }
+  if (STATISTICS_COLLECTION_UNSAFE) { samplesFallback('ActiveEnergyBurned', 'kilocalorie', opts, cb); return; }
   AppleHealthKit.getActiveEnergyBurned(opts, cb);
 }
 function safeGetBasalEnergyBurned(opts: any, cb: (err: any, data: any[]) => void) {
-  if (STATISTICS_COLLECTION_UNSAFE) { cb(null, []); return; }
+  if (STATISTICS_COLLECTION_UNSAFE) { samplesFallback('BasalEnergyBurned', 'kilocalorie', opts, cb); return; }
   (AppleHealthKit as any).getBasalEnergyBurned(opts, cb);
 }
 
