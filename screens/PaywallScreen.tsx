@@ -24,6 +24,17 @@ interface Props {
   trialMessage?: string;
 }
 
+/**
+ * Length of the introductory free trial, in days.
+ *
+ * MUST match the introductory offer configured on BOTH subscriptions in App
+ * Store Connect. Apple bills according to ASC, not this constant — if they
+ * disagree, the app advertises a trial the user never receives, which is both
+ * an App Review rejection and a consumer-protection problem. This was hardcoded
+ * as "14-day" in three places while ASC had zero introductory offers.
+ */
+const TRIAL_DAYS = 7;
+
 export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props) {
   const { colors } = useTheme();
   const s = makeStyles(colors);
@@ -52,8 +63,21 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
     p.packageType === 'ANNUAL' || p.identifier.toLowerCase().includes('annual') || p.identifier.toLowerCase().includes('yearly')
   );
 
-  const monthlyPrice = monthlyPkg?.product.priceString ?? '$2.99';
-  const yearlyPrice = yearlyPkg?.product.priceString ?? '$19.99';
+  // Live prices from StoreKit via RevenueCat. The fallbacks only appear if the
+  // packages fail to load (no network, StoreKit unavailable, simulator) — keep
+  // them in sync with App Store Connect so a load failure can't advertise a
+  // price you don't charge. They previously read $2.99/$19.99, which is what
+  // ended up in the App Review screenshot.
+  const monthlyPrice = monthlyPkg?.product.priceString ?? '$9.99';
+  const yearlyPrice = yearlyPkg?.product.priceString ?? '$59.99';
+
+  // Per-month equivalent of the annual plan, DERIVED from the live price rather
+  // than hardcoded. It previously read "~$1.67/mo" — correct for a $19.99 year,
+  // wildly wrong for anything else, and exactly the kind of string that rots
+  // silently after a price change.
+  const yearlyPerMonth = yearlyPkg?.product.price
+    ? `$${(yearlyPkg.product.price / 12).toFixed(2)}`
+    : '$5.00';
 
   const purchase = async () => {
     const pkg = selected === 'monthly' ? monthlyPkg : yearlyPkg;
@@ -107,7 +131,7 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
         <View style={s.badgeWrap}><Text style={s.badge}>PRO</Text></View>
         <Text style={s.title}>Unlock Fuelog Pro</Text>
-        <Text style={s.sub}>14-day free trial, then cancel anytime</Text>
+        <Text style={s.sub}>{TRIAL_DAYS}-day free trial, then cancel anytime</Text>
 
         {trialMessage ? (
           <View style={s.trialMsgBanner}>
@@ -144,7 +168,7 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
                 </View>
                 <Text style={[s.planName, selected === 'yearly' && s.planNameActive]}>Yearly</Text>
                 <Text style={[s.planPrice, selected === 'yearly' && s.planPriceActive]}>{yearlyPrice}</Text>
-                <Text style={[s.planNote, selected === 'yearly' && s.planNoteActive]}>per year · ~$1.67/mo</Text>
+                <Text style={[s.planNote, selected === 'yearly' && s.planNoteActive]}>per year · ~{yearlyPerMonth}/mo</Text>
               </View>
               {selected === 'yearly' && <View style={s.planCheck}><Text style={s.planCheckText}>✓</Text></View>}
             </TouchableOpacity>
@@ -177,7 +201,7 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
             ? <ActivityIndicator color={colors.accentText} />
             : <Text style={s.ctaBtnText}>Start Free Trial</Text>}
         </TouchableOpacity>
-        <Text style={s.trialNote}>14 days free, then {selected === 'yearly' ? yearlyPrice + '/year' : monthlyPrice + '/month'}. Cancel anytime.</Text>
+        <Text style={s.trialNote}>{TRIAL_DAYS} days free, then {selected === 'yearly' ? yearlyPrice + '/year' : monthlyPrice + '/month'}. Cancel anytime.</Text>
 
         <TouchableOpacity style={s.restoreBtn} onPress={restore} disabled={restoring}>
           {restoring
