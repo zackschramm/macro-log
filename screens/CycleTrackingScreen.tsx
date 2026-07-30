@@ -293,12 +293,12 @@ export default function CycleTrackingScreen({
 
           {/* Log Today */}
           <TouchableOpacity style={s.logBtn} onPress={() => setShowLogModal(true)} activeOpacity={0.8}>
-            <Text style={s.logBtnText}> Log Today</Text>
+            <Ionicons name="add-circle-outline" size={16} color={colors.accentText} /><Text style={s.logBtnText}>Log Today</Text>
           </TouchableOpacity>
 
           {/* Ask Coach */}
           <TouchableOpacity style={s.coachBtn} onPress={onNavigateToCoach} activeOpacity={0.8}>
-            <Text style={s.coachBtnText}> Ask Coach About My Cycle</Text>
+            <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.accent} /><Text style={s.coachBtnText}>Ask Coach About My Cycle</Text>
           </TouchableOpacity>
 
         </ScrollView>
@@ -499,7 +499,7 @@ function makeStyles(colors: ReturnType<typeof useTheme>['colors']) {
       padding: spacing.lg,
       borderWidth: 1,
       borderColor: colors.border,
-      alignItems: 'center',
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     },
     logBtnText: { fontSize: 16, fontWeight: weight.semibold, color: colors.text },
     coachBtn: {
@@ -508,7 +508,7 @@ function makeStyles(colors: ReturnType<typeof useTheme>['colors']) {
       padding: spacing.lg,
       borderWidth: 1,
       borderColor: colors.accent,
-      alignItems: 'center',
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     },
     coachBtnText: { fontSize: 16, fontWeight: weight.semibold, color: colors.accent },
     logSection: {

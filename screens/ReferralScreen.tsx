@@ -125,7 +125,7 @@ export default function ReferralScreen({ onBack, profile }: Props) {
 
         {/* Hero */}
         <View style={s.heroCard}>
-          <Text style={s.heroEmoji}></Text>
+          <Ionicons name="gift-outline" size={44} color={colors.textTertiary} />
           <Text style={s.heroTitle}>Give a friend 1 month free</Text>
           <Text style={s.heroSub}>When they upgrade to Pro, you get 1 month free too.</Text>
         </View>
@@ -204,7 +204,7 @@ export default function ReferralScreen({ onBack, profile }: Props) {
               <View key={r.id} style={s.rewardRow}>
                 {r.status === 'converted' ? (
                   <>
-                    <Text style={s.rewardEmoji}></Text>
+                    <Ionicons name="ribbon-outline" size={22} color={colors.textTertiary} />
                     <Text style={s.rewardText}>A friend went Pro — +1 month earned!</Text>
                   </>
                 ) : (

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal, Alert,
   TextInput, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
@@ -144,7 +145,7 @@ export default function VoiceLogScreen({ visible, date, defaultMeal, initialText
         {phase === 'input' && (
           <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <ScrollView contentContainerStyle={s.inputContent} keyboardShouldPersistTaps="handled">
-              <Text style={s.micEmoji}></Text>
+              <Ionicons name="mic" size={40} color={colors.textTertiary} />
               <Text style={s.inputHeading}>What did you eat?</Text>
               <Text style={s.inputSub}>Speak using the keyboard mic, or type what you ate.</Text>
               <TextInput
@@ -172,7 +173,7 @@ export default function VoiceLogScreen({ visible, date, defaultMeal, initialText
 
         {phase === 'analyzing' && (
           <View style={s.analyzingContainer}>
-            <Text style={s.analyzingEmoji}></Text>
+            <Ionicons name="sparkles-outline" size={30} color={colors.textTertiary} />
             <Text style={s.analyzingText}>Parsing your meal…</Text>
             <View style={s.skeletonStack}>
               <SkeletonBox width="100%" height={18} borderRadius={6} />
@@ -203,14 +204,14 @@ export default function VoiceLogScreen({ visible, date, defaultMeal, initialText
                   <TextInput
                     style={s.editInput}
                     value={item.name}
-                    onChangeText={v => updateEditItem(i, 'name', v)}
+                    onChangeText={v =>updateEditItem(i, 'name', v)}
                     placeholder="Food name"
                     placeholderTextColor={colors.textTertiary}
                   />
                   <TextInput
                     style={s.editInput}
                     value={item.portion}
-                    onChangeText={v => updateEditItem(i, 'portion', v)}
+                    onChangeText={v =>updateEditItem(i, 'portion', v)}
                     placeholder="Portion (e.g. 1 cup)"
                     placeholderTextColor={colors.textTertiary}
                   />
@@ -221,7 +222,7 @@ export default function VoiceLogScreen({ visible, date, defaultMeal, initialText
                         <TextInput
                           style={s.editMacroInput}
                           value={String(item[field])}
-                          onChangeText={v => updateEditItem(i, field, v)}
+                          onChangeText={v =>updateEditItem(i, field, v)}
                           keyboardType="decimal-pad"
                           placeholderTextColor={colors.textTertiary}
                         />

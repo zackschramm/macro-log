@@ -67,7 +67,7 @@ export default function WeightTrendCard({
       <View style={s.headline}>
         <Text style={s.current}>
           {trend.current?.toFixed(1)}
-          <Text style={s.unit}> {unit}</Text>
+          <Text style={s.unit}>{unit}</Text>
         </Text>
         <Text style={[s.summary, { color: lineColor }]}>{describeTrend(trend, unit)}</Text>
       </View>

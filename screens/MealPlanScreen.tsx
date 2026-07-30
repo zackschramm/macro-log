@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   ActivityIndicator, Alert, Modal,
@@ -247,7 +248,7 @@ Complete all 7 days. Valid JSON only.${remainingNote}`;
           {savedMsg && <Text style={s.savedMsg}>Saved ✓</Text>}
           {plan && (
             <TouchableOpacity style={s.groceryBtn} onPress={() => setShowGrocery(true)} activeOpacity={0.8}>
-              <Text style={s.groceryBtnText}></Text>
+              <Ionicons name="cart-outline" size={16} color={colors.textTertiary} />
             </TouchableOpacity>
           )}
           <TouchableOpacity style={s.genBtn} onPress={generatePlan} disabled={loading}>
@@ -258,7 +259,7 @@ Complete all 7 days. Valid JSON only.${remainingNote}`;
 
       {!plan && !loading && (
         <View style={s.empty}>
-          <Text style={s.emptyIcon}></Text>
+          <Ionicons name="restaurant-outline" size={40} color={colors.textTertiary} />
           <Text style={s.emptyTitle}>No meal plan yet</Text>
           <Text style={s.emptySub}>Tap "Generate Week" and AI will build{'\n'}a full 7-day plan hitting your macros.</Text>
           <TouchableOpacity style={s.genBtnLarge} onPress={generatePlan} disabled={loading}>

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   Modal, ScrollView, Alert, ActivityIndicator,
@@ -270,7 +271,7 @@ export default function RecipeBuilderScreen({ visible, onClose, onSaved }: Props
                     ? <Image source={{ uri: photoUri }} style={s.photoPreview} />
                     : (
                       <View style={s.photoPlaceholder}>
-                        <Text style={{ fontSize: 40 }}></Text>
+                        <Ionicons name="camera-outline" size={40} color={colors.textTertiary} />
                         <Text style={s.photoPlaceholderTxt}>Add Photo</Text>
                       </View>
                     )}

@@ -129,7 +129,7 @@ export default function MusicControlWidget({
 
       {/* Panel header */}
       <View style={s.panelHeader}>
-        <Text style={s.panelTitle}> Music</Text>
+        <Text style={s.panelTitle}>Music</Text>
         <TouchableOpacity
           onPress={() => setExpanded(false)}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}

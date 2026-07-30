@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, Animated, Alert,
 } from 'react-native';
@@ -368,10 +369,10 @@ export default function LogScreen({
         {/* AI logging shortcuts */}
         <View style={s.aiLogRow}>
           <TouchableOpacity style={s.aiLogBtn} onPress={() => setShowPhotoModal(true)} activeOpacity={0.8}>
-            <Text style={s.aiLogBtnText}> Photo</Text>
+            <Ionicons name="camera-outline" size={15} color={colors.accent} /><Text style={s.aiLogBtnText}>Photo</Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.aiLogBtn} onPress={() => setShowVoiceModal(true)} activeOpacity={0.8}>
-            <Text style={s.aiLogBtnText}> Voice</Text>
+            <Ionicons name="mic-outline" size={15} color={colors.accent} /><Text style={s.aiLogBtnText}>Voice</Text>
           </TouchableOpacity>
         </View>
 
@@ -435,7 +436,7 @@ export default function LogScreen({
               </View>
             ) : logs.length === 0 ? (
               <View style={s.empty}>
-                <Text style={s.emptyIcon}></Text>
+                <Ionicons name="restaurant-outline" size={40} color={colors.textTertiary} />
                 <Text style={s.emptyTitle}>Nothing logged yet</Text>
                 <Text style={s.emptySub}>Tap "+ Log Food" above to start tracking your day.</Text>
               </View>
@@ -448,7 +449,7 @@ export default function LogScreen({
       <Modal visible={showStreakDetail} transparent animationType="fade" onRequestClose={() => setShowStreakDetail(false)}>
         <TouchableOpacity style={s.streakOverlay} activeOpacity={1} onPress={() => setShowStreakDetail(false)}>
           <View style={s.streakCard}>
-            <Text style={s.streakCardEmoji}></Text>
+            <Ionicons name="flame" size={26} color={colors.textTertiary} />
             <Text style={s.streakCardCount}>{getDisplayStreak(streakCount, streakLastDate)}-day streak!</Text>
             <Text style={s.streakCardSub}>Keep logging every day to keep it going.</Text>
           </View>
@@ -459,7 +460,7 @@ export default function LogScreen({
       {achievementToast && (
         <Animated.View style={[s.achievementOverlay, { opacity: achievementAnim }]} pointerEvents="none">
           <View style={s.achievementCard}>
-            <Text style={s.achievementEmoji}></Text>
+            <Ionicons name="trophy" size={22} color={colors.textTertiary} />
             <Text style={s.achievementLabel}>Achievement unlocked</Text>
             <Text style={s.achievementName}>{achievementToast}</Text>
           </View>
@@ -471,7 +472,7 @@ export default function LogScreen({
         <Animated.View style={[s.milestoneOverlay, { opacity: streakAnim }]}>
           <View style={s.milestoneCard}>
             <Text style={s.milestoneEmoji}>
-              {streakMilestone === 7 ? '' : streakMilestone === 30 ? '' : ''}
+              {streakMilestone === 7 ? '7 DAYS' : streakMilestone === 30 ? '30 DAYS' : '100 DAYS'}
             </Text>
             <Text style={s.milestoneTitle}>
               {streakMilestone === 7 ? 'One week streak!' : streakMilestone === 30 ? '30-day streak! You\'re on fire.' : '100-day legend!'}
@@ -652,7 +653,7 @@ function makeStyles(c: ThemeColors) {
     addFoodBtn: { backgroundColor: c.accent, borderRadius: radius.md, padding: 16, alignItems: 'center', marginBottom: 10 },
     addFoodBtnText: { color: c.accentText, fontWeight: weight.bold, fontSize: 15 },
     aiLogRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
-    aiLogBtn: { flex: 1, borderWidth: 1, borderColor: c.border, borderRadius: radius.md, padding: 12, alignItems: 'center', backgroundColor: c.card },
+    aiLogBtn: { flex: 1, borderWidth: 1, borderColor: c.border, borderRadius: radius.md, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: c.card },
     aiLogBtnText: { color: c.textSecondary, fontWeight: weight.semibold, fontSize: 14 },
     mealSection: { marginBottom: 8 },
     mealSectionEmpty: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, paddingHorizontal: 4, opacity: 0.6 },

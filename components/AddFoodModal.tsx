@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet,
   Modal, Alert, ActivityIndicator, Animated, PanResponder,
@@ -420,7 +421,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
                     </View>
                   </View>
                   <TouchableOpacity onPress={() => toggleFavorite(f)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Text style={s.starActive}></Text>
+                    <Ionicons name="star" size={18} color="#F5C518" />
                   </TouchableOpacity>
                 </TouchableOpacity>
               ))}
@@ -461,7 +462,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
               clearButtonMode="while-editing"
             />
             <TouchableOpacity style={s.scanBtn} onPress={() => setScannerOpen(true)}>
-              <Text style={s.scanBtnText}></Text>
+              <Ionicons name="barcode-outline" size={20} color={colors.accent} />
             </TouchableOpacity>
           </View>
 
@@ -538,7 +539,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
                           </View>
                         </View>
                         <TouchableOpacity onPress={() => toggleFavorite(f)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                          <Text style={isFav ? s.starActive : s.starInactive}>{isFav ? '' : ''}</Text>
+                          <Ionicons name={isFav ? "star" : "star-outline"} size={18} color={isFav ? "#F5C518" : colors.textTertiary} />
                         </TouchableOpacity>
                         <Text style={s.foodAdd}>+</Text>
                       </TouchableOpacity>
@@ -581,7 +582,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
                       onPress={() => deleteRecipeItem(r)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <Text style={[s.starInactive, { fontSize: 16, paddingHorizontal: 6 }]}></Text>
+                      <Ionicons name="star-outline" size={16} color={colors.textTertiary} style={{ paddingHorizontal: 6 }} />
                     </TouchableOpacity>
                     <Text style={s.foodAdd}>+</Text>
                   </TouchableOpacity>
@@ -622,7 +623,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
                         </View>
                       </View>
                       <TouchableOpacity onPress={() => toggleFavorite(f)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Text style={isFav ? s.starActive : s.starInactive}>{isFav ? '' : ''}</Text>
+                        <Ionicons name={isFav ? "star" : "star-outline"} size={18} color={isFav ? "#F5C518" : colors.textTertiary} />
                       </TouchableOpacity>
                       <Text style={s.foodAdd}>+</Text>
                     </TouchableOpacity>

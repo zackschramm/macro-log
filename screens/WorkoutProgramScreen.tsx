@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet,
   Alert, ActivityIndicator, Modal,
@@ -239,7 +240,7 @@ Requirements:
     if (!activeProgram) {
       return (
         <View style={s.center}>
-          <Text style={s.emptyIcon}></Text>
+          <Ionicons name="barbell-outline" size={40} color={colors.textTertiary} />
           <Text style={s.emptyTitle}>No Active Program</Text>
           <Text style={s.emptyDesc}>Generate a 12-week program tailored to your goals.</Text>
           <TouchableOpacity style={s.primaryBtn} onPress={() => setTab('generate')} activeOpacity={0.85}>
@@ -279,7 +280,7 @@ Requirements:
             </Text>
             {isRestDay ? (
               <View style={s.restDay}>
-                <Text style={s.restDayIcon}></Text>
+                <Ionicons name="bed-outline" size={20} color={colors.textTertiary} />
                 <Text style={s.restDayText}>Rest Day — recover and come back stronger</Text>
               </View>
             ) : (
@@ -330,7 +331,7 @@ Requirements:
                   <View key={day.day} style={s.dayBlock}>
                     <Text style={s.dayBlockTitle}>Day {day.day}: {day.name}</Text>
                     {!day.isRest && (day.exercises ?? []).map((ex: ProgramExercise, ei: number) => (
-                      <Text key={ei} style={s.dayBlockEx}>  {ex.name} — {ex.sets}×{ex.reps}</Text>
+                      <Text key={ei} style={s.dayBlockEx}>{ex.name} — {ex.sets}×{ex.reps}</Text>
                     ))}
                   </View>
                 ))}
@@ -399,7 +400,7 @@ Requirements:
         </View>
       ) : (
         <TouchableOpacity style={[s.primaryBtn, { marginTop: 8 }]} onPress={generateProgram} activeOpacity={0.85}>
-          <Text style={s.primaryBtnText}> Generate My Program</Text>
+          <Ionicons name="sparkles-outline" size={16} color={colors.accentText} /><Text style={s.primaryBtnText}>Generate My Program</Text>
         </TouchableOpacity>
       )}
 
@@ -414,10 +415,10 @@ Requirements:
             <View key={di} style={s.previewDay}>
               <Text style={s.previewDayName}>Day {day.day}: {day.name}</Text>
               {!day.isRest && (day.exercises ?? []).slice(0, 4).map((ex: ProgramExercise, ei: number) => (
-                <Text key={ei} style={s.previewEx}>  {ex.name} — {ex.sets}×{ex.reps}</Text>
+                <Text key={ei} style={s.previewEx}>{ex.name} — {ex.sets}×{ex.reps}</Text>
               ))}
               {!day.isRest && (day.exercises ?? []).length > 4 && (
-                <Text style={s.previewMore}>  +{(day.exercises ?? []).length - 4} more exercises</Text>
+                <Text style={s.previewMore}>+{(day.exercises ?? []).length - 4} more exercises</Text>
               )}
             </View>
           ))}
@@ -500,7 +501,7 @@ function makeStyles(c: ThemeColors) {
     emptyIcon: { fontSize: 52, marginBottom: 16 },
     emptyTitle: { fontSize: 20, fontWeight: weight.heavy, color: c.text, marginBottom: 8, textAlign: 'center' },
     emptyDesc: { fontSize: 14, color: c.textTertiary, fontWeight: weight.medium, textAlign: 'center', marginBottom: 28, lineHeight: 22 },
-    primaryBtn: { backgroundColor: c.accent, borderRadius: radius.md, padding: 16, alignItems: 'center', marginBottom: 12 },
+    primaryBtn: { backgroundColor: c.accent, borderRadius: radius.md, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 },
     primaryBtnText: { color: c.accentText, fontSize: 15, fontWeight: weight.heavy },
     secondaryBtn: { backgroundColor: c.card, borderRadius: radius.md, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: c.border },
     secondaryBtnText: { color: c.text, fontSize: 15, fontWeight: weight.bold },

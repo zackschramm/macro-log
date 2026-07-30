@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet,
   Modal, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Image,
@@ -219,7 +220,7 @@ export default function FoodsScreen() {
         <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
           {filtered.length === 0 && (
             <View style={s.empty}>
-              <Text style={s.emptyIcon}></Text>
+              <Ionicons name="restaurant-outline" size={40} color={colors.textTertiary} />
               <Text style={s.emptyTitle}>{search ? 'No results' : 'No foods yet'}</Text>
               <Text style={s.emptySub}>{search ? 'Try a different search' : 'Tap "Search" or "+ Add" to build your food list'}</Text>
             </View>
@@ -228,7 +229,7 @@ export default function FoodsScreen() {
             <TouchableOpacity key={food.id} style={s.foodCard} onPress={() => openEdit(food)} activeOpacity={0.7}>
               {food.image_url
                 ? <Image source={{ uri: food.image_url }} style={s.foodThumb} />
-                : <View style={s.foodThumbPlaceholder}><Text style={s.foodThumbEmoji}></Text></View>
+                : <View style={s.foodThumbPlaceholder}><Ionicons name="nutrition-outline" size={20} color={colors.textTertiary} /></View>
               }
               <View style={s.foodInfo}>
                 <Text style={s.foodName}>{food.name}</Text>
@@ -283,7 +284,7 @@ export default function FoodsScreen() {
             <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingTop: 8, paddingBottom: 40 }}>
               {usdaResults.length === 0 && !usdaSearching && (
                 <View style={s.empty}>
-                  <Text style={s.emptyIcon}></Text>
+                  <Ionicons name="restaurant-outline" size={40} color={colors.textTertiary} />
                   <Text style={s.emptyTitle}>Search Foods</Text>
                   <Text style={s.emptySub}>Powered by the USDA food database</Text>
                 </View>
@@ -327,34 +328,34 @@ export default function FoodsScreen() {
                 {imageUri
                   ? <Image source={{ uri: imageUri }} style={s.photoPreview} />
                   : <View style={s.photoPlaceholder}>
-                      <Text style={s.photoPlaceholderIcon}></Text>
+                      <Ionicons name="camera-outline" size={26} color={colors.textTertiary} />
                       <Text style={s.photoPlaceholderText}>Add Photo</Text>
                     </View>
                 }
               </TouchableOpacity>
               <Text style={s.fieldLabel}>Food Name *</Text>
-              <TextInput style={s.input} value={form.name} onChangeText={v => setForm(f => ({ ...f, name: v }))}
+              <TextInput style={s.input} value={form.name} onChangeText={v =>setForm(f => ({ ...f, name: v }))}
                 placeholder="e.g. Chicken Breast" placeholderTextColor={colors.textTertiary} />
               <Text style={s.fieldLabel}>Serving Size</Text>
-              <TextInput style={s.input} value={form.serving_size} onChangeText={v => setForm(f => ({ ...f, serving_size: v }))}
+              <TextInput style={s.input} value={form.serving_size} onChangeText={v =>setForm(f => ({ ...f, serving_size: v }))}
                 placeholder="e.g. 100g, 1 cup" placeholderTextColor={colors.textTertiary} />
               <Text style={s.fieldLabel}>Calories *</Text>
-              <TextInput style={s.input} value={form.calories} onChangeText={v => setForm(f => ({ ...f, calories: v }))}
+              <TextInput style={s.input} value={form.calories} onChangeText={v =>setForm(f => ({ ...f, calories: v }))}
                 placeholder="0" placeholderTextColor={colors.textTertiary} keyboardType="decimal-pad" />
               <View style={s.macroGrid}>
                 <View style={s.macroGridItem}>
                   <Text style={[s.fieldLabel, { color: MC.protein.color }]}>Protein (g)</Text>
-                  <TextInput style={s.input} value={form.protein} onChangeText={v => setForm(f => ({ ...f, protein: v }))}
+                  <TextInput style={s.input} value={form.protein} onChangeText={v =>setForm(f => ({ ...f, protein: v }))}
                     placeholder="0" placeholderTextColor={colors.textTertiary} keyboardType="decimal-pad" />
                 </View>
                 <View style={s.macroGridItem}>
                   <Text style={[s.fieldLabel, { color: MC.carbs.color }]}>Carbs (g)</Text>
-                  <TextInput style={s.input} value={form.carbs} onChangeText={v => setForm(f => ({ ...f, carbs: v }))}
+                  <TextInput style={s.input} value={form.carbs} onChangeText={v =>setForm(f => ({ ...f, carbs: v }))}
                     placeholder="0" placeholderTextColor={colors.textTertiary} keyboardType="decimal-pad" />
                 </View>
                 <View style={s.macroGridItem}>
                   <Text style={[s.fieldLabel, { color: MC.fat.color }]}>Fat (g)</Text>
-                  <TextInput style={s.input} value={form.fat} onChangeText={v => setForm(f => ({ ...f, fat: v }))}
+                  <TextInput style={s.input} value={form.fat} onChangeText={v =>setForm(f => ({ ...f, fat: v }))}
                     placeholder="0" placeholderTextColor={colors.textTertiary} keyboardType="decimal-pad" />
                 </View>
               </View>

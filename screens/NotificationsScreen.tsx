@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert,
 } from 'react-native';
@@ -163,7 +164,7 @@ export default function NotificationsScreen() {
 
       {hasPermission === false && (
         <TouchableOpacity style={s.permBanner} onPress={requestPermission}>
-          <Text style={s.permBannerIcon}></Text>
+          <Ionicons name="notifications-outline" size={20} color={colors.textTertiary} />
           <View style={{ flex: 1 }}>
             <Text style={s.permBannerTitle}>Enable Notifications</Text>
             <Text style={s.permBannerSub}>Tap to allow reminders</Text>

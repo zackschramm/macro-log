@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet,
   Modal, Alert, ActivityIndicator, Platform, Animated, Share,
@@ -1031,7 +1032,7 @@ Return ONLY a JSON array, nothing else:
           <Text style={s.title}>Workout</Text>
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
             <TouchableOpacity style={s.programsBtn} onPress={() => setShowCalendar(true)}>
-              <Text style={s.programsBtnText}></Text>
+              <Ionicons name="list-outline" size={18} color={colors.textTertiary} />
             </TouchableOpacity>
             <TouchableOpacity style={s.programsBtn} onPress={() => setShowProgramScreen(true)}>
               <Text style={s.programsBtnText}>Programs</Text>
@@ -1184,7 +1185,7 @@ Return ONLY a JSON array, nothing else:
           <ActivityIndicator color={colors.text} style={{ marginTop: 60 }} />
         ) : dayRows.length === 0 ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 8 }}>
-            <Text style={{ fontSize: 40 }}></Text>
+            <Ionicons name="image-outline" size={40} color={colors.textTertiary} />
             <Text style={{ fontSize: 17, fontWeight: weight.bold, color: colors.text }}>No workout logged</Text>
             <Text style={s.emptyText}>Nothing was logged on {dateLabel}.</Text>
             <TouchableOpacity style={s.addExBtn} onPress={() => setView('select')}>
@@ -1214,8 +1215,8 @@ Return ONLY a JSON array, nothing else:
                   {row.sets.map((set: any, si: number) => (
                     <View key={si} style={s.setRow}>
                       <Text style={s.setNum}>{si + 1}</Text>
-                      <TextInput style={s.setInput} placeholderTextColor={colors.textTertiary} value={set.weight} onChangeText={v => updateDayRowSet(row.id, si, 'weight', v)} keyboardType="decimal-pad" selectTextOnFocus />
-                      <TextInput style={s.setInput} placeholderTextColor={colors.textTertiary} value={set.reps} onChangeText={v => updateDayRowSet(row.id, si, 'reps', v)} keyboardType="decimal-pad" selectTextOnFocus />
+                      <TextInput style={s.setInput} placeholderTextColor={colors.textTertiary} value={set.weight} onChangeText={v =>updateDayRowSet(row.id, si, 'weight', v)} keyboardType="decimal-pad" selectTextOnFocus />
+                      <TextInput style={s.setInput} placeholderTextColor={colors.textTertiary} value={set.reps} onChangeText={v =>updateDayRowSet(row.id, si, 'reps', v)} keyboardType="decimal-pad" selectTextOnFocus />
                       <TouchableOpacity style={[s.setCheckBtn, set.done && s.setCheckBtnDone]} onPress={() => toggleDayRowSetDone(row.id, si)}>
                         <Text style={[s.setCheckText, set.done && s.setCheckTextDone]}>✓</Text>
                       </TouchableOpacity>
@@ -1380,7 +1381,7 @@ Return ONLY a JSON array, nothing else:
         </View>
         {plan.type === 'rest' ? (
           <View style={s.restMsg}>
-            <Text style={s.restIcon}></Text>
+            <Ionicons name="timer-outline" size={22} color={colors.textTertiary} />
             <Text style={s.restTitle}>Rest & Recover</Text>
             <Text style={s.restSub}>Growth happens outside the gym.{'\n'}Eat your macros and sleep well.</Text>
           </View>
@@ -1436,7 +1437,7 @@ Return ONLY a JSON array, nothing else:
                         <Text style={s.exSets}>{ex.sets} sets × {ex.reps} reps</Text>
                       </TouchableOpacity>
                       <TouchableOpacity style={s.coachBtn} onPress={() => setCoachExercise(ex.name)}>
-                        <Text style={s.coachBtnText}></Text>
+                        <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.textTertiary} />
                       </TouchableOpacity>
                       <Text style={[s.arrow, isOpen && s.arrowOpen]}>▾</Text>
                     </TouchableOpacity>
@@ -1462,7 +1463,7 @@ Return ONLY a JSON array, nothing else:
                           <Text style={[s.setHText, { flex: 1 }]}>Weight</Text>
                           <Text style={[s.setHText, { flex: 1 }]}>Reps</Text>
                           <Text style={[s.setHText, { width: 36 }]}>✓</Text>
-                          <Text style={[s.setHText, { width: 28 }]}></Text>
+                          <Ionicons name="flame-outline" size={13} color={colors.textTertiary} style={{ width: 28, textAlign: "center" }} />
                         </View>
                         {sets.map((set: any, si: number) => {
                           const prevSet = lastSession[ex.id]?.sets?.[si];
@@ -1472,13 +1473,13 @@ Return ONLY a JSON array, nothing else:
                             <React.Fragment key={si}>
                               <View style={s.setRow}>
                                 <Text style={s.setNum}>{si + 1}</Text>
-                                <TextInput style={s.setInput} placeholder={prevSet?.weight || u.weightUnit} placeholderTextColor={colors.textTertiary} value={set.weight} onChangeText={v => updateSet(ex.id, si, 'weight', v)} keyboardType="decimal-pad" selectTextOnFocus />
-                                <TextInput style={s.setInput} placeholder={prevSet?.reps || '—'} placeholderTextColor={colors.textTertiary} value={set.reps} onChangeText={v => updateSet(ex.id, si, 'reps', v)} keyboardType="decimal-pad" selectTextOnFocus />
+                                <TextInput style={s.setInput} placeholder={prevSet?.weight || u.weightUnit} placeholderTextColor={colors.textTertiary} value={set.weight} onChangeText={v =>updateSet(ex.id, si, 'weight', v)} keyboardType="decimal-pad" selectTextOnFocus />
+                                <TextInput style={s.setInput} placeholder={prevSet?.reps || '—'} placeholderTextColor={colors.textTertiary} value={set.reps} onChangeText={v =>updateSet(ex.id, si, 'reps', v)} keyboardType="decimal-pad" selectTextOnFocus />
                                 <TouchableOpacity style={[s.setCheckBtn, set.done && s.setCheckBtnDone]} onPress={() => toggleSetDone(ex.id, si)}>
                                   <Text style={[s.setCheckText, set.done && s.setCheckTextDone]}>✓</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity style={s.lastSetBtn} onPress={() => toggleLastSet(ex.id, si)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                                  <Text style={{ fontSize: 16, opacity: isLastSet ? 1 : 0.22 }}></Text>
+                                  <Ionicons name="flame" size={16} color={colors.accent} style={{ opacity: isLastSet ? 1 : 0.22 }} />
                                 </TouchableOpacity>
                               </View>
                               {/* ── Auto-progression badge shown after set completion ── */}
@@ -1523,7 +1524,7 @@ Return ONLY a JSON array, nothing else:
       <Modal visible={!!prInfo} transparent animationType="none" statusBarTranslucent>
         <Animated.View style={[s.prOverlay, { opacity: prAnim }]}>
           <View style={s.prCard}>
-            <Text style={s.prEmoji}></Text>
+            <Ionicons name="trophy" size={22} color={colors.textTertiary} />
             <Text style={s.prTitle}>New PR!</Text>
             <Text style={s.prExercise}>{prInfo?.exerciseName}</Text>
             <Text style={s.prWeight}>{prInfo?.weight} {u.weightUnit}</Text>

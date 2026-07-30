@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal, Alert, Image,
   ScrollView, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator,
@@ -202,7 +203,7 @@ export default function FoodPhotoScreen({ visible, date, defaultMeal, onClose, o
             )}
             {!imageUri && (
               <View style={s.placeholderBox}>
-                <Text style={s.placeholderEmoji}></Text>
+                <Ionicons name="camera-outline" size={40} color={colors.textTertiary} />
                 <Text style={s.placeholderText}>Take a photo of your meal</Text>
               </View>
             )}
@@ -253,14 +254,14 @@ export default function FoodPhotoScreen({ visible, date, defaultMeal, onClose, o
                   <TextInput
                     style={s.editInput}
                     value={item.name}
-                    onChangeText={v => updateEditItem(i, 'name', v)}
+                    onChangeText={v =>updateEditItem(i, 'name', v)}
                     placeholder="Food name"
                     placeholderTextColor={colors.textTertiary}
                   />
                   <TextInput
                     style={s.editInput}
                     value={item.portion}
-                    onChangeText={v => updateEditItem(i, 'portion', v)}
+                    onChangeText={v =>updateEditItem(i, 'portion', v)}
                     placeholder="Portion (e.g. 1 cup)"
                     placeholderTextColor={colors.textTertiary}
                   />
@@ -271,7 +272,7 @@ export default function FoodPhotoScreen({ visible, date, defaultMeal, onClose, o
                         <TextInput
                           style={s.editMacroInput}
                           value={String(item[field])}
-                          onChangeText={v => updateEditItem(i, field, v)}
+                          onChangeText={v =>updateEditItem(i, field, v)}
                           keyboardType="decimal-pad"
                           placeholderTextColor={colors.textTertiary}
                         />

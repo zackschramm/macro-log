@@ -638,7 +638,7 @@ export default function ProgressScreen({ profile }: { profile: any }) {
           {/* Progress Photos */}
           <TouchableOpacity style={s.photosCard} onPress={() => setPhotosVisible(true)} activeOpacity={0.8}>
             <View style={s.photosCardLeft}>
-              <Text style={s.photosCardIcon}></Text>
+              <Ionicons name="images-outline" size={22} color={colors.textTertiary} />
               <View>
                 <Text style={s.photosCardTitle}>Progress Photos</Text>
                 <Text style={s.photosCardSub}>Track your visual transformation</Text>
@@ -690,25 +690,25 @@ export default function ProgressScreen({ profile }: { profile: any }) {
               <>
                 {health.isAvailable && (
                   <TouchableOpacity style={s.healthBtn} onPress={importFromHealth}>
-                    <Text style={s.healthBtnIcon}></Text>
+                    <Ionicons name="heart-outline" size={18} color={colors.textTertiary} />
                     <Text style={s.healthBtnText}>Import from Apple Health</Text>
                   </TouchableOpacity>
                 )}
                 <Text style={s.fieldLabel}>Weight ({u.weightUnit})</Text>
-                <TextInput style={s.input} value={form.weight_lbs} onChangeText={v => setForm(f => ({ ...f, weight_lbs: v }))}
+                <TextInput style={s.input} value={form.weight_lbs} onChangeText={v =>setForm(f => ({ ...f, weight_lbs: v }))}
                   placeholder={String(profile?.weight_lbs ? u.dispWeight(profile.weight_lbs) : (u.isMetric ? 78 : 172))} placeholderTextColor={colors.textTertiary} keyboardType="decimal-pad" />
                 <Text style={s.fieldLabel}>Body Fat %</Text>
-                <TextInput style={s.input} value={form.body_fat} onChangeText={v => setForm(f => ({ ...f, body_fat: v }))}
+                <TextInput style={s.input} value={form.body_fat} onChangeText={v =>setForm(f => ({ ...f, body_fat: v }))}
                   placeholder="e.g. 15" placeholderTextColor={colors.textTertiary} keyboardType="decimal-pad" />
                 <Text style={s.fieldLabel}>Notes</Text>
-                <TextInput style={[s.input, { height: 80 }]} value={form.notes} onChangeText={v => setForm(f => ({ ...f, notes: v }))}
+                <TextInput style={[s.input, { height: 80 }]} value={form.notes} onChangeText={v =>setForm(f => ({ ...f, notes: v }))}
                   placeholder="How are you feeling?" placeholderTextColor={colors.textTertiary} multiline />
               </>
             ) : (
               MEASUREMENTS.map(m => (
                 <View key={m.key}>
                   <Text style={[s.fieldLabel, { color: m.color }]}>{m.label} ({u.isMetric ? 'cm' : 'inches'})</Text>
-                  <TextInput style={s.input} value={(form as any)[m.key]} onChangeText={v => setForm(f => ({ ...f, [m.key]: v }))}
+                  <TextInput style={s.input} value={(form as any)[m.key]} onChangeText={v =>setForm(f => ({ ...f, [m.key]: v }))}
                     placeholder="e.g. 14.5" placeholderTextColor={colors.textTertiary} keyboardType="decimal-pad" />
                 </View>
               ))

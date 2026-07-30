@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet,
   Modal, Alert, ActivityIndicator, Dimensions,
@@ -553,56 +554,56 @@ export default function BodyMeasurementsScreen({
               <TextInput
                 style={s.input}
                 value={form.date}
-                onChangeText={v => setForm(f => ({ ...f, date: v }))}
+                onChangeText={v =>setForm(f => ({ ...f, date: v }))}
                 placeholder="YYYY-MM-DD"
                 placeholderTextColor={colors.textTertiary}
               />
 
               <Text style={s.fieldLabel}>Weight ({u.weightUnit})</Text>
-              <TextInput style={s.input} value={form.weight} onChangeText={v => setForm(f => ({ ...f, weight: v }))} keyboardType="decimal-pad" placeholder={u.isMetric ? 'e.g. 79' : 'e.g. 175'} placeholderTextColor={colors.textTertiary} />
+              <TextInput style={s.input} value={form.weight} onChangeText={v =>setForm(f => ({ ...f, weight: v }))} keyboardType="decimal-pad" placeholder={u.isMetric ? 'e.g. 79' : 'e.g. 175'} placeholderTextColor={colors.textTertiary} />
 
               <Text style={s.fieldLabel}>Body Fat %</Text>
-              <TextInput style={s.input} value={form.bodyFat} onChangeText={v => setForm(f => ({ ...f, bodyFat: v }))} keyboardType="decimal-pad" placeholder="e.g. 15" placeholderTextColor={colors.textTertiary} />
+              <TextInput style={s.input} value={form.bodyFat} onChangeText={v =>setForm(f => ({ ...f, bodyFat: v }))} keyboardType="decimal-pad" placeholder="e.g. 15" placeholderTextColor={colors.textTertiary} />
 
               <Text style={s.fieldLabel}>Waist ({u.lengthUnit})</Text>
-              <TextInput style={s.input} value={form.waist} onChangeText={v => setForm(f => ({ ...f, waist: v }))} keyboardType="decimal-pad" placeholder={u.isMetric ? 'e.g. 81' : 'e.g. 32'} placeholderTextColor={colors.textTertiary} />
+              <TextInput style={s.input} value={form.waist} onChangeText={v =>setForm(f => ({ ...f, waist: v }))} keyboardType="decimal-pad" placeholder={u.isMetric ? 'e.g. 81' : 'e.g. 32'} placeholderTextColor={colors.textTertiary} />
 
               <Text style={s.fieldLabel}>Chest ({u.lengthUnit})</Text>
-              <TextInput style={s.input} value={form.chest} onChangeText={v => setForm(f => ({ ...f, chest: v }))} keyboardType="decimal-pad" placeholder={u.isMetric ? 'e.g. 101' : 'e.g. 40'} placeholderTextColor={colors.textTertiary} />
+              <TextInput style={s.input} value={form.chest} onChangeText={v =>setForm(f => ({ ...f, chest: v }))} keyboardType="decimal-pad" placeholder={u.isMetric ? 'e.g. 101' : 'e.g. 40'} placeholderTextColor={colors.textTertiary} />
 
               <Text style={s.fieldLabel}>Hips ({u.lengthUnit})</Text>
-              <TextInput style={s.input} value={form.hips} onChangeText={v => setForm(f => ({ ...f, hips: v }))} keyboardType="decimal-pad" placeholder={u.isMetric ? 'e.g. 96' : 'e.g. 38'} placeholderTextColor={colors.textTertiary} />
+              <TextInput style={s.input} value={form.hips} onChangeText={v =>setForm(f => ({ ...f, hips: v }))} keyboardType="decimal-pad" placeholder={u.isMetric ? 'e.g. 96' : 'e.g. 38'} placeholderTextColor={colors.textTertiary} />
 
               <View style={s.twoCol}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.fieldLabel}>Left Arm ({u.lengthUnit})</Text>
-                  <TextInput style={s.input} value={form.leftArm} onChangeText={v => setForm(f => ({ ...f, leftArm: v }))} keyboardType="decimal-pad" placeholder={u.isMetric ? '35' : '14'} placeholderTextColor={colors.textTertiary} />
+                  <TextInput style={s.input} value={form.leftArm} onChangeText={v =>setForm(f => ({ ...f, leftArm: v }))} keyboardType="decimal-pad" placeholder={u.isMetric ? '35' : '14'} placeholderTextColor={colors.textTertiary} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.fieldLabel}>Right Arm ({u.lengthUnit})</Text>
-                  <TextInput style={s.input} value={form.rightArm} onChangeText={v => setForm(f => ({ ...f, rightArm: v }))} keyboardType="decimal-pad" placeholder={u.isMetric ? '35' : '14'} placeholderTextColor={colors.textTertiary} />
+                  <TextInput style={s.input} value={form.rightArm} onChangeText={v =>setForm(f => ({ ...f, rightArm: v }))} keyboardType="decimal-pad" placeholder={u.isMetric ? '35' : '14'} placeholderTextColor={colors.textTertiary} />
                 </View>
               </View>
 
               <View style={s.twoCol}>
                 <View style={{ flex: 1 }}>
                   <Text style={s.fieldLabel}>Left Thigh ({u.lengthUnit})</Text>
-                  <TextInput style={s.input} value={form.leftThigh} onChangeText={v => setForm(f => ({ ...f, leftThigh: v }))} keyboardType="decimal-pad" placeholder={u.isMetric ? '55' : '22'} placeholderTextColor={colors.textTertiary} />
+                  <TextInput style={s.input} value={form.leftThigh} onChangeText={v =>setForm(f => ({ ...f, leftThigh: v }))} keyboardType="decimal-pad" placeholder={u.isMetric ? '55' : '22'} placeholderTextColor={colors.textTertiary} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.fieldLabel}>Right Thigh ({u.lengthUnit})</Text>
-                  <TextInput style={s.input} value={form.rightThigh} onChangeText={v => setForm(f => ({ ...f, rightThigh: v }))} keyboardType="decimal-pad" placeholder={u.isMetric ? '55' : '22'} placeholderTextColor={colors.textTertiary} />
+                  <TextInput style={s.input} value={form.rightThigh} onChangeText={v =>setForm(f => ({ ...f, rightThigh: v }))} keyboardType="decimal-pad" placeholder={u.isMetric ? '55' : '22'} placeholderTextColor={colors.textTertiary} />
                 </View>
               </View>
 
               <Text style={s.fieldLabel}>Neck ({u.lengthUnit})</Text>
-              <TextInput style={s.input} value={form.neck} onChangeText={v => setForm(f => ({ ...f, neck: v }))} keyboardType="decimal-pad" placeholder={u.isMetric ? '38' : '15'} placeholderTextColor={colors.textTertiary} />
+              <TextInput style={s.input} value={form.neck} onChangeText={v =>setForm(f => ({ ...f, neck: v }))} keyboardType="decimal-pad" placeholder={u.isMetric ? '38' : '15'} placeholderTextColor={colors.textTertiary} />
 
               <Text style={s.fieldLabel}>Notes</Text>
               <TextInput
                 style={[s.input, { height: 80 }]}
                 value={form.notes}
-                onChangeText={v => setForm(f => ({ ...f, notes: v }))}
+                onChangeText={v =>setForm(f => ({ ...f, notes: v }))}
                 multiline
                 placeholder="Optional notes..."
                 placeholderTextColor={colors.textTertiary}
@@ -626,7 +627,7 @@ export default function BodyMeasurementsScreen({
         >
           <View style={s.celebrateBackdrop}>
             <View style={s.celebrateCard}>
-              <Text style={s.celebrateEmoji}></Text>
+              <Ionicons name="trophy" size={34} color={colors.textTertiary} />
               <Text style={s.celebrateTitle}>{pendingMilestone?.title}</Text>
               <Text style={s.celebrateBody}>{pendingMilestone?.detail}</Text>
               <TouchableOpacity style={s.celebrateBtn} onPress={dismissMilestone} activeOpacity={0.8}>

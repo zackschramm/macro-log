@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet,
   Modal, Alert, ActivityIndicator, Dimensions, Image,
@@ -309,7 +310,7 @@ export default function InBodySection() {
 
       <View style={s.actionRow}>
         <TouchableOpacity style={s.scanBtn} onPress={onScan} disabled={scanning}>
-          {scanning ? <ActivityIndicator color={colors.accentText} /> : <Text style={s.scanBtnText}> Scan InBody</Text>}
+          {scanning ? <ActivityIndicator color={colors.accentText} /> : (<><Ionicons name="scan-outline" size={16} color={colors.accentText} /><Text style={s.scanBtnText}>Scan InBody</Text></>)}
         </TouchableOpacity>
         <TouchableOpacity style={s.manualBtn} onPress={onManual}>
           <Text style={s.manualBtnText}>Enter</Text>
@@ -496,7 +497,7 @@ function EntryEditor({
         keyboardType="decimal-pad"
         placeholderTextColor={tc.textTertiary}
         value={form[key] == null ? '' : String(form[key])}
-        onChangeText={t => setForm({ ...form, [key]: t === '' ? null : Number(t) } as InBodyLog)}
+        onChangeText={t =>setForm({ ...form, [key]: t === '' ? null : Number(t) } as InBodyLog)}
       />
     </View>
   );
@@ -559,7 +560,7 @@ function makeStyles(c: ThemeColors) {
     sectionTitle: { fontSize: 11, fontWeight: weight.semibold, color: c.textTertiary, letterSpacing: 1.5, marginTop: 16, textTransform: 'uppercase' },
     compareLink: { fontSize: 12, fontWeight: weight.bold, color: c.accent, marginTop: 16 },
     actionRow: { flexDirection: 'row', gap: 8, marginBottom: 12 },
-    scanBtn: { flex: 1, backgroundColor: c.accent, borderRadius: radius.md, padding: 14, alignItems: 'center' },
+    scanBtn: { flex: 1, backgroundColor: c.accent, borderRadius: radius.md, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
     scanBtnText: { color: c.accentText, fontSize: 14, fontWeight: weight.heavy },
     manualBtn: { backgroundColor: c.card, borderRadius: radius.md, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: c.border },
     manualBtnText: { color: c.text, fontSize: 13, fontWeight: weight.bold },

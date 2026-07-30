@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   Modal, ActivityIndicator, Dimensions,
@@ -193,7 +194,7 @@ export default function ExerciseHistoryModal({ visible, exercise, userId, onClos
           <ActivityIndicator style={{ marginTop: 60 }} color={colors.accent} />
         ) : rows.length === 0 ? (
           <View style={s.empty}>
-            <Text style={s.emptyIcon}></Text>
+            <Ionicons name="barbell-outline" size={40} color={colors.textTertiary} />
             <Text style={s.emptyTitle}>No history yet</Text>
             <Text style={s.emptySub}>Complete some sets to see your progress here.</Text>
           </View>
@@ -223,7 +224,7 @@ export default function ExerciseHistoryModal({ visible, exercise, userId, onClos
                     {row.bestWeight > 0 ? ` · best: ${row.bestWeight} ${u.weightUnit} × ${row.bestReps} reps` : ''}
                   </Text>
                 </View>
-                {row.isPR && <Text style={s.prBadge}></Text>}
+                {row.isPR && <Ionicons name="trophy" size={13} color={colors.textTertiary} />}
               </View>
             ))}
           </ScrollView>

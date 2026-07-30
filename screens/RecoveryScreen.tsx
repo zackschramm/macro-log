@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   ActivityIndicator, Dimensions, Platform, Modal, Switch,
@@ -838,7 +839,7 @@ export default function RecoveryScreen({
           <Text style={s.title}>Recovery</Text>
         </View>
         <View style={s.center}>
-          <Text style={s.emptyIcon}></Text>
+          <Ionicons name="pulse-outline" size={40} color={colors.textTertiary} />
           <Text style={s.emptyTitle}>Apple Health Not Available</Text>
           <Text style={s.emptySub}>Recovery data requires an iOS device with Apple Health, or a connected Whoop.</Text>
           {healthError && (
@@ -861,7 +862,7 @@ export default function RecoveryScreen({
           <Text style={s.title}>Recovery</Text>
         </View>
         <View style={s.center}>
-          <Text style={s.emptyIcon}></Text>
+          <Ionicons name="pulse-outline" size={40} color={colors.textTertiary} />
           <Text style={s.emptyTitle}>No Health Data Yet</Text>
           <Text style={s.emptySub}>
             Fuelog is connected, but Apple Health isn't sharing any data. Open the
@@ -884,7 +885,7 @@ export default function RecoveryScreen({
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
           {refreshing && <ActivityIndicator size="small" color={colors.textTertiary} />}
           <TouchableOpacity style={s.iconBtn} onPress={() => setShowCustomize(true)}>
-            <Text style={s.iconBtnText}></Text>
+            <Ionicons name="options-outline" size={18} color={colors.textTertiary} />
           </TouchableOpacity>
           <TouchableOpacity style={s.iconBtn} onPress={onRefresh}>
             <Text style={s.iconBtnText}>↻</Text>
@@ -899,7 +900,7 @@ export default function RecoveryScreen({
         </View>
       ) : !data && !whoopConnected ? (
         <View style={s.center}>
-          <Text style={s.emptyIcon}></Text>
+          <Ionicons name="pulse-outline" size={40} color={colors.textTertiary} />
           <Text style={s.emptyTitle}>Connect Apple Health</Text>
           <Text style={s.emptySub}>Fuelog reads HRV, sleep, steps, and more from Apple Health. Your Whoop, Garmin, and Apple Watch data all sync here automatically. Or connect a Whoop from your profile to skip Apple Health entirely.</Text>
           <TouchableOpacity style={s.connectBtn} onPress={() => load()}>
@@ -1031,7 +1032,7 @@ export default function RecoveryScreen({
           {/* Breathwork */}
           <TouchableOpacity style={s.breathCard} onPress={() => setShowBreathwork(true)} activeOpacity={0.8}>
             <View>
-              <Text style={s.breathCardTitle}> Breathwork</Text>
+              <Text style={s.breathCardTitle}>Breathwork</Text>
               <Text style={s.breathCardSub}>Box · 4-7-8 · Physiological Sigh</Text>
             </View>
             <Text style={s.breathCardArrow}>›</Text>
@@ -1329,7 +1330,7 @@ function TrainingLoadCard({ load }: { load: WeeklyTrainingLoad }) {
           <Text style={[tl.loadLabel, { color: loadColor }]}>{loadLabel}</Text>
         </View>
         <View style={{ alignItems: 'flex-end' }}>
-          <Text style={tl.stat}>{load.totalMinutes}<Text style={tl.statUnit}> min</Text></Text>
+          <Text style={tl.stat}>{load.totalMinutes}<Text style={tl.statUnit}>min</Text></Text>
           {load.totalCalories > 0 && <Text style={tl.statSub}>{load.totalCalories.toLocaleString()} kcal</Text>}
         </View>
       </View>

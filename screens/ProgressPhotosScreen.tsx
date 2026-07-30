@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal, ScrollView,
   Image, Alert, TextInput, Dimensions, ActivityIndicator,
@@ -289,7 +290,7 @@ export default function ProgressPhotosScreen({ visible, onClose }: Props) {
 
         {photos.length === 0 ? (
           <View style={s.empty}>
-            <Text style={s.emptyIcon}></Text>
+            <Ionicons name="images-outline" size={40} color={colors.textTertiary} />
             <Text style={s.emptyTitle}>No photos yet</Text>
             <Text style={s.emptyText}>Tap "+ Add" to take or upload{'\n'}your first progress photo.</Text>
           </View>

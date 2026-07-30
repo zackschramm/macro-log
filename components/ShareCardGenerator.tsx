@@ -1,4 +1,5 @@
 import React from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { View, Text, StyleSheet } from 'react-native';
 import { useUnits } from '../constants/units';
 
@@ -43,7 +44,7 @@ function WeeklyCard({ data }: { data: WeeklyCardData }) {
       {stats.map(({ val, label, emoji }) => (
         <View key={label} style={s.statRow}>
           <Text style={s.statVal}>{val}</Text>
-          <Text style={s.statLabel}> {label}</Text>
+          <Text style={s.statLabel}>{label}</Text>
           <View style={{ flex: 1 }} />
           <Text style={s.statEmoji}>{emoji}</Text>
         </View>
@@ -72,23 +73,23 @@ function InBodyCard({ data }: { data: InBodyCardData }) {
         <Text style={[s.statVal, { color: data.fatChangeLb <= 0 ? '#C8FF3D' : '#FF4444' }]}>
           {fmtChange(data.fatChangeLb)}
         </Text>
-        <Text style={s.statLabel}> body fat</Text>
+        <Text style={s.statLabel}>body fat</Text>
         <View style={{ flex: 1 }} />
-        <Text style={s.statEmoji}>{data.fatChangeLb <= 0 ? '' : ''}</Text>
+        <Ionicons name={data.fatChangeLb <= 0 ? "arrow-down" : "arrow-up"} size={16} color={data.fatChangeLb <= 0 ? "#C8FF3D" : "#FF4444"} />
       </View>
       <View style={s.statRow}>
         <Text style={[s.statVal, { color: data.muscleChangeLb >= 0 ? '#C8FF3D' : '#FF4444' }]}>
           {fmtChange(data.muscleChangeLb)}
         </Text>
-        <Text style={s.statLabel}> muscle</Text>
+        <Text style={s.statLabel}>muscle</Text>
         <View style={{ flex: 1 }} />
-        <Text style={s.statEmoji}>{data.muscleChangeLb >= 0 ? '' : ''}</Text>
+        <Ionicons name={data.muscleChangeLb >= 0 ? "arrow-up" : "arrow-down"} size={16} color={data.muscleChangeLb >= 0 ? "#C8FF3D" : "#FF4444"} />
       </View>
       <View style={s.statRow}>
         <Text style={s.statVal}>{data.weeksTracked}</Text>
-        <Text style={s.statLabel}> weeks of tracking</Text>
+        <Text style={s.statLabel}>weeks of tracking</Text>
         <View style={{ flex: 1 }} />
-        <Text style={s.statEmoji}></Text>
+        <Ionicons name="stats-chart" size={16} color="#C8FF3D" />
       </View>
       <View style={s.divider} />
       <Text style={s.footer}>fuelog.app</Text>

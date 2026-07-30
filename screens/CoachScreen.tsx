@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet,
   KeyboardAvoidingView, Platform, Linking, Modal, Animated,
@@ -207,8 +208,18 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
       try {
         if (health.isAuthorized) {
           const tracker = await AsyncStorage.getItem(STORAGE_PREFERRED_TRACKER);
-          const workouts = await health.getWorkoutHistory(2, buildSourcePrefs(tracker));
-          await publishTodaySessions(workouts as any, toLocalDateString(new Date()));
+          // Bounded: a HealthKit read that never resolves would otherwise hang
+          // this whole effect and the Coach would load with NO context at all —
+          // trading a little session detail for the entire briefing. Native
+          // HealthKit calls have no built-in timeout and iOS betas have hung
+          // them before, so the race is not theoretical.
+          const workouts = await Promise.race([
+            health.getWorkoutHistory(2, buildSourcePrefs(tracker)),
+            new Promise<[]>((res) => setTimeout(() => res([]), 4000)),
+          ]);
+          if (Array.isArray(workouts) && workouts.length) {
+            await publishTodaySessions(workouts as any, toLocalDateString(new Date()));
+          }
         }
       } catch (e) { logError('CoachScreen.refreshSessions', e); }
 
@@ -332,7 +343,7 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
           accessibilityRole="button"
           accessibilityLabel="Clear conversation"
           accessibilityHint="Deletes your chat history with the Coach">
-          <Text style={s.clearBtnText}></Text>
+          <Ionicons name="trash-outline" size={16} color={colors.textTertiary} />
         </TouchableOpacity>
       </View>
 
@@ -382,7 +393,7 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
             multiline
             maxLength={500}
             returnKeyType="send"
-            onSubmitEditing={() => sendMessage()}
+            onSubmitEditing={() =>sendMessage()}
             accessibilityLabel="Message to your Coach"
           />
           <TouchableOpacity

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet,
   ActivityIndicator, Share, Animated,
@@ -245,7 +246,7 @@ Use these sections (include only sections that have items):
 
       {!hasPlan && (
         <View style={s.empty}>
-          <Text style={s.emptyIcon}></Text>
+          <Ionicons name="cart-outline" size={40} color={colors.textTertiary} />
           <Text style={s.emptyTitle}>No meal plan yet</Text>
           <Text style={s.emptySub}>Generate a meal plan first, then come back here to build your grocery list.</Text>
         </View>
@@ -253,7 +254,7 @@ Use these sections (include only sections that have items):
 
       {hasPlan && !hasGenerated && !generating && loaded && (
         <View style={s.empty}>
-          <Text style={s.emptyIcon}></Text>
+          <Ionicons name="cart-outline" size={40} color={colors.textTertiary} />
           <Text style={s.emptyTitle}>Ready to generate</Text>
           <Text style={s.emptySub}>Tap the button below to build a categorized grocery list from your meal plan.</Text>
           <TouchableOpacity style={s.generateBtn} onPress={generate} activeOpacity={0.8}>
@@ -294,7 +295,7 @@ Use these sections (include only sections that have items):
               {customItems.map(i => (
                 <View key={i.id} style={s.itemRow}>
                   <View style={s.checkbox}>
-                    <Text style={s.checkmark}> </Text>
+                    <Ionicons name="checkmark" size={16} color={colors.accent} />
                   </View>
                   <Text style={s.itemName}>{i.name}</Text>
                 </View>

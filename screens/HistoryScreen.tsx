@@ -46,7 +46,7 @@ export default function HistoryScreen({ targets }: { targets: { calories: number
             <View key={day.date} style={s.card}>
               <View style={s.cardTop}>
                 <Text style={s.cardDate}>{day.date === todayStr() ? 'Today' : fmtDate(day.date)}</Text>
-                <Text style={[s.cardCal, over && s.cardCalOver]}>{Math.round(day.calories)}<Text style={s.cardCalUnit}> kcal</Text></Text>
+                <Text style={[s.cardCal, over && s.cardCalOver]}>{Math.round(day.calories)}<Text style={s.cardCalUnit}>kcal</Text></Text>
               </View>
               <View style={s.macroRows}>
                 {([

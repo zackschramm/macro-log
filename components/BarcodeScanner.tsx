@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, StyleSheet, TouchableOpacity, Modal, ActivityIndicator, Alert, useWindowDimensions,
 } from 'react-native';
@@ -124,7 +125,7 @@ export default function BarcodeScanner({ visible, onClose, onResult }: Props) {
 
         {hasPermission === false && (
           <View style={s.center}>
-            <Text style={s.permIcon}></Text>
+            <Ionicons name="camera-outline" size={40} color={colors.textTertiary} />
             <Text style={s.permTitle}>Camera Access Needed</Text>
             <Text style={s.permSub}>Go to Settings → Fuelog → Camera to enable access.</Text>
             <TouchableOpacity style={s.cancelBtn} onPress={onClose} activeOpacity={0.8}>
