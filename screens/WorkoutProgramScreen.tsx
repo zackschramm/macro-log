@@ -239,7 +239,7 @@ Requirements:
     if (!activeProgram) {
       return (
         <View style={s.center}>
-          <Text style={s.emptyIcon}>📋</Text>
+          <Text style={s.emptyIcon}></Text>
           <Text style={s.emptyTitle}>No Active Program</Text>
           <Text style={s.emptyDesc}>Generate a 12-week program tailored to your goals.</Text>
           <TouchableOpacity style={s.primaryBtn} onPress={() => setTab('generate')} activeOpacity={0.85}>
@@ -279,7 +279,7 @@ Requirements:
             </Text>
             {isRestDay ? (
               <View style={s.restDay}>
-                <Text style={s.restDayIcon}>😴</Text>
+                <Text style={s.restDayIcon}></Text>
                 <Text style={s.restDayText}>Rest Day — recover and come back stronger</Text>
               </View>
             ) : (
@@ -399,7 +399,7 @@ Requirements:
         </View>
       ) : (
         <TouchableOpacity style={[s.primaryBtn, { marginTop: 8 }]} onPress={generateProgram} activeOpacity={0.85}>
-          <Text style={s.primaryBtnText}>✨  Generate My Program</Text>
+          <Text style={s.primaryBtnText}> Generate My Program</Text>
         </TouchableOpacity>
       )}
 

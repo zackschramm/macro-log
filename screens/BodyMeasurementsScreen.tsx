@@ -626,7 +626,7 @@ export default function BodyMeasurementsScreen({
         >
           <View style={s.celebrateBackdrop}>
             <View style={s.celebrateCard}>
-              <Text style={s.celebrateEmoji}>🎉</Text>
+              <Text style={s.celebrateEmoji}></Text>
               <Text style={s.celebrateTitle}>{pendingMilestone?.title}</Text>
               <Text style={s.celebrateBody}>{pendingMilestone?.detail}</Text>
               <TouchableOpacity style={s.celebrateBtn} onPress={dismissMilestone} activeOpacity={0.8}>

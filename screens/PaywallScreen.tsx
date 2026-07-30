@@ -7,15 +7,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Purchases, { PurchasesPackage } from 'react-native-purchases';
 import { ENTITLEMENT_ID } from '../constants/purchases';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
+import { Ionicons } from '@expo/vector-icons';
+import { FEATURE_ICONS, type IconName } from '../constants/icons';
 import { track, EVENTS } from '../utils/analytics';
 
-const FEATURES = [
-  { icon: '🤖', label: 'AI Coaching', desc: 'Unlimited AI-powered nutrition & fitness coach' },
-  { icon: '🥗', label: 'AI Meal Plans', desc: 'Generate personalized weekly meal plans' },
-  { icon: '🩸', label: 'Blood Work AI Scan', desc: 'AI-powered lab results analysis' },
-  { icon: '💪', label: 'AI Workout Fill', desc: 'Auto-fill workouts with AI suggestions' },
-  { icon: '📊', label: 'InBody Segmental Analysis', desc: 'Detailed body composition breakdown' },
-  { icon: '✨', label: '3 Free Messages', desc: 'Try the coach before you buy' },
+const FEATURES: { icon: IconName; label: string; desc: string }[] = [
+  { icon: FEATURE_ICONS.coaching,     label: 'AI Coaching', desc: 'Unlimited AI-powered nutrition & fitness coach' },
+  { icon: FEATURE_ICONS.mealPlans,    label: 'AI Meal Plans', desc: 'Generate personalized weekly meal plans' },
+  { icon: FEATURE_ICONS.bloodwork,    label: 'Blood Work AI Scan', desc: 'AI-powered lab results analysis' },
+  { icon: FEATURE_ICONS.workoutFill,  label: 'AI Workout Fill', desc: 'Auto-fill workouts with AI suggestions' },
+  { icon: FEATURE_ICONS.inbody,       label: 'InBody Segmental Analysis', desc: 'Detailed body composition breakdown' },
+  { icon: FEATURE_ICONS.freeMessages, label: '3 Free Messages', desc: 'Try the coach before you buy' },
 ];
 
 interface Props {
@@ -142,7 +144,7 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
         <View style={s.features}>
           {FEATURES.map(f => (
             <View key={f.label} style={s.featureRow}>
-              <Text style={s.featureIcon}>{f.icon}</Text>
+              <Ionicons name={f.icon} size={20} color={colors.accent} style={s.featureIcon} />
               <View style={s.featureTextWrap}>
                 <Text style={s.featureLabel}>{f.label}</Text>
                 <Text style={s.featureDesc}>{f.desc}</Text>
@@ -227,7 +229,7 @@ function makeStyles(c: ThemeColors) {
     trialMsgText: { color: c.textSecondary, fontSize: 14, fontWeight: weight.semibold, textAlign: 'center' },
     features: { width: '100%', gap: 14, marginBottom: 32 },
     featureRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
-    featureIcon: { fontSize: 22, width: 30, textAlign: 'center', marginTop: 1 },
+    featureIcon: { width: 30, textAlign: 'center', marginTop: 2 },
     featureTextWrap: { flex: 1 },
     featureLabel: { fontSize: 15, color: c.text, fontWeight: weight.bold },
     featureDesc: { fontSize: 13, color: c.textSecondary, fontWeight: weight.medium, marginTop: 1 },

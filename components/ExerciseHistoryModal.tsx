@@ -193,7 +193,7 @@ export default function ExerciseHistoryModal({ visible, exercise, userId, onClos
           <ActivityIndicator style={{ marginTop: 60 }} color={colors.accent} />
         ) : rows.length === 0 ? (
           <View style={s.empty}>
-            <Text style={s.emptyIcon}>📊</Text>
+            <Text style={s.emptyIcon}></Text>
             <Text style={s.emptyTitle}>No history yet</Text>
             <Text style={s.emptySub}>Complete some sets to see your progress here.</Text>
           </View>
@@ -202,7 +202,7 @@ export default function ExerciseHistoryModal({ visible, exercise, userId, onClos
             {/* PR banner */}
             {prWeight > 0 && (
               <View style={s.prBanner}>
-                <Text style={s.prBannerText}>🏆 Best: {prWeight} {u.weightUnit} × {prReps} reps</Text>
+                <Text style={s.prBannerText}>Best: {prWeight} {u.weightUnit} × {prReps} reps</Text>
               </View>
             )}
 
@@ -223,7 +223,7 @@ export default function ExerciseHistoryModal({ visible, exercise, userId, onClos
                     {row.bestWeight > 0 ? ` · best: ${row.bestWeight} ${u.weightUnit} × ${row.bestReps} reps` : ''}
                   </Text>
                 </View>
-                {row.isPR && <Text style={s.prBadge}>🏆</Text>}
+                {row.isPR && <Text style={s.prBadge}></Text>}
               </View>
             ))}
           </ScrollView>

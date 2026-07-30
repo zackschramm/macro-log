@@ -638,7 +638,7 @@ export default function ProgressScreen({ profile }: { profile: any }) {
           {/* Progress Photos */}
           <TouchableOpacity style={s.photosCard} onPress={() => setPhotosVisible(true)} activeOpacity={0.8}>
             <View style={s.photosCardLeft}>
-              <Text style={s.photosCardIcon}>📸</Text>
+              <Text style={s.photosCardIcon}></Text>
               <View>
                 <Text style={s.photosCardTitle}>Progress Photos</Text>
                 <Text style={s.photosCardSub}>Track your visual transformation</Text>
@@ -690,7 +690,7 @@ export default function ProgressScreen({ profile }: { profile: any }) {
               <>
                 {health.isAvailable && (
                   <TouchableOpacity style={s.healthBtn} onPress={importFromHealth}>
-                    <Text style={s.healthBtnIcon}>❤️</Text>
+                    <Text style={s.healthBtnIcon}></Text>
                     <Text style={s.healthBtnText}>Import from Apple Health</Text>
                   </TouchableOpacity>
                 )}

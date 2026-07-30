@@ -19,7 +19,9 @@ import MineralsScreen from './MineralsScreen';
 import CoachMemoryScreen from './CoachMemoryScreen';
 import ReferralScreen from './ReferralScreen';
 import { useAuth } from '../hooks/useAuth';
-import { calculateTargets, MC } from '../constants/data';
+import { calculateTargets, MC, isEnduranceSport } from '../constants/data';
+import { daysUntilRace, phaseFromRaceDate, PHASE_LABEL } from '../utils/enduranceFueling';
+import { sportIcon } from '../constants/icons';
 import { useUnits, UnitSystem, KG_PER_LB, CM_PER_IN } from '../constants/units';
 import { colors, radius, weight } from '../constants/theme';
 import { useHealth, STORAGE_PREFERRED_TRACKER, STORAGE_HK_SOURCES, SOURCE_PREF_KEYS } from '../hooks/useHealth';
@@ -49,21 +51,79 @@ const GOAL_OPTIONS = [
   { key: 'gain', label: 'Build Muscle' },
 ];
 const SPORT_OPTIONS = [
-  { key: 'none',         label: 'General',       emoji: '🏋️' },
-  { key: 'running',      label: 'Running',        emoji: '🏃' },
-  { key: 'cycling',      label: 'Cycling',        emoji: '🚴' },
-  { key: 'triathlon',    label: 'Triathlon',      emoji: '🏅' },
-  { key: 'swimming',     label: 'Swimming',       emoji: '🏊' },
-  { key: 'crossfit',     label: 'CrossFit',       emoji: '🔥' },
-  { key: 'powerlifting', label: 'Powerlifting',   emoji: '🏋️' },
-  { key: 'bodybuilding', label: 'Bodybuilding',   emoji: '💪' },
-  { key: 'hiking',       label: 'Hiking',         emoji: '🥾' },
-  { key: 'rowing',       label: 'Rowing',         emoji: '🚣' },
-  { key: 'tennis',       label: 'Tennis',         emoji: '🎾' },
-  { key: 'golf',         label: 'Golf',           emoji: '⛳' },
-  { key: 'yoga',         label: 'Yoga',           emoji: '🧘' },
-  { key: 'climbing',     label: 'Climbing',       emoji: '🧗' },
-  { key: 'wrestling',    label: 'Wrestling/MMA',  emoji: '🥊' },
+  { key: 'none',         label: 'General' },
+  { key: 'running',      label: 'Running' },
+  { key: 'cycling',      label: 'Cycling' },
+  { key: 'triathlon',    label: 'Triathlon' },
+  { key: 'swimming',     label: 'Swimming' },
+  // NOTE: the four tri_* distance keys are not listed here. They are chosen in
+  // the second-level picker that appears once Triathlon is selected, and are
+  // what actually gets stored in profiles.sport.
+  { key: 'crossfit',     label: 'CrossFit' },
+  { key: 'powerlifting', label: 'Powerlifting' },
+  { key: 'bodybuilding', label: 'Bodybuilding' },
+  { key: 'hiking',       label: 'Hiking' },
+  { key: 'rowing',       label: 'Rowing' },
+  { key: 'tennis',       label: 'Tennis' },
+  { key: 'golf',         label: 'Golf' },
+  { key: 'yoga',         label: 'Yoga' },
+  { key: 'climbing',     label: 'Climbing' },
+  { key: 'wrestling',    label: 'Wrestling/MMA' },
+];
+
+/** Triathlon distances. The key stored in profiles.sport is the tri_* one. */
+const TRI_DISTANCE_OPTIONS = [
+  { key: 'tri_sprint',  label: 'Sprint',  detail: '750m · 20k · 5k' },
+  { key: 'tri_olympic', label: 'Olympic', detail: '1.5k · 40k · 10k' },
+  { key: 'tri_70_3',    label: '70.3',    detail: '1.9k · 90k · 21.1k' },
+  { key: 'tri_ironman', label: 'Ironman', detail: '3.8k · 180k · 42.2k' },
+];
+
+const TRI_KEYS = new Set(['triathlon', ...TRI_DISTANCE_OPTIONS.map(o => o.key)]);
+
+/**
+ * Parse a numeric text field into something Postgres will accept.
+ *
+ * An empty string must become null, not 0 and not NaN — the columns are
+ * nullable numerics with range checks, and '' or NaN is rejected outright.
+ * Out-of-range values are almost always unit errors (lb typed as kg, ml as L)
+ * and are dropped rather than saved and later propagated into a race plan.
+ */
+function intOrNull(v: string, lo: number, hi: number): number | null {
+  const n = parseInt(String(v ?? '').trim(), 10);
+  if (!Number.isFinite(n) || n < lo || n > hi) return null;
+  return n;
+}
+function floatOrNull(v: string, lo: number, hi: number): number | null {
+  const n = parseFloat(String(v ?? '').trim());
+  if (!Number.isFinite(n) || n < lo || n > hi) return null;
+  return Math.round(n * 100) / 100;
+}
+
+const PHASE_OPTIONS = [
+  { key: '',           label: 'Auto' },
+  { key: 'off_season', label: 'Off-season' },
+  { key: 'base',       label: 'Base' },
+  { key: 'build',      label: 'Build' },
+  { key: 'peak',       label: 'Peak' },
+  { key: 'taper',      label: 'Taper' },
+  { key: 'race_week',  label: 'Race week' },
+];
+
+/**
+ * Non-exercise activity only. Kept deliberately distinct from the legacy
+ * `activity` multiplier — combining that with per-session training energy
+ * counts training twice, which for an Ironman athlete is worth ~1,000 kcal/day.
+ */
+const NEAT_OPTIONS = [
+  { key: 'sedentary', label: 'Desk job',     detail: 'Mostly seated outside training' },
+  { key: 'standing',  label: 'On my feet',   detail: 'Moving a good part of the day' },
+  { key: 'manual',    label: 'Manual work',  detail: 'Physical job' },
+];
+
+const EXPERIENCE_OPTIONS = [
+  { key: 'first_timer',  label: 'First timer',  detail: 'Conservative defaults, more explanation' },
+  { key: 'experienced',  label: 'Experienced',  detail: 'Full detail, fewer guard rails' },
 ];
 
 type SubScreen = 'foods' | 'plan' | 'minerals' | 'notifs' | 'referral' | 'memory';
@@ -101,6 +161,25 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   const [activity, setActivity] = useState(profile.activity || 'moderate');
   const [goal, setGoal] = useState(profile.goal || 'gain');
   const [sport, setSport] = useState(profile.sport || 'none');
+  // Endurance-only state. All optional — a lifter never sees any of it.
+  const [raceDate, setRaceDate] = useState<string>(profile.race_date || '');
+  const [trainingPhase, setTrainingPhase] = useState<string>(profile.training_phase || '');
+  const [carbTolerance, setCarbTolerance] = useState<string>(
+    profile.carb_tolerance_g_per_h != null ? String(profile.carb_tolerance_g_per_h) : ''
+  );
+  const [sweatRate, setSweatRate] = useState<string>(
+    profile.sweat_rate_l_per_h != null ? String(profile.sweat_rate_l_per_h) : ''
+  );
+  const [neatLevel, setNeatLevel] = useState<string>(profile.neat_level || 'sedentary');
+  const [experienceLevel, setExperienceLevel] = useState<string>(
+    profile.experience_level || 'first_timer'
+  );
+
+  // Shown under the race-date field so the athlete can see what the date implies
+  // before saving. Null when there's no date or it doesn't parse.
+  const daysToRace = daysUntilRace(raceDate || null);
+  const inferredPhase = phaseFromRaceDate(raceDate || null);
+  const inferredPhaseLabel = inferredPhase ? PHASE_LABEL[inferredPhase] : null;
   const [loading, setLoading] = useState(false);
   const [customGoals, setCustomGoals] = useState(!!profile.custom_goals);
   const [customCal, setCustomCal] = useState(profile.custom_goals ? String(profile.calories || '') : '');
@@ -477,6 +556,14 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
       // wipe the user's age.
       age: parseInt(age, 10) || profile.age || null,
       sex, activity, goal, sport,
+      // Endurance fields. Empty string means "not set" and must become null —
+      // Postgres rejects '' for date and numeric columns.
+      race_date: raceDate.trim() || null,
+      training_phase: trainingPhase || null,
+      carb_tolerance_g_per_h: intOrNull(carbTolerance, 0, 200),
+      sweat_rate_l_per_h: floatOrNull(sweatRate, 0, 4),
+      neat_level: neatLevel || null,
+      experience_level: experienceLevel || null,
     };
     const calcInput = { ...profileData, body_fat_pct: bodyFatPct };
     const auto = calculateTargets(calcInput);
@@ -681,7 +768,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
               <Ionicons name="gift-outline" size={18} color={colors.accent} />
             </View>
             <View style={s.linkText}>
-              <Text style={[s.linkLabel, { color: colors.accent }]}>🎁 Refer a Friend</Text>
+              <Text style={[s.linkLabel, { color: colors.accent }]}>Refer a Friend</Text>
               <Text style={s.linkSub}>Give 1 month free, get 1 month free</Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.accent} />
@@ -816,15 +903,179 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
           <Text style={[s.inlineLabel, { marginTop: 12 }]}>Sport</Text>
           <View style={s.sportGrid}>
             {SPORT_OPTIONS.map(o => {
-              const active = sport === o.key;
+              // Any tri_* distance keeps the Triathlon tile lit.
+              const active = o.key === 'triathlon' ? TRI_KEYS.has(sport) : sport === o.key;
               return (
-                <TouchableOpacity key={o.key} style={[s.sportCell, active && s.sportCellActive]} onPress={() => setSport(o.key)} activeOpacity={0.7}>
-                  <Text style={s.sportEmoji}>{o.emoji}</Text>
+                <TouchableOpacity
+                  key={o.key}
+                  style={[s.sportCell, active && s.sportCellActive]}
+                  onPress={() => setSport(o.key)}
+                  activeOpacity={0.7}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={o.label}>
+                  <Ionicons
+                    name={sportIcon(o.key)}
+                    size={22}
+                    color={active ? colors.accent : colors.textSecondary}
+                  />
                   <Text style={[s.sportLabel, active && s.sportLabelActive]}>{o.label}</Text>
                 </TouchableOpacity>
               );
             })}
           </View>
+
+          {TRI_KEYS.has(sport) && (
+            <>
+              <Text style={[s.inlineLabel, { marginTop: 16 }]}>Race distance</Text>
+              <Text style={s.helpText}>
+                These are genuinely different events nutritionally. A sprint is raced
+                on the glycogen you already have; an Ironman is a ten-hour digestion problem.
+              </Text>
+              <View style={s.distanceCol}>
+                {TRI_DISTANCE_OPTIONS.map(o => {
+                  const active = sport === o.key;
+                  return (
+                    <TouchableOpacity
+                      key={o.key}
+                      style={[s.distanceRow, active && s.distanceRowActive]}
+                      onPress={() => setSport(o.key)}
+                      activeOpacity={0.7}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={`${o.label}, ${o.detail}`}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[s.distanceLabel, active && s.distanceLabelActive]}>{o.label}</Text>
+                        <Text style={s.distanceDetail}>{o.detail}</Text>
+                      </View>
+                      {active && <Text style={s.distanceCheck}>✓</Text>}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
+
+          {isEnduranceSport(sport) && (
+            <>
+              <Text style={[s.inlineLabel, { marginTop: 16 }]}>Race date</Text>
+              <Text style={s.helpText}>
+                Sets your training phase and switches on the carb load automatically.
+                Leave blank if you're not pointed at a race.
+              </Text>
+              <TextInput
+                style={s.enduranceInput}
+                value={raceDate}
+                onChangeText={setRaceDate}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.textTertiary}
+                keyboardType="numbers-and-punctuation"
+                accessibilityLabel="Race date"
+              />
+              {inferredPhaseLabel && (
+                <Text style={s.helpText}>
+                  {daysToRace !== null && daysToRace >= 0
+                    ? `${daysToRace} days out — ${inferredPhaseLabel}`
+                    : 'That date has passed.'}
+                </Text>
+              )}
+
+              <Text style={[s.inlineLabel, { marginTop: 12 }]}>Training phase</Text>
+              <View style={s.chipRow}>
+                {PHASE_OPTIONS.map(o => (
+                  <TouchableOpacity
+                    key={o.key || 'auto'}
+                    style={[s.chip, trainingPhase === o.key && s.chipActive]}
+                    onPress={() => setTrainingPhase(o.key)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: trainingPhase === o.key }}>
+                    <Text style={[s.chipText, trainingPhase === o.key && s.chipTextActive]}>
+                      {o.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <Text style={[s.inlineLabel, { marginTop: 12 }]}>Outside training, I'm…</Text>
+              <Text style={s.helpText}>
+                Your job and daily life only — training is counted separately from your
+                logged sessions. Answering this as though it included training would
+                double-count it.
+              </Text>
+              <View style={s.distanceCol}>
+                {NEAT_OPTIONS.map(o => {
+                  const active = neatLevel === o.key;
+                  return (
+                    <TouchableOpacity
+                      key={o.key}
+                      style={[s.distanceRow, active && s.distanceRowActive]}
+                      onPress={() => setNeatLevel(o.key)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={`${o.label}, ${o.detail}`}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[s.distanceLabel, active && s.distanceLabelActive]}>{o.label}</Text>
+                        <Text style={s.distanceDetail}>{o.detail}</Text>
+                      </View>
+                      {active && <Text style={s.distanceCheck}>✓</Text>}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text style={[s.inlineLabel, { marginTop: 12 }]}>Experience</Text>
+              <View style={s.distanceCol}>
+                {EXPERIENCE_OPTIONS.map(o => {
+                  const active = experienceLevel === o.key;
+                  return (
+                    <TouchableOpacity
+                      key={o.key}
+                      style={[s.distanceRow, active && s.distanceRowActive]}
+                      onPress={() => setExperienceLevel(o.key)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={`${o.label}, ${o.detail}`}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[s.distanceLabel, active && s.distanceLabelActive]}>{o.label}</Text>
+                        <Text style={s.distanceDetail}>{o.detail}</Text>
+                      </View>
+                      {active && <Text style={s.distanceCheck}>✓</Text>}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text style={[s.inlineLabel, { marginTop: 12 }]}>Trained carb rate (g/hour)</Text>
+              <Text style={s.helpText}>
+                The highest rate you've actually practised in training. Race plans are
+                capped at this — a rate you've trained beats one you've only read about.
+              </Text>
+              <TextInput
+                style={s.enduranceInput}
+                value={carbTolerance}
+                onChangeText={setCarbTolerance}
+                placeholder="e.g. 70"
+                placeholderTextColor={colors.textTertiary}
+                keyboardType="number-pad"
+                accessibilityLabel="Trained carbohydrate rate in grams per hour"
+              />
+
+              <Text style={[s.inlineLabel, { marginTop: 12 }]}>Sweat rate (L/hour)</Text>
+              <Text style={s.helpText}>
+                Weigh yourself before and after a one-hour session, add whatever you drank.
+                Individual rates vary more than any other number in a race plan.
+              </Text>
+              <TextInput
+                style={s.enduranceInput}
+                value={sweatRate}
+                onChangeText={setSweatRate}
+                placeholder="e.g. 1.1"
+                placeholderTextColor={colors.textTertiary}
+                keyboardType="decimal-pad"
+                accessibilityLabel="Sweat rate in litres per hour"
+              />
+            </>
+          )}
           <View style={s.fieldDivider} />
           <Text style={[s.inlineLabel, { marginTop: 12 }]}>Rest Timer</Text>
           <View style={s.chipRow}>
@@ -900,8 +1151,8 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
             <Text style={s.sectionLabel}>WEARABLES</Text>
             <View style={s.formCard}>
               {([
-                { key: 'whoop' as Provider, label: 'Whoop', icon: '⚡' },
-                { key: 'oura' as Provider, label: 'Oura Ring', icon: '💍' },
+                { key: 'whoop' as Provider, label: 'Whoop' },
+                { key: 'oura' as Provider, label: 'Oura Ring' },
                 { key: 'garmin' as Provider, label: 'Garmin', icon: '⌚' },
               ]).map((w, i) => {
                 const isConnected = connectedWearables.includes(w.key);
@@ -945,7 +1196,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
               {/* Dexcom CGM row */}
               <View style={s.fieldDivider} />
               <View style={s.sourceRow}>
-                <Text style={s.fieldLabel}>📡 Dexcom CGM</Text>
+                <Text style={s.fieldLabel}>Dexcom CGM</Text>
                 {dexcomConnected ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#C8FF3D' }} />
@@ -1308,9 +1559,29 @@ const s = StyleSheet.create({
     borderWidth: 1.5, borderColor: 'transparent',
   },
   sportCellActive: { backgroundColor: colors.accentMuted, borderColor: colors.accent },
-  sportEmoji: { fontSize: 22 },
   sportLabel: { fontSize: 11, fontWeight: weight.semibold, color: colors.textSecondary, textAlign: 'center' },
   sportLabelActive: { color: colors.text },
+  helpText: {
+    fontSize: 12, color: colors.textSecondary, lineHeight: 17,
+    marginTop: 4, marginBottom: 8,
+  },
+  enduranceInput: {
+    fontSize: 15, color: colors.text, backgroundColor: colors.card,
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: 12, paddingVertical: 10, marginBottom: 4,
+  },
+  distanceCol: { gap: 8, marginBottom: 4 },
+  distanceRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.card, borderRadius: radius.md,
+    borderWidth: 1.5, borderColor: colors.border,
+    paddingHorizontal: 14, paddingVertical: 12,
+  },
+  distanceRowActive: { borderColor: colors.accent, backgroundColor: colors.accentMuted },
+  distanceLabel: { fontSize: 15, fontWeight: weight.bold, color: colors.textSecondary },
+  distanceLabelActive: { color: colors.text },
+  distanceDetail: { fontSize: 12, color: colors.textTertiary, marginTop: 2 },
+  distanceCheck: { color: colors.accent, fontSize: 16, fontWeight: weight.heavy, marginLeft: 12 },
 
   // Segmented (sex)
   segmented: { flexDirection: 'row', backgroundColor: colors.cardAlt, borderRadius: radius.sm, padding: 3, gap: 3 },

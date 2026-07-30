@@ -5,7 +5,9 @@ import {
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme, ThemeColors, weight as W } from '../constants/theme';
+import { Ionicons } from '@expo/vector-icons';
 import { ALL_BADGES, BadgeStatus, checkAchievements } from '../utils/achievements';
+import { badgeIcon } from '../constants/icons';
 
 interface Props {
   profile: { calories: number; protein: number; carbs: number; fat: number };
@@ -51,7 +53,12 @@ export default function AchievementBadges({ profile }: Props) {
         <View key={ri} style={s.row}>
           {row.map(status => (
             <View key={status.badge.id} style={[s.card, status.earned && s.cardEarned]}>
-              <Text style={s.icon}>{status.badge.icon}</Text>
+              <Ionicons
+                name={badgeIcon(status.badge.id)}
+                size={26}
+                color={status.earned ? colors.accent : colors.textTertiary}
+                style={s.icon}
+              />
               <Text style={[s.name, status.earned && s.nameEarned]}>{status.badge.name}</Text>
               {status.earned ? (
                 <Text style={s.earnedDate}>
@@ -63,7 +70,7 @@ export default function AchievementBadges({ profile }: Props) {
                 </Text>
               ) : (
                 <>
-                  <Text style={s.lockIcon}>🔒</Text>
+                  <Ionicons name="lock-closed" size={12} color={colors.textTertiary} style={s.lockIcon} />
                   {status.progressLabel && (
                     <Text style={s.progress}>{status.progressLabel}</Text>
                   )}
@@ -78,7 +85,7 @@ export default function AchievementBadges({ profile }: Props) {
       <Modal visible={!!toastName} transparent animationType="none" statusBarTranslucent>
         <Animated.View style={[s.toastOverlay, { opacity: toastAnim }]} pointerEvents="none">
           <View style={s.toast}>
-            <Text style={s.toastEmoji}>🏆</Text>
+            <Ionicons name="trophy" size={22} color={colors.accent} />
             <Text style={s.toastLabel}>Achievement unlocked</Text>
             <Text style={s.toastName}>{toastName}</Text>
           </View>
@@ -100,7 +107,7 @@ function makeStyles(colors: ThemeColors, spacing: Record<string, number>, radius
       backgroundColor: colors.accentMuted, borderColor: colors.accent, opacity: 1,
     },
     cardGhost: { backgroundColor: 'transparent', borderColor: 'transparent' },
-    icon: { fontSize: 28 },
+    icon: { marginBottom: 2 },
     name: {
       fontSize: 13, fontWeight: W.semibold,
       color: colors.textSecondary, textAlign: 'center',

@@ -71,10 +71,10 @@ function computePhase(lastPeriodStart: string, cycleLength: number, periodLength
   const daysUntilPeriod = cycleLength - cycleDay + 1;
 
   let name: string, emoji: string;
-  if (cycleDay <= periodLength) { name = 'Menstrual'; emoji = '🔴'; }
-  else if (cycleDay <= 13) { name = 'Follicular'; emoji = '🌱'; }
-  else if (cycleDay <= 16) { name = 'Ovulation'; emoji = '⚡'; }
-  else { name = 'Luteal'; emoji = '🌙'; }
+  if (cycleDay <= periodLength) { name = 'Menstrual'; emoji = ''; }
+  else if (cycleDay <= 13) { name = 'Follicular'; emoji = ''; }
+  else if (cycleDay <= 16) { name = 'Ovulation'; emoji = ''; }
+  else { name = 'Luteal'; emoji = ''; }
 
   return { name, emoji, day: cycleDay, totalDays: cycleLength, daysUntilPeriod };
 }
@@ -281,11 +281,11 @@ export default function CycleTrackingScreen({
             <View style={s.insightsCard}>
               <Text style={s.sectionLabel}>{phase.emoji} {phase.name.toUpperCase()} PHASE INSIGHTS</Text>
               <View style={s.insightBlock}>
-                <Text style={s.insightCategory}>🏋️ Training</Text>
+                <Text style={s.insightCategory}>Training</Text>
                 <Text style={s.insightText}>{PHASE_INSIGHTS[phase.name].training}</Text>
               </View>
               <View style={[s.insightBlock, { marginTop: 12 }]}>
-                <Text style={s.insightCategory}>🥗 Nutrition</Text>
+                <Text style={s.insightCategory}>Nutrition</Text>
                 <Text style={s.insightText}>{PHASE_INSIGHTS[phase.name].nutrition}</Text>
               </View>
             </View>
@@ -293,12 +293,12 @@ export default function CycleTrackingScreen({
 
           {/* Log Today */}
           <TouchableOpacity style={s.logBtn} onPress={() => setShowLogModal(true)} activeOpacity={0.8}>
-            <Text style={s.logBtnText}>📝  Log Today</Text>
+            <Text style={s.logBtnText}> Log Today</Text>
           </TouchableOpacity>
 
           {/* Ask Coach */}
           <TouchableOpacity style={s.coachBtn} onPress={onNavigateToCoach} activeOpacity={0.8}>
-            <Text style={s.coachBtnText}>💬  Ask Coach About My Cycle</Text>
+            <Text style={s.coachBtnText}> Ask Coach About My Cycle</Text>
           </TouchableOpacity>
 
         </ScrollView>

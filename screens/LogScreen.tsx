@@ -262,7 +262,7 @@ export default function LogScreen({
           {getDisplayStreak(streakCount, streakLastDate) > 0 && (
             <TouchableOpacity onPress={() => setShowStreakDetail(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={[s.streakBadge, getDisplayStreak(streakCount, streakLastDate) >= 7 ? s.streakTeal : s.streakAmber]}>
-                🔥 {getDisplayStreak(streakCount, streakLastDate)}
+                {getDisplayStreak(streakCount, streakLastDate)}
               </Text>
             </TouchableOpacity>
           )}
@@ -303,12 +303,12 @@ export default function LogScreen({
           </View>
           {periodizationSettings?.enabled && (
             <Text style={s.periodLabel}>
-              {hasWorkoutToday ? '🏋️ Training day targets' : '🛋️ Rest day targets'}
+              {hasWorkoutToday ? 'Training day targets' : 'Rest day targets'}
             </Text>
           )}
           {dynamicActive && (
             <TouchableOpacity onPress={() => setShowBurnModal(true)} activeOpacity={0.7} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-              <Text style={s.dynamicLabel}>⚡ Based on today's burn</Text>
+              <Text style={s.dynamicLabel}>Based on today's burn</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity style={s.microsBtn} onPress={() => setShowMicros(true)} activeOpacity={0.7}>
@@ -320,13 +320,13 @@ export default function LogScreen({
         {activeDate === todayStr() && tdeeData?.tdee != null && (
           <TouchableOpacity style={s.burnStrip} onPress={() => setShowBurnModal(true)} activeOpacity={0.8}>
             <View style={s.burnCol}>
-              <Text style={s.burnTopLabel}>🔥 Burned</Text>
+              <Text style={s.burnTopLabel}>Burned</Text>
               <Text style={s.burnMain}>{tdeeData.tdee.toLocaleString()} cal</Text>
               <Text style={s.burnSub}>Active: {(tdeeData.active ?? 0).toLocaleString()} cal</Text>
             </View>
             <View style={s.burnVertDivider} />
             <View style={s.burnCol}>
-              <Text style={s.burnTopLabel}>🍽 Target</Text>
+              <Text style={s.burnTopLabel}>Target</Text>
               <Text style={s.burnMain}>{(tdeeData.goalCalories ?? 0).toLocaleString()} cal</Text>
               <Text style={[s.burnSub, { color: burnEatenColor }]}>Eaten: {Math.round(totals.calories).toLocaleString()} cal</Text>
             </View>
@@ -368,10 +368,10 @@ export default function LogScreen({
         {/* AI logging shortcuts */}
         <View style={s.aiLogRow}>
           <TouchableOpacity style={s.aiLogBtn} onPress={() => setShowPhotoModal(true)} activeOpacity={0.8}>
-            <Text style={s.aiLogBtnText}>📷  Photo</Text>
+            <Text style={s.aiLogBtnText}> Photo</Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.aiLogBtn} onPress={() => setShowVoiceModal(true)} activeOpacity={0.8}>
-            <Text style={s.aiLogBtnText}>🎤  Voice</Text>
+            <Text style={s.aiLogBtnText}> Voice</Text>
           </TouchableOpacity>
         </View>
 
@@ -435,7 +435,7 @@ export default function LogScreen({
               </View>
             ) : logs.length === 0 ? (
               <View style={s.empty}>
-                <Text style={s.emptyIcon}>🍽️</Text>
+                <Text style={s.emptyIcon}></Text>
                 <Text style={s.emptyTitle}>Nothing logged yet</Text>
                 <Text style={s.emptySub}>Tap "+ Log Food" above to start tracking your day.</Text>
               </View>
@@ -448,7 +448,7 @@ export default function LogScreen({
       <Modal visible={showStreakDetail} transparent animationType="fade" onRequestClose={() => setShowStreakDetail(false)}>
         <TouchableOpacity style={s.streakOverlay} activeOpacity={1} onPress={() => setShowStreakDetail(false)}>
           <View style={s.streakCard}>
-            <Text style={s.streakCardEmoji}>🔥</Text>
+            <Text style={s.streakCardEmoji}></Text>
             <Text style={s.streakCardCount}>{getDisplayStreak(streakCount, streakLastDate)}-day streak!</Text>
             <Text style={s.streakCardSub}>Keep logging every day to keep it going.</Text>
           </View>
@@ -459,7 +459,7 @@ export default function LogScreen({
       {achievementToast && (
         <Animated.View style={[s.achievementOverlay, { opacity: achievementAnim }]} pointerEvents="none">
           <View style={s.achievementCard}>
-            <Text style={s.achievementEmoji}>🏆</Text>
+            <Text style={s.achievementEmoji}></Text>
             <Text style={s.achievementLabel}>Achievement unlocked</Text>
             <Text style={s.achievementName}>{achievementToast}</Text>
           </View>
@@ -471,7 +471,7 @@ export default function LogScreen({
         <Animated.View style={[s.milestoneOverlay, { opacity: streakAnim }]}>
           <View style={s.milestoneCard}>
             <Text style={s.milestoneEmoji}>
-              {streakMilestone === 7 ? '🔥' : streakMilestone === 30 ? '💪' : '🏆'}
+              {streakMilestone === 7 ? '' : streakMilestone === 30 ? '' : ''}
             </Text>
             <Text style={s.milestoneTitle}>
               {streakMilestone === 7 ? 'One week streak!' : streakMilestone === 30 ? '30-day streak! You\'re on fire.' : '100-day legend!'}

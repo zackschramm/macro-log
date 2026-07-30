@@ -7,6 +7,9 @@ import { analyzeWeightTrend, describeTrend } from './weightTrend';
 import { getWeightHistory, toWeighIns } from './weightHistory';
 import { toLocalDateString } from './dateUtils';
 import { logError } from './logError';
+import { buildEnduranceContext } from './enduranceContext';
+import { isEnduranceSport, estimateBmr, leanMassLb } from '../constants/data';
+import { readTodaySessions } from './sessionMapping';
 
 const GOAL_LABELS: Record<string, string> = {
   lose: 'lose fat',
@@ -21,7 +24,7 @@ const ACTIVITY_LABELS: Record<string, string> = {
   very_active: 'very active',
 };
 
-export async function buildCoachContext(userId: string): Promise<string> {
+export async function buildCoachContext(userId: string): Promise<string>{
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
   const sevenDaysAgoStr = toLocalDateString(sevenDaysAgo);
@@ -40,7 +43,7 @@ export async function buildCoachContext(userId: string): Promise<string> {
     AsyncStorage.getItem('fuelog_onboarding_goal'),
     AsyncStorage.getItem('fuelog_onboarding_activity'),
     AsyncStorage.getItem('fuelog_streak_count'),
-    supabase.from('profiles').select('goal,activity,calories,protein,carbs,fat').eq('id', userId).single(),
+    supabase.from('profiles').select('goal,activity,calories,protein,carbs,fat,sport,race_date,training_phase,carb_tolerance_g_per_h,sweat_rate_l_per_h,neat_level,experience_level,weight_lbs,height_in,age,sex').eq('id', userId).single(),
     supabase.from('macro_logs').select('date,calories,protein,carbs,fat').eq('user_id', userId).gte('date', sevenDaysAgoStr),
     supabase.from('inbody_logs').select('measured_at,body_fat_pct,skeletal_muscle_mass_lb,bmi').eq('user_id', userId).order('measured_at', { ascending: false }).limit(1).single(),
     supabase.from('workout_logs').select('date').eq('user_id', userId).gte('date', sevenDaysAgoStr),
@@ -293,6 +296,43 @@ export async function buildCoachContext(userId: string): Promise<string> {
       lines.push('');
     }
   } catch (e) { logError('buildCoachContext.cycleDay', e); }
+
+  // Endurance context. Only for endurance sports — a powerlifter does not need
+  // a carbohydrate periodization briefing. Fails soft: a missing session source
+  // costs detail, never the conversation.
+  try {
+    const sport = (profile as any)?.sport as string | undefined;
+    if (isEnduranceSport(sport)) {
+      const weightLbs = (profile as any)?.weight_lbs ?? null;
+      const bodyFatPct = inbodyResult.status === 'fulfilled'
+        ? (inbodyResult.value.data?.body_fat_pct ?? null) : null;
+      const { bmr } = estimateBmr({
+        weight_lbs: weightLbs,
+        height_in: (profile as any)?.height_in ?? null,
+        age: (profile as any)?.age ?? null,
+        sex: (profile as any)?.sex ?? null,
+        body_fat_pct: bodyFatPct,
+      });
+      const lbm = leanMassLb(weightLbs, bodyFatPct);
+      const sessions = await readTodaySessions(toLocalDateString(new Date()));
+      const enduranceLines = buildEnduranceContext(
+        {
+          sport,
+          raceDate: (profile as any)?.race_date ?? null,
+          trainingPhase: (profile as any)?.training_phase ?? null,
+          carbToleranceGPerH: (profile as any)?.carb_tolerance_g_per_h ?? null,
+          sweatRateLPerH: (profile as any)?.sweat_rate_l_per_h ?? null,
+          neatLevel: (profile as any)?.neat_level ?? null,
+          experienceLevel: (profile as any)?.experience_level ?? null,
+          massKg: weightLbs ? weightLbs * 0.453592 : null,
+          ffmKg: lbm != null ? lbm * 0.453592 : null,
+          bmr,
+        },
+        sessions,
+      );
+      if (enduranceLines.length) lines.push(...enduranceLines);
+    }
+  } catch (e) { logError('buildCoachContext.endurance', e); }
 
   lines.push('Always reference this data when relevant. Be specific, not generic.');
 

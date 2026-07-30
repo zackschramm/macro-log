@@ -73,10 +73,10 @@ function computeCyclePhase(lastPeriodStart: string, cycleLength: number, periodL
   const cycleDay = (daysDiff % cycleLength) + 1;
   const daysUntilPeriod = cycleLength - cycleDay + 1;
   let name: string, emoji: string;
-  if (cycleDay <= periodLength) { name = 'Menstrual'; emoji = '🔴'; }
-  else if (cycleDay <= 13) { name = 'Follicular'; emoji = '🌱'; }
-  else if (cycleDay <= 16) { name = 'Ovulation'; emoji = '⚡'; }
-  else { name = 'Luteal'; emoji = '🌙'; }
+  if (cycleDay <= periodLength) { name = 'Menstrual'; emoji = ''; }
+  else if (cycleDay <= 13) { name = 'Follicular'; emoji = ''; }
+  else if (cycleDay <= 16) { name = 'Ovulation'; emoji = ''; }
+  else { name = 'Luteal'; emoji = ''; }
   return { name, emoji, day: cycleDay, totalDays: cycleLength, daysUntilPeriod };
 }
 
@@ -838,7 +838,7 @@ export default function RecoveryScreen({
           <Text style={s.title}>Recovery</Text>
         </View>
         <View style={s.center}>
-          <Text style={s.emptyIcon}>❤️</Text>
+          <Text style={s.emptyIcon}></Text>
           <Text style={s.emptyTitle}>Apple Health Not Available</Text>
           <Text style={s.emptySub}>Recovery data requires an iOS device with Apple Health, or a connected Whoop.</Text>
           {healthError && (
@@ -861,7 +861,7 @@ export default function RecoveryScreen({
           <Text style={s.title}>Recovery</Text>
         </View>
         <View style={s.center}>
-          <Text style={s.emptyIcon}>🔒</Text>
+          <Text style={s.emptyIcon}></Text>
           <Text style={s.emptyTitle}>No Health Data Yet</Text>
           <Text style={s.emptySub}>
             Fuelog is connected, but Apple Health isn't sharing any data. Open the
@@ -884,7 +884,7 @@ export default function RecoveryScreen({
         <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
           {refreshing && <ActivityIndicator size="small" color={colors.textTertiary} />}
           <TouchableOpacity style={s.iconBtn} onPress={() => setShowCustomize(true)}>
-            <Text style={s.iconBtnText}>⚙</Text>
+            <Text style={s.iconBtnText}></Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.iconBtn} onPress={onRefresh}>
             <Text style={s.iconBtnText}>↻</Text>
@@ -899,7 +899,7 @@ export default function RecoveryScreen({
         </View>
       ) : !data && !whoopConnected ? (
         <View style={s.center}>
-          <Text style={s.emptyIcon}>❤️</Text>
+          <Text style={s.emptyIcon}></Text>
           <Text style={s.emptyTitle}>Connect Apple Health</Text>
           <Text style={s.emptySub}>Fuelog reads HRV, sleep, steps, and more from Apple Health. Your Whoop, Garmin, and Apple Watch data all sync here automatically. Or connect a Whoop from your profile to skip Apple Health entirely.</Text>
           <TouchableOpacity style={s.connectBtn} onPress={() => load()}>
@@ -918,7 +918,7 @@ export default function RecoveryScreen({
 
           {wearableError && (
             <TouchableOpacity onPress={onRefresh} style={{ paddingVertical: 6 }}>
-              <Text style={{ fontSize: 12, color: colors.warning }}>⚠ {wearableError}</Text>
+              <Text style={{ fontSize: 12, color: colors.warning }}>{wearableError}</Text>
             </TouchableOpacity>
           )}
 
@@ -1022,7 +1022,7 @@ export default function RecoveryScreen({
           <Text style={s.sourceNote}>
             {whoopConnected
               ? '⌚ Recovery score, HRV, resting HR & sleep from Whoop'
-              : '❤️ From Apple Health · Whoop, Garmin & Apple Watch sync automatically'}
+              : 'From Apple Health · Whoop, Garmin & Apple Watch sync automatically'}
           </Text>
           {lastSyncMs && (
             <Text style={s.lastSyncText}>Updated {formatLastSync(lastSyncMs)}</Text>
@@ -1031,7 +1031,7 @@ export default function RecoveryScreen({
           {/* Breathwork */}
           <TouchableOpacity style={s.breathCard} onPress={() => setShowBreathwork(true)} activeOpacity={0.8}>
             <View>
-              <Text style={s.breathCardTitle}>🌬️  Breathwork</Text>
+              <Text style={s.breathCardTitle}> Breathwork</Text>
               <Text style={s.breathCardSub}>Box · 4-7-8 · Physiological Sigh</Text>
             </View>
             <Text style={s.breathCardArrow}>›</Text>

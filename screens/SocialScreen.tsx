@@ -4,6 +4,8 @@ import {
   TextInput, Modal, Image, Alert, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { POST_TYPE_ICONS, type IconName } from '../constants/icons';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '../constants/supabase';
@@ -21,11 +23,11 @@ const fmtTime = (ts: string) => {
   return `${Math.floor(diff / 86400)}d ago`;
 };
 
-const POST_TYPES: Record<string, { emoji: string; color: string }> = {
-  progress_photo: { emoji: '📸', color: '#4F9CFF' },
-  workout:        { emoji: '💪', color: '#C8FF3D' },
-  macro:          { emoji: '🍽️', color: '#F5A623' },
-  milestone:      { emoji: '🏆', color: '#F472B6' },
+const POST_TYPES: Record<string, { icon: IconName; color: string }> = {
+  progress_photo: { icon: POST_TYPE_ICONS.progress_photo, color: '#4F9CFF' },
+  workout:        { icon: POST_TYPE_ICONS.workout,        color: '#C8FF3D' },
+  macro:          { icon: POST_TYPE_ICONS.macro,          color: '#F5A623' },
+  milestone:      { icon: POST_TYPE_ICONS.milestone,      color: '#F472B6' },
 };
 
 type SocialView = 'feed' | 'myposts' | 'leaderboard';
@@ -217,7 +219,7 @@ export default function SocialScreen({ profile }: { profile: any }) {
           <Text style={s.title}>Social</Text>
         </View>
         <View style={s.empty}>
-          <Text style={s.emptyIcon}>🔞</Text>
+          <Ionicons name="people-outline" size={40} color={colors.textTertiary} />
           <Text style={s.emptyTitle}>Social is 18+</Text>
           <Text style={s.emptySub}>
             The community feed, sharing, and leaderboard are only available to
@@ -242,9 +244,9 @@ export default function SocialScreen({ profile }: { profile: any }) {
       {/* Sub tabs */}
       <View style={s.subTabs}>
         {([
-          { key: 'feed', label: '📣 Feed' },
-          { key: 'myposts', label: '👤 My Posts' },
-          { key: 'leaderboard', label: '🏆 Board' },
+          { key: 'feed', label: 'Feed' },
+          { key: 'myposts', label: 'My Posts' },
+          { key: 'leaderboard', label: 'Board' },
         ] as { key: SocialView; label: string }[]).map(t => (
           <TouchableOpacity key={t.key} style={[s.subTab, view === t.key && s.subTabActive]} onPress={() => setView(t.key)}>
             <Text style={[s.subTabText, view === t.key && s.subTabTextActive]}>{t.label}</Text>
@@ -278,7 +280,7 @@ export default function SocialScreen({ profile }: { profile: any }) {
           {loading && <ActivityIndicator color={colors.text} style={{ marginTop: 40 }} />}
           {!loading && posts.length === 0 && (
             <View style={s.empty}>
-              <Text style={s.emptyIcon}>📣</Text>
+              <Ionicons name="megaphone-outline" size={40} color={colors.textTertiary} />
               <Text style={s.emptyTitle}>No posts yet</Text>
               <Text style={s.emptySub}>Be the first to share your progress!</Text>
               <TouchableOpacity style={s.emptyBtn} onPress={() => setPostModal(true)}>
@@ -299,7 +301,10 @@ export default function SocialScreen({ profile }: { profile: any }) {
                   <View style={s.postMeta}>
                     <Text style={s.postAuthor}>{post.content?.name || 'User'}</Text>
                     <View style={s.postTypeRow}>
-                      <Text style={[s.postTypeBadge, { color: typeInfo.color }]}>{typeInfo.emoji} {post.type.replace('_', ' ')}</Text>
+                      <View style={s.postTypeChip}>
+                        <Ionicons name={typeInfo.icon} size={13} color={typeInfo.color} />
+                        <Text style={[s.postTypeBadge, { color: typeInfo.color }]}>{post.type.replace('_', ' ')}</Text>
+                      </View>
                       <Text style={s.postTime}>{fmtTime(post.created_at)}</Text>
                     </View>
                   </View>
@@ -328,7 +333,7 @@ export default function SocialScreen({ profile }: { profile: any }) {
         <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
           {myPosts.length === 0 && (
             <View style={s.empty}>
-              <Text style={s.emptyIcon}>📸</Text>
+              <Ionicons name="camera-outline" size={40} color={colors.textTertiary} />
               <Text style={s.emptyTitle}>No posts yet</Text>
               <Text style={s.emptySub}>Share your progress with the community!</Text>
               <TouchableOpacity style={s.emptyBtn} onPress={() => setPostModal(true)}>
@@ -347,7 +352,10 @@ export default function SocialScreen({ profile }: { profile: any }) {
                   <View style={s.postMeta}>
                     <Text style={s.postAuthor}>{post.content?.name || 'You'}</Text>
                     <View style={s.postTypeRow}>
-                      <Text style={[s.postTypeBadge, { color: typeInfo.color }]}>{typeInfo.emoji} {post.type.replace('_', ' ')}</Text>
+                      <View style={s.postTypeChip}>
+                        <Ionicons name={typeInfo.icon} size={13} color={typeInfo.color} />
+                        <Text style={[s.postTypeBadge, { color: typeInfo.color }]}>{post.type.replace('_', ' ')}</Text>
+                      </View>
                       <Text style={s.postTime}>{fmtTime(post.created_at)}</Text>
                     </View>
                   </View>
@@ -363,11 +371,11 @@ export default function SocialScreen({ profile }: { profile: any }) {
                 ) : null}
                 <View style={s.postActions}>
                   <TouchableOpacity style={s.actionBtn} onPress={() => toggleLike(post.id)}>
-                    <Text style={s.actionIcon}>{likes[post.id]?.liked ? '❤️' : '🤍'}</Text>
+                    <Ionicons name={likes[post.id]?.liked ? "heart" : "heart-outline"} size={18} color={likes[post.id]?.liked ? "#F472B6" : colors.textTertiary} />
                     <Text style={[s.actionText, likes[post.id]?.liked && s.actionTextLiked]}>{likes[post.id]?.count || 0}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={s.actionBtn} onPress={() => openComments(post.id)}>
-                    <Text style={s.actionIcon}>💬</Text>
+                    <Ionicons name="chatbubble-outline" size={18} color={colors.textTertiary} />
                     <Text style={s.actionText}>Comment</Text>
                   </TouchableOpacity>
                 </View>
@@ -385,7 +393,7 @@ export default function SocialScreen({ profile }: { profile: any }) {
 
           {leaderboard.length === 0 && (
             <View style={s.empty}>
-              <Text style={s.emptyIcon}>🏆</Text>
+              <Ionicons name="trophy-outline" size={40} color={colors.textTertiary} />
               <Text style={s.emptyTitle}>No data yet</Text>
               <Text style={s.emptySub}>Start logging meals to appear on the leaderboard!</Text>
             </View>
@@ -393,10 +401,10 @@ export default function SocialScreen({ profile }: { profile: any }) {
 
           {leaderboard.map((entry, i) => {
             const isMe = entry.userId === user!.id;
-            const medals = ['🥇', '🥈', '🥉'];
+            const medalColors = ['#F5C518', '#C0C4CC', '#CD7F32'];
             return (
               <View key={entry.userId} style={[s.lbCard, isMe && s.lbCardMe]}>
-                <Text style={s.lbRank}>{i < 3 ? medals[i] : `#${i + 1}`}</Text>
+                <Text style={[s.lbRank, i < 3 && { color: medalColors[i] }]}>#{i + 1}</Text>
                 <View style={[s.avatar, isMe && s.avatarMe]}>
                   <Text style={s.avatarText}>{entry.name?.[0]?.toUpperCase() || '?'}</Text>
                 </View>
@@ -435,7 +443,7 @@ export default function SocialScreen({ profile }: { profile: any }) {
                   key={key}
                   style={[s.typeChip, postType === key && { backgroundColor: val.color + '22', borderColor: val.color }]}
                   onPress={() => setPostType(key)}>
-                  <Text style={s.typeChipEmoji}>{val.emoji}</Text>
+                  <Ionicons name={val.icon} size={16} color={val.color} />
                   <Text style={[s.typeChipText, postType === key && { color: val.color }]}>
                     {key.replace('_', ' ')}
                   </Text>
@@ -447,7 +455,7 @@ export default function SocialScreen({ profile }: { profile: any }) {
             <TouchableOpacity style={s.photoBtn} onPress={pickImage}>
               {postImage
                 ? <Image source={{ uri: postImage }} style={s.previewImage} />
-                : <Text style={s.photoBtnText}>📷  Add Photo</Text>}
+                : <Text style={s.photoBtnText}>Add Photo</Text>}
             </TouchableOpacity>
 
             <Text style={s.fieldLabel}>Caption</Text>
@@ -537,7 +545,7 @@ function makeStyles(c: ThemeColors) {
     fieldLabel: { fontSize: 11, fontWeight: weight.bold, color: c.textTertiary, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
     typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 },
     typeChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.cardAlt, borderRadius: radius.sm, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: 'transparent' },
-    typeChipEmoji: { fontSize: 16 },
+    postTypeChip: { flexDirection: 'row', alignItems: 'center', gap: 4 },
     typeChipText: { fontSize: 13, fontWeight: weight.bold, color: c.textTertiary },
     photoBtn: { backgroundColor: c.cardAlt, borderRadius: radius.md, height: 120, alignItems: 'center', justifyContent: 'center', marginBottom: 20, overflow: 'hidden', borderWidth: 1, borderColor: c.border },
     photoBtnText: { color: c.textTertiary, fontSize: 15, fontWeight: weight.bold },

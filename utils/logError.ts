@@ -2,7 +2,7 @@
  * Crash reporting (Sentry) + a logger that can never make things worse.
  *
  * ─────────────────────────────────────────────────────────────────────────────
- *  👉 WHERE TO PASTE YOUR SENTRY DSN
+ *  WHERE TO PASTE YOUR SENTRY DSN
  *
  *  1. Create a project at https://sentry.io (platform: React Native).
  *  2. Copy the DSN it gives you — it looks like

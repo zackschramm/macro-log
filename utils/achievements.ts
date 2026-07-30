@@ -9,7 +9,6 @@ export interface BadgeDef {
   id: string;
   name: string;
   description: string;
-  icon: string;
 }
 
 export interface EarnedBadge {
@@ -25,18 +24,18 @@ export interface BadgeStatus {
 }
 
 export const ALL_BADGES: BadgeDef[] = [
-  { id: 'first_step',    name: 'First Step',    description: 'Log your first food entry',                      icon: '🍎' },
-  { id: 'consistent',    name: 'Consistent',    description: 'Achieve a 7-day logging streak',                 icon: '🔥' },
-  { id: 'on_fire',       name: 'On Fire',       description: 'Achieve a 30-day logging streak',                icon: '💪' },
-  { id: 'legend',        name: 'Legend',        description: 'Achieve a 100-day logging streak',               icon: '🏆' },
-  { id: 'iron',          name: 'Iron',          description: 'Log your first workout',                          icon: '🏋️' },
-  { id: 'century',       name: 'Century',       description: 'Log 100 total workout days',                      icon: '💯' },
-  { id: 'scanner',       name: 'Scanner',       description: 'Complete your first InBody scan',                 icon: '📊' },
-  { id: 'body_recomped', name: 'Body Recomped', description: 'Complete 5 InBody scans',                        icon: '💥' },
-  { id: 'lab_rat',       name: 'Lab Rat',       description: 'Complete your first blood work scan',             icon: '🧪' },
-  { id: 'pr_machine',    name: 'PR Machine',    description: 'Hit 10 personal records',                        icon: '🎯' },
-  { id: 'coaches_pet',   name: "Coach's Pet",   description: 'Send 10 AI Coach messages',                      icon: '🤖' },
-  { id: 'macro_master',  name: 'Macro Master',  description: 'Hit all 4 macro targets within 10% on one day',  icon: '🎯' },
+  { id: 'first_step',    name: 'First Step',    description: 'Log your first food entry' },
+  { id: 'consistent',    name: 'Consistent',    description: 'Achieve a 7-day logging streak' },
+  { id: 'on_fire',       name: 'On Fire',       description: 'Achieve a 30-day logging streak' },
+  { id: 'legend',        name: 'Legend',        description: 'Achieve a 100-day logging streak' },
+  { id: 'iron',          name: 'Iron',          description: 'Log your first workout' },
+  { id: 'century',       name: 'Century',       description: 'Log 100 total workout days' },
+  { id: 'scanner',       name: 'Scanner',       description: 'Complete your first InBody scan' },
+  { id: 'body_recomped', name: 'Body Recomped', description: 'Complete 5 InBody scans' },
+  { id: 'lab_rat',       name: 'Lab Rat',       description: 'Complete your first blood work scan' },
+  { id: 'pr_machine',    name: 'PR Machine',    description: 'Hit 10 personal records' },
+  { id: 'coaches_pet',   name: "Coach's Pet",   description: 'Send 10 AI Coach messages' },
+  { id: 'macro_master',  name: 'Macro Master',  description: 'Hit all 4 macro targets within 10% on one day' },
 ];
 
 interface RawData {
@@ -52,7 +51,7 @@ interface RawData {
 async function fetchRawData(
   userId: string,
   profile: { calories: number; protein: number; carbs: number; fat: number },
-): Promise<RawData> {
+): Promise<RawData>{
   const [
     foodCountResult,
     workoutResult,
@@ -146,7 +145,7 @@ interface CachedResult {
   timestamp: number;
 }
 
-export async function invalidateAchievementsCache(): Promise<void> {
+export async function invalidateAchievementsCache(): Promise<void>{
   await AsyncStorage.removeItem(CACHE_KEY);
 }
 
@@ -154,7 +153,7 @@ export async function checkAchievements(
   userId: string,
   profile: { calories: number; protein: number; carbs: number; fat: number },
   { forceRefresh = false } = {},
-): Promise<CheckResult> {
+): Promise<CheckResult>{
   if (!forceRefresh) {
     const cacheRaw = await AsyncStorage.getItem(CACHE_KEY);
     if (cacheRaw) {

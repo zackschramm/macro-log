@@ -30,13 +30,13 @@ interface NotifSetting {
 }
 
 const DEFAULT_SETTINGS: NotifSetting[] = [
-  { id: 'macro_reminder', label: 'Macro Reminder', emoji: '🥗', description: 'Stay on track with your macros today', hour: 19, minute: 0, enabled: false },
-  { id: 'breakfast', label: 'Breakfast Reminder', emoji: '🍳', description: 'Log your breakfast', hour: 8, minute: 0, enabled: false },
-  { id: 'lunch', label: 'Lunch Reminder', emoji: '🥗', description: 'Log your lunch', hour: 12, minute: 0, enabled: false },
-  { id: 'dinner', label: 'Dinner Reminder', emoji: '🍽️', description: 'Log your dinner', hour: 18, minute: 30, enabled: false },
-  { id: 'water', label: 'Water Reminder', emoji: '💧', description: 'Stay hydrated!', hour: 14, minute: 0, enabled: false },
-  { id: 'workout', label: 'Workout Reminder', emoji: '💪', description: 'Time to train!', hour: 17, minute: 0, enabled: false },
-  { id: 'checkin', label: 'Daily Check-in', emoji: '📊', description: 'Review your macros for the day', hour: 21, minute: 0, enabled: false },
+  { id: 'macro_reminder', label: 'Macro Reminder', emoji: '', description: 'Stay on track with your macros today', hour: 19, minute: 0, enabled: false },
+  { id: 'breakfast', label: 'Breakfast Reminder', emoji: '', description: 'Log your breakfast', hour: 8, minute: 0, enabled: false },
+  { id: 'lunch', label: 'Lunch Reminder', emoji: '', description: 'Log your lunch', hour: 12, minute: 0, enabled: false },
+  { id: 'dinner', label: 'Dinner Reminder', emoji: '', description: 'Log your dinner', hour: 18, minute: 30, enabled: false },
+  { id: 'water', label: 'Water Reminder', emoji: '', description: 'Stay hydrated!', hour: 14, minute: 0, enabled: false },
+  { id: 'workout', label: 'Workout Reminder', emoji: '', description: 'Time to train!', hour: 17, minute: 0, enabled: false },
+  { id: 'checkin', label: 'Daily Check-in', emoji: '', description: 'Review your macros for the day', hour: 21, minute: 0, enabled: false },
 ];
 
 const STORAGE_KEY = 'notif_settings';
@@ -163,7 +163,7 @@ export default function NotificationsScreen() {
 
       {hasPermission === false && (
         <TouchableOpacity style={s.permBanner} onPress={requestPermission}>
-          <Text style={s.permBannerIcon}>🔔</Text>
+          <Text style={s.permBannerIcon}></Text>
           <View style={{ flex: 1 }}>
             <Text style={s.permBannerTitle}>Enable Notifications</Text>
             <Text style={s.permBannerSub}>Tap to allow reminders</Text>

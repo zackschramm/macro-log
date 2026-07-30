@@ -289,7 +289,7 @@ export default function ProgressPhotosScreen({ visible, onClose }: Props) {
 
         {photos.length === 0 ? (
           <View style={s.empty}>
-            <Text style={s.emptyIcon}>📸</Text>
+            <Text style={s.emptyIcon}></Text>
             <Text style={s.emptyTitle}>No photos yet</Text>
             <Text style={s.emptyText}>Tap "+ Add" to take or upload{'\n'}your first progress photo.</Text>
           </View>
@@ -297,7 +297,7 @@ export default function ProgressPhotosScreen({ visible, onClose }: Props) {
           <>
             {photos.length > 1 && !compareMode && (
               <TouchableOpacity style={s.compareModeBtn} onPress={() => setCompareMode(true)}>
-                <Text style={s.compareModeBtnText}>⚡ Before / After</Text>
+                <Text style={s.compareModeBtnText}>Before / After</Text>
               </TouchableOpacity>
             )}
             <FlashList

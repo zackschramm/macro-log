@@ -76,7 +76,7 @@ export const WORKOUT_PLAN = [
 // balancing macro in deriveMacrosFromCalories (it absorbs whatever calories are
 // left after protein and fat), so it cannot also be scaled independently without
 // breaking the invariant that the macros sum to the calorie target.
-const SPORT_MULTIPLIERS: Record<string, { protein: number; carbs: number; fat: number; cal: number }> = {
+export const SPORT_MULTIPLIERS: Record<string, { protein: number; carbs: number; fat: number; cal: number }> = {
   none:         { protein: 1.0,  carbs: 1.0,  fat: 1.0,  cal: 1.0  },
   bodybuilding: { protein: 1.3,  carbs: 1.1,  fat: 0.9,  cal: 1.05 },
   powerlifting: { protein: 1.25, carbs: 1.15, fat: 1.1,  cal: 1.1  },
@@ -99,7 +99,31 @@ const SPORT_MULTIPLIERS: Record<string, { protein: number; carbs: number; fat: n
   rowing:       { protein: 1.2,  carbs: 1.4,  fat: 0.9,  cal: 1.15 },
   triathlon:    { protein: 1.1,  carbs: 1.4,  fat: 0.9,  cal: 1.2  },
   hiking:       { protein: 1.05, carbs: 1.2,  fat: 1.0,  cal: 1.05 },
+  // Distance-specific triathlon. These are FALLBACKS ONLY — when session data
+  // is available, utils/enduranceFueling.ts computes the day from the day's
+  // actual training instead, which is the whole point of that module. A single
+  // multiplier cannot express a requirement that swings 4x between a rest day
+  // and a 6-hour brick; these exist so a user with no wearable still gets
+  // something distance-appropriate rather than generic.
+  tri_sprint:   { protein: 1.1,  carbs: 1.25, fat: 0.95, cal: 1.1  },
+  tri_olympic:  { protein: 1.1,  carbs: 1.35, fat: 0.9,  cal: 1.15 },
+  tri_70_3:     { protein: 1.1,  carbs: 1.45, fat: 0.9,  cal: 1.2  },
+  tri_ironman:  { protein: 1.1,  carbs: 1.55, fat: 0.85, cal: 1.3  },
 };
+
+/**
+ * Sports whose daily requirements swing too much for a static multiplier to
+ * describe. When the user's sport is in this set and we have session data,
+ * callers should route through `utils/enduranceFueling.ts` rather than
+ * `deriveMacrosFromCalories`.
+ */
+export const ENDURANCE_SPORTS = new Set([
+  'triathlon', 'tri_sprint', 'tri_olympic', 'tri_70_3', 'tri_ironman',
+  'running', 'cycling', 'swimming', 'rowing', 'hiking',
+]);
+
+export const isEnduranceSport = (sport?: string | null): boolean =>
+  !!sport && ENDURANCE_SPORTS.has(sport);
 
 /**
  * Calorie adjustment applied to maintenance for each goal.

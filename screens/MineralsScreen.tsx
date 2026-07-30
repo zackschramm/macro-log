@@ -1,6 +1,7 @@
 import React, { useMemo, useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -16,56 +17,59 @@ const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
 
 interface Props { profile: any; }
 
+// Nutrients were previously tagged with coloured-circle emoji (orange for
+// vitamins, green for minerals). The existing CAT_COLORS map already encodes
+// the same thing, so the row now shows a real dot in the category colour.
 const NUTRIENTS = [
   // Vitamins
-  { key: 'vitamin_a',    name: 'Vitamin A',          unit: 'mcg',   category: 'Vitamins',     emoji: '🟠', base: 900,   perKg: 0,   notes: 'Eye health, immune function' },
-  { key: 'vitamin_b1',   name: 'B1 Thiamine',        unit: 'mg',    category: 'Vitamins',     emoji: '🟡', base: 1.2,   perKg: 0,   notes: 'Energy metabolism' },
-  { key: 'vitamin_b2',   name: 'B2 Riboflavin',      unit: 'mg',    category: 'Vitamins',     emoji: '🟡', base: 1.3,   perKg: 0,   notes: 'Energy production' },
-  { key: 'vitamin_b3',   name: 'B3 Niacin',          unit: 'mg',    category: 'Vitamins',     emoji: '🟡', base: 16,    perKg: 0,   notes: 'DNA repair, metabolism' },
-  { key: 'vitamin_b5',   name: 'B5 Pantothenic',     unit: 'mg',    category: 'Vitamins',     emoji: '🟡', base: 5,     perKg: 0,   notes: 'Hormone synthesis' },
-  { key: 'vitamin_b6',   name: 'B6',                 unit: 'mg',    category: 'Vitamins',     emoji: '🟡', base: 1.3,   perKg: 0,   notes: 'Protein metabolism' },
-  { key: 'vitamin_b7',   name: 'B7 Biotin',          unit: 'mcg',   category: 'Vitamins',     emoji: '🟡', base: 30,    perKg: 0,   notes: 'Fat & carb metabolism' },
-  { key: 'vitamin_b9',   name: 'B9 Folate',          unit: 'mcg',   category: 'Vitamins',     emoji: '🟡', base: 400,   perKg: 0,   notes: 'Cell division' },
-  { key: 'vitamin_b12',  name: 'B12',                unit: 'mcg',   category: 'Vitamins',     emoji: '🟡', base: 2.4,   perKg: 0,   notes: 'Nerve function, red blood cells' },
-  { key: 'vitamin_c',    name: 'Vitamin C',          unit: 'mg',    category: 'Vitamins',     emoji: '🟠', base: 90,    perKg: 0,   notes: 'Antioxidant, collagen' },
-  { key: 'vitamin_d',    name: 'Vitamin D',          unit: 'mcg',   category: 'Vitamins',     emoji: '☀️', base: 20,    perKg: 0,   notes: 'Bone health, immune function' },
-  { key: 'vitamin_d3',   name: 'Vitamin D3',         unit: 'mcg',   category: 'Vitamins',     emoji: '☀️', base: 20,    perKg: 0,   notes: 'Most bioavailable form of D' },
-  { key: 'vitamin_e',    name: 'Vitamin E',          unit: 'mg',    category: 'Vitamins',     emoji: '🟢', base: 15,    perKg: 0,   notes: 'Antioxidant' },
-  { key: 'vitamin_k',    name: 'Vitamin K',          unit: 'mcg',   category: 'Vitamins',     emoji: '🟢', base: 120,   perKg: 0,   notes: 'Blood clotting, bone health' },
-  { key: 'vitamin_k2',   name: 'Vitamin K2',         unit: 'mcg',   category: 'Vitamins',     emoji: '🟢', base: 90,    perKg: 0,   notes: 'Directs calcium to bones' },
+  { key: 'vitamin_a',    name: 'Vitamin A',          unit: 'mcg',   category: 'Vitamins', base: 900,   perKg: 0,   notes: 'Eye health, immune function' },
+  { key: 'vitamin_b1',   name: 'B1 Thiamine',        unit: 'mg',    category: 'Vitamins', base: 1.2,   perKg: 0,   notes: 'Energy metabolism' },
+  { key: 'vitamin_b2',   name: 'B2 Riboflavin',      unit: 'mg',    category: 'Vitamins', base: 1.3,   perKg: 0,   notes: 'Energy production' },
+  { key: 'vitamin_b3',   name: 'B3 Niacin',          unit: 'mg',    category: 'Vitamins', base: 16,    perKg: 0,   notes: 'DNA repair, metabolism' },
+  { key: 'vitamin_b5',   name: 'B5 Pantothenic',     unit: 'mg',    category: 'Vitamins', base: 5,     perKg: 0,   notes: 'Hormone synthesis' },
+  { key: 'vitamin_b6',   name: 'B6',                 unit: 'mg',    category: 'Vitamins', base: 1.3,   perKg: 0,   notes: 'Protein metabolism' },
+  { key: 'vitamin_b7',   name: 'B7 Biotin',          unit: 'mcg',   category: 'Vitamins', base: 30,    perKg: 0,   notes: 'Fat & carb metabolism' },
+  { key: 'vitamin_b9',   name: 'B9 Folate',          unit: 'mcg',   category: 'Vitamins', base: 400,   perKg: 0,   notes: 'Cell division' },
+  { key: 'vitamin_b12',  name: 'B12',                unit: 'mcg',   category: 'Vitamins', base: 2.4,   perKg: 0,   notes: 'Nerve function, red blood cells' },
+  { key: 'vitamin_c',    name: 'Vitamin C',          unit: 'mg',    category: 'Vitamins', base: 90,    perKg: 0,   notes: 'Antioxidant, collagen' },
+  { key: 'vitamin_d',    name: 'Vitamin D',          unit: 'mcg',   category: 'Vitamins', base: 20,    perKg: 0,   notes: 'Bone health, immune function' },
+  { key: 'vitamin_d3',   name: 'Vitamin D3',         unit: 'mcg',   category: 'Vitamins', base: 20,    perKg: 0,   notes: 'Most bioavailable form of D' },
+  { key: 'vitamin_e',    name: 'Vitamin E',          unit: 'mg',    category: 'Vitamins', base: 15,    perKg: 0,   notes: 'Antioxidant' },
+  { key: 'vitamin_k',    name: 'Vitamin K',          unit: 'mcg',   category: 'Vitamins', base: 120,   perKg: 0,   notes: 'Blood clotting, bone health' },
+  { key: 'vitamin_k2',   name: 'Vitamin K2',         unit: 'mcg',   category: 'Vitamins', base: 90,    perKg: 0,   notes: 'Directs calcium to bones' },
   // Minerals
-  { key: 'calcium',      name: 'Calcium',            unit: 'mg',    category: 'Minerals',     emoji: '🦴', base: 1000,  perKg: 0,   notes: 'Bone & muscle function' },
-  { key: 'magnesium',    name: 'Magnesium',          unit: 'mg',    category: 'Minerals',     emoji: '⚡', base: 400,   perKg: 0.8, notes: 'Muscle recovery, sleep' },
-  { key: 'phosphorus',   name: 'Phosphorus',         unit: 'mg',    category: 'Minerals',     emoji: '🔵', base: 700,   perKg: 0,   notes: 'Bone & energy metabolism' },
-  { key: 'potassium',    name: 'Potassium',          unit: 'mg',    category: 'Minerals',     emoji: '🍌', base: 3400,  perKg: 0,   notes: 'Heart & muscle function' },
-  { key: 'sodium',       name: 'Sodium',             unit: 'mg',    category: 'Minerals',     emoji: '🧂', base: 1500,  perKg: 0,   notes: 'Fluid balance' },
-  { key: 'iron',         name: 'Iron',               unit: 'mg',    category: 'Minerals',     emoji: '🔴', base: 8,     perKg: 0,   notes: 'Oxygen transport' },
-  { key: 'zinc',         name: 'Zinc',               unit: 'mg',    category: 'Minerals',     emoji: '🩶', base: 11,    perKg: 0.1, notes: 'Immune function, testosterone' },
-  { key: 'copper',       name: 'Copper',             unit: 'mcg',   category: 'Minerals',     emoji: '🟤', base: 900,   perKg: 0,   notes: 'Iron metabolism, antioxidant' },
-  { key: 'manganese',    name: 'Manganese',          unit: 'mg',    category: 'Minerals',     emoji: '🟤', base: 2.3,   perKg: 0,   notes: 'Bone formation, antioxidant' },
-  { key: 'selenium',     name: 'Selenium',           unit: 'mcg',   category: 'Minerals',     emoji: '⚪', base: 55,    perKg: 0,   notes: 'Thyroid function, antioxidant' },
-  { key: 'chromium',     name: 'Chromium',           unit: 'mcg',   category: 'Minerals',     emoji: '⚪', base: 35,    perKg: 0,   notes: 'Blood sugar regulation' },
-  { key: 'iodine',       name: 'Iodine',             unit: 'mcg',   category: 'Minerals',     emoji: '🫧', base: 150,   perKg: 0,   notes: 'Thyroid hormone production' },
-  { key: 'molybdenum',   name: 'Molybdenum',         unit: 'mcg',   category: 'Minerals',     emoji: '⚪', base: 45,    perKg: 0,   notes: 'Enzyme activation' },
-  { key: 'boron',        name: 'Boron',              unit: 'mg',    category: 'Minerals',     emoji: '🔵', base: 3,     perKg: 0,   notes: 'Bone health, testosterone' },
-  { key: 'silica',       name: 'Silica',             unit: 'mg',    category: 'Minerals',     emoji: '⚪', base: 20,    perKg: 0,   notes: 'Connective tissue, hair & nails' },
+  { key: 'calcium',      name: 'Calcium',            unit: 'mg',    category: 'Minerals', base: 1000,  perKg: 0,   notes: 'Bone & muscle function' },
+  { key: 'magnesium',    name: 'Magnesium',          unit: 'mg',    category: 'Minerals', base: 400,   perKg: 0.8, notes: 'Muscle recovery, sleep' },
+  { key: 'phosphorus',   name: 'Phosphorus',         unit: 'mg',    category: 'Minerals', base: 700,   perKg: 0,   notes: 'Bone & energy metabolism' },
+  { key: 'potassium',    name: 'Potassium',          unit: 'mg',    category: 'Minerals', base: 3400,  perKg: 0,   notes: 'Heart & muscle function' },
+  { key: 'sodium',       name: 'Sodium',             unit: 'mg',    category: 'Minerals', base: 1500,  perKg: 0,   notes: 'Fluid balance' },
+  { key: 'iron',         name: 'Iron',               unit: 'mg',    category: 'Minerals', base: 8,     perKg: 0,   notes: 'Oxygen transport' },
+  { key: 'zinc',         name: 'Zinc',               unit: 'mg',    category: 'Minerals', base: 11,    perKg: 0.1, notes: 'Immune function, testosterone' },
+  { key: 'copper',       name: 'Copper',             unit: 'mcg',   category: 'Minerals', base: 900,   perKg: 0,   notes: 'Iron metabolism, antioxidant' },
+  { key: 'manganese',    name: 'Manganese',          unit: 'mg',    category: 'Minerals', base: 2.3,   perKg: 0,   notes: 'Bone formation, antioxidant' },
+  { key: 'selenium',     name: 'Selenium',           unit: 'mcg',   category: 'Minerals', base: 55,    perKg: 0,   notes: 'Thyroid function, antioxidant' },
+  { key: 'chromium',     name: 'Chromium',           unit: 'mcg',   category: 'Minerals', base: 35,    perKg: 0,   notes: 'Blood sugar regulation' },
+  { key: 'iodine',       name: 'Iodine',             unit: 'mcg',   category: 'Minerals', base: 150,   perKg: 0,   notes: 'Thyroid hormone production' },
+  { key: 'molybdenum',   name: 'Molybdenum',         unit: 'mcg',   category: 'Minerals', base: 45,    perKg: 0,   notes: 'Enzyme activation' },
+  { key: 'boron',        name: 'Boron',              unit: 'mg',    category: 'Minerals', base: 3,     perKg: 0,   notes: 'Bone health, testosterone' },
+  { key: 'silica',       name: 'Silica',             unit: 'mg',    category: 'Minerals', base: 20,    perKg: 0,   notes: 'Connective tissue, hair & nails' },
   // Performance & Supplements
-  { key: 'omega3',       name: 'Omega-3 (EPA+DHA)',  unit: 'mg',    category: 'Performance',  emoji: '🐟', base: 500,   perKg: 7,   notes: 'Inflammation, brain health' },
-  { key: 'omega6',       name: 'Omega-6',            unit: 'mg',    category: 'Performance',  emoji: '🌿', base: 11000, perKg: 0,   notes: 'Cell function (balance w/ omega-3)' },
-  { key: 'fiber',        name: 'Fiber',              unit: 'g',     category: 'Performance',  emoji: '🌾', base: 30,    perKg: 0,   notes: 'Gut health, blood sugar' },
-  { key: 'creatine',     name: 'Creatine',           unit: 'g',     category: 'Performance',  emoji: '💪', base: 3,     perKg: 0,   notes: 'Strength & power output' },
-  { key: 'beta_alanine', name: 'Beta-Alanine',       unit: 'g',     category: 'Performance',  emoji: '🔥', base: 3.2,   perKg: 0,   notes: 'Endurance, reduces fatigue' },
-  { key: 'caffeine',     name: 'Caffeine',           unit: 'mg',    category: 'Performance',  emoji: '☕', base: 400,   perKg: 0,   notes: 'Energy & focus (daily limit)' },
-  { key: 'l_glutamine',  name: 'L-Glutamine',        unit: 'g',     category: 'Performance',  emoji: '🔬', base: 5,     perKg: 0,   notes: 'Gut health, muscle recovery' },
-  { key: 'l_citrulline', name: 'L-Citrulline',       unit: 'g',     category: 'Performance',  emoji: '🩸', base: 6,     perKg: 0,   notes: 'Blood flow, pump, endurance' },
-  { key: 'bcaa',         name: 'BCAAs',              unit: 'g',     category: 'Performance',  emoji: '🧬', base: 5,     perKg: 0,   notes: 'Muscle protein synthesis' },
-  { key: 'coq10',        name: 'CoQ10',              unit: 'mg',    category: 'Performance',  emoji: '⚡', base: 100,   perKg: 0,   notes: 'Cellular energy, antioxidant' },
-  { key: 'ashwagandha',  name: 'Ashwagandha',        unit: 'mg',    category: 'Performance',  emoji: '🌿', base: 300,   perKg: 0,   notes: 'Stress, cortisol, recovery' },
-  { key: 'turmeric',     name: 'Turmeric/Curcumin',  unit: 'mg',    category: 'Performance',  emoji: '🟡', base: 500,   perKg: 0,   notes: 'Anti-inflammation' },
-  { key: 'probiotics',   name: 'Probiotics',         unit: 'B CFU', category: 'Performance',  emoji: '🦠', base: 10,    perKg: 0,   notes: 'Gut microbiome health' },
-  { key: 'collagen',     name: 'Collagen',           unit: 'g',     category: 'Performance',  emoji: '💎', base: 10,    perKg: 0,   notes: 'Joints, skin, tendons' },
-  { key: 'melatonin',    name: 'Melatonin',          unit: 'mg',    category: 'Performance',  emoji: '🌙', base: 0.5,   perKg: 0,   notes: 'Sleep onset' },
-  { key: 'electrolytes', name: 'Electrolytes',       unit: 'mg',    category: 'Performance',  emoji: '💧', base: 1000,  perKg: 0,   notes: 'Hydration, nerve & muscle function' },
+  { key: 'omega3',       name: 'Omega-3 (EPA+DHA)',  unit: 'mg',    category: 'Performance', base: 500,   perKg: 7,   notes: 'Inflammation, brain health' },
+  { key: 'omega6',       name: 'Omega-6',            unit: 'mg',    category: 'Performance', base: 11000, perKg: 0,   notes: 'Cell function (balance w/ omega-3)' },
+  { key: 'fiber',        name: 'Fiber',              unit: 'g',     category: 'Performance', base: 30,    perKg: 0,   notes: 'Gut health, blood sugar' },
+  { key: 'creatine',     name: 'Creatine',           unit: 'g',     category: 'Performance', base: 3,     perKg: 0,   notes: 'Strength & power output' },
+  { key: 'beta_alanine', name: 'Beta-Alanine',       unit: 'g',     category: 'Performance', base: 3.2,   perKg: 0,   notes: 'Endurance, reduces fatigue' },
+  { key: 'caffeine',     name: 'Caffeine',           unit: 'mg',    category: 'Performance', base: 400,   perKg: 0,   notes: 'Energy & focus (daily limit)' },
+  { key: 'l_glutamine',  name: 'L-Glutamine',        unit: 'g',     category: 'Performance', base: 5,     perKg: 0,   notes: 'Gut health, muscle recovery' },
+  { key: 'l_citrulline', name: 'L-Citrulline',       unit: 'g',     category: 'Performance', base: 6,     perKg: 0,   notes: 'Blood flow, pump, endurance' },
+  { key: 'bcaa',         name: 'BCAAs',              unit: 'g',     category: 'Performance', base: 5,     perKg: 0,   notes: 'Muscle protein synthesis' },
+  { key: 'coq10',        name: 'CoQ10',              unit: 'mg',    category: 'Performance', base: 100,   perKg: 0,   notes: 'Cellular energy, antioxidant' },
+  { key: 'ashwagandha',  name: 'Ashwagandha',        unit: 'mg',    category: 'Performance', base: 300,   perKg: 0,   notes: 'Stress, cortisol, recovery' },
+  { key: 'turmeric',     name: 'Turmeric/Curcumin',  unit: 'mg',    category: 'Performance', base: 500,   perKg: 0,   notes: 'Anti-inflammation' },
+  { key: 'probiotics',   name: 'Probiotics',         unit: 'B CFU', category: 'Performance', base: 10,    perKg: 0,   notes: 'Gut microbiome health' },
+  { key: 'collagen',     name: 'Collagen',           unit: 'g',     category: 'Performance', base: 10,    perKg: 0,   notes: 'Joints, skin, tendons' },
+  { key: 'melatonin',    name: 'Melatonin',          unit: 'mg',    category: 'Performance', base: 0.5,   perKg: 0,   notes: 'Sleep onset' },
+  { key: 'electrolytes', name: 'Electrolytes',       unit: 'mg',    category: 'Performance', base: 1000,  perKg: 0,   notes: 'Hydration, nerve & muscle function' },
 ];
 
 function calcRDA(n: typeof NUTRIENTS[0], weightKg: number, age: number, sex: string) {
@@ -223,7 +227,7 @@ export default function MineralsScreen({ profile }: Props) {
             {analyzingBloodwork ? (
               <ActivityIndicator color={colors.text} size="small" />
             ) : (
-              <Text style={s.bloodworkIcon}>🩸</Text>
+              <Ionicons name="flask-outline" size={18} color={colors.accent} style={s.bloodworkIcon} />
             )}
             <View style={s.bloodworkText}>
               <Text style={s.bloodworkTitle}>
@@ -272,7 +276,7 @@ export default function MineralsScreen({ profile }: Props) {
                 const pctColor = pct >= 100 ? colors.accent : pct >= 50 ? CAT_COLORS[category] : colors.textTertiary;
                 return (
                   <View key={n.key} style={s.row}>
-                    <Text style={s.emoji}>{n.emoji}</Text>
+                    <View style={[s.nutrientDot, { backgroundColor: CAT_COLORS[n.category] ?? colors.textTertiary }]} />
                     <View style={s.info}>
                       <View style={s.nameRow}>
                         <Text style={s.name}>{n.name}</Text>
@@ -283,7 +287,7 @@ export default function MineralsScreen({ profile }: Props) {
                       <View style={s.intakeRow}>
                         <Text style={s.intakeText}>
                           {effectiveIntake > 0 ? `${Math.round(effectiveIntake * 10) / 10} / ` : ''}{rda} {n.unit}
-                          {bloodVal != null ? ` 🩸` : ''}
+                          {bloodVal != null ? ' •' : ''}
                         </Text>
                       </View>
                     </View>
@@ -295,7 +299,7 @@ export default function MineralsScreen({ profile }: Props) {
 
           <View style={s.disclaimer}>
             <Text style={s.disclaimerText}>
-              ⚠️ Progress bars reflect micronutrients from USDA-imported foods logged today. Manually entered foods won't have micronutrient data. Consult a healthcare provider for personalized recommendations.
+              Progress bars reflect micronutrients from USDA-imported foods logged today. Manually entered foods won't have micronutrient data. Consult a healthcare provider for personalized recommendations.
             </Text>
           </View>
         </ScrollView>
@@ -320,7 +324,7 @@ function makeStyles(c: ThemeColors) {
     categoryDot: { width: 8, height: 8, borderRadius: 4 },
     categoryTitle: { fontSize: 11, fontWeight: weight.heavy, letterSpacing: 1.5 },
     row: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: c.card, borderRadius: radius.md, padding: 12, marginBottom: 6, gap: 12, borderWidth: 1, borderColor: c.border },
-    emoji: { fontSize: 20, width: 28, textAlign: 'center', marginTop: 2 },
+    nutrientDot: { width: 8, height: 8, borderRadius: 4, marginTop: 8, marginRight: 20, marginLeft: 10 },
     info: { flex: 1 },
     nameRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     name: { fontSize: 14, fontWeight: weight.bold, color: c.text },

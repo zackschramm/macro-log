@@ -152,12 +152,12 @@ Return ONLY valid JSON in this exact shape, no commentary:
 {"sections":[{"name":"string","emoji":"string","items":[{"name":"string","amount":"string","unit":"string"}]}]}
 
 Use these sections (include only sections that have items):
-- 🥩 Proteins (meat, fish, eggs, protein powder)
-- 🥦 Produce (vegetables, fruits)
-- 🌾 Grains & Carbs (oats, rice, bread, pasta)
-- 🥛 Dairy (milk, cheese, yogurt)
-- 🥫 Pantry (oils, sauces, canned goods, nuts, nut butters)
-- 💊 Supplements (creatine, vitamins, protein powder if supplement-focused)`;
+- Proteins (meat, fish, eggs, protein powder)
+- Produce (vegetables, fruits)
+- Grains & Carbs (oats, rice, bread, pasta)
+- Dairy (milk, cheese, yogurt)
+- Pantry (oils, sauces, canned goods, nuts, nut butters)
+- Supplements (creatine, vitamins, protein powder if supplement-focused)`;
 
       const raw = await callAI([{ role: 'user', content: prompt }]);
       const match = raw.match(/\{[\s\S]*\}/);
@@ -205,7 +205,7 @@ Use these sections (include only sections that have items):
   };
 
   const buildShareText = (): string => {
-    const lines: string[] = ['🛒 Grocery List\n'];
+    const lines: string[] = ['Grocery List\n'];
     sections.forEach(sec => {
       lines.push(`${sec.emoji} ${sec.name}`);
       sec.items.forEach(item => {
@@ -245,7 +245,7 @@ Use these sections (include only sections that have items):
 
       {!hasPlan && (
         <View style={s.empty}>
-          <Text style={s.emptyIcon}>🛒</Text>
+          <Text style={s.emptyIcon}></Text>
           <Text style={s.emptyTitle}>No meal plan yet</Text>
           <Text style={s.emptySub}>Generate a meal plan first, then come back here to build your grocery list.</Text>
         </View>
@@ -253,7 +253,7 @@ Use these sections (include only sections that have items):
 
       {hasPlan && !hasGenerated && !generating && loaded && (
         <View style={s.empty}>
-          <Text style={s.emptyIcon}>📋</Text>
+          <Text style={s.emptyIcon}></Text>
           <Text style={s.emptyTitle}>Ready to generate</Text>
           <Text style={s.emptySub}>Tap the button below to build a categorized grocery list from your meal plan.</Text>
           <TouchableOpacity style={s.generateBtn} onPress={generate} activeOpacity={0.8}>

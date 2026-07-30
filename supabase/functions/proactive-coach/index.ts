@@ -18,12 +18,12 @@ const OURA_API = 'https://api.ouraring.com'
 const OURA_TOKEN_URL = 'https://api.ouraring.com/oauth/token'
 
 const TITLES: Record<string, string> = {
-  recovery_overreach: 'Recovery signals are low 🔴',
+  recovery_overreach: 'Recovery signals are low',
   calorie_deficit_streak: "You've been under your calorie target",
   protein_miss: 'Your protein is trailing this week',
   streak_risk: "Don't break your streak tonight!",
-  workout_gap: 'Time to get back in the gym 💪',
-  weekly_win: 'Strong week — you crushed it 🏆',
+  workout_gap: 'Time to get back in the gym',
+  weekly_win: 'Strong week — you crushed it',
 }
 
 function jsonResponse(data: unknown, status = 200) {

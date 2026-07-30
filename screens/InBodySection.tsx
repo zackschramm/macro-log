@@ -309,7 +309,7 @@ export default function InBodySection() {
 
       <View style={s.actionRow}>
         <TouchableOpacity style={s.scanBtn} onPress={onScan} disabled={scanning}>
-          {scanning ? <ActivityIndicator color={colors.accentText} /> : <Text style={s.scanBtnText}>📷  Scan InBody</Text>}
+          {scanning ? <ActivityIndicator color={colors.accentText} /> : <Text style={s.scanBtnText}> Scan InBody</Text>}
         </TouchableOpacity>
         <TouchableOpacity style={s.manualBtn} onPress={onManual}>
           <Text style={s.manualBtnText}>Enter</Text>
@@ -359,7 +359,7 @@ export default function InBodySection() {
           {isPro && latest && <SegmentalView log={latest} />}
           {!isPro && (
             <TouchableOpacity style={s.proTeaseCard} onPress={() => setShowPaywall(true)} activeOpacity={0.8}>
-              <Text style={s.proTeaseText}>🔒 Unlock segmental lean-mass analysis with Fuelog Pro</Text>
+              <Text style={s.proTeaseText}>Unlock segmental lean-mass analysis with Fuelog Pro</Text>
               <Text style={s.proTeaseUnlock}>Unlock with Pro →</Text>
             </TouchableOpacity>
           )}
@@ -470,7 +470,7 @@ function ProCell({ label, onUnlock }: { label: string; onUnlock: () => void }) {
   return (
     <View style={s.cell}>
       <Text style={s.cellLabel}>{label}</Text>
-      <Text style={s.proLockMini}>🔒 Pro</Text>
+      <Text style={s.proLockMini}>Pro</Text>
       <TouchableOpacity onPress={onUnlock} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
         <Text style={s.proTeaseUnlock}>Unlock →</Text>
       </TouchableOpacity>

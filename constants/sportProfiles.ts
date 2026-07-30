@@ -186,7 +186,7 @@ POWER ZONES (based on % FTP):
 - Zone 3 (Tempo): 76–90% FTP — sustainable hard effort
 - Zone 4 (Sweet Spot): 88–93% FTP — high training value, builds FTP efficiently
 - Zone 5 (VO2 Max): 106–120% FTP — short intervals (3–8 min)
-- Zone 6 (Anaerobic): >120% FTP — sprints, 30 sec–2 min
+- Zone 6 (Anaerobic): > 120% FTP — sprints, 30 sec–2 min
 
 TRAINING APPROACHES:
 - Sweet Spot Training (SST): most efficient for FTP gains; 2–3x 20-min blocks at 88–93% FTP
@@ -744,6 +744,168 @@ PERIODIZATION:
 - Off-season: strength emphasis in gym, cross-training
 
 COMMON MISTAKES: Over-training UT2 at too high an intensity (zone 3 trap); sequential drive fault (shooting the slide); neglecting back extension and posterior chain work; insufficient caloric intake for high training volume.`,
+  },
+
+  // ─── Triathlon ────────────────────────────────────────────────────────────
+  // These previously did not exist. `triathlon` had a macro multiplier in
+  // constants/data.ts but no profile here, so getSportProfile() fell through to
+  // 'none' and every triathlete was coached on Squat/Deadlift/Bench and told to
+  // eat "moderate carbs around training". Same for hiking.
+
+  triathlon: {
+    label: 'Triathlon',
+    trainingFocus: 'aerobic durability across three disciplines, sustainable pacing, and fuelling under load',
+    keyQualities: ['aerobic durability', 'fatigue resistance', 'pacing discipline', 'gut tolerance', 'transition efficiency'],
+    nutritionFocus: 'carbohydrate periodized to the day — 3–5g/kg on rest days rising to 8–12g/kg on long sessions; protein 1.6–1.8g/kg for repair across three sports; fat fills the remainder. Carbohydrate is the performance macro, not the leftover',
+    mealTiming: '1–4g/kg carbohydrate 1–4 hours before long sessions; 60–90g carbs per hour on anything over 90 minutes; carbs + protein within 30 minutes of finishing, which matters more here than in single-sport training because the next session is usually within 24 hours',
+    keyExercises: ['Single-Leg Romanian Deadlift', 'Barbell Back Squat', 'Hip Thrust', 'Nordic Hamstring Curl', 'Calf Raise', 'Pull-Up', 'Cable Row', 'Rotator Cuff External Rotation', 'Pallof Press', 'Dead Bug', 'Copenhagen Plank'],
+    coachingContext: `The user is a triathlete training across swim, bike and run.
+
+THE DEFINING CONSTRAINT: three sports, one recovery budget. Volume that would be reasonable in any single discipline becomes overtraining when stacked. Most age-group failures are recovery failures, not fitness failures.
+
+INTENSITY DISTRIBUTION:
+- 80/20 applies across the TOTAL week, not per sport — this is the most commonly broken rule in triathlon
+- The classic error is moderate-hard everywhere: too hard to be recovery, too easy to drive adaptation
+- Easy really does mean conversational. If every ride is tempo, the long ride stops working
+
+DISCIPLINE PRIORITIES:
+- Swim is the most technique-limited and the least fitness-limited. Frequency beats volume — 3 shorter swims beat 2 long ones
+- Bike is where the race is won and where most training time should go; it carries the largest share of race duration at every distance
+- Run is where injury risk concentrates because it arrives on pre-fatigued legs. Run volume should be built the most conservatively
+
+BRICK SESSIONS: bike-to-run teaches the legs to run fatigued and is where race fuelling should be rehearsed. Do not add bricks and volume in the same week.
+
+STRENGTH: 2x/week off-season, 1x/week in-season. Single-leg posterior chain and rotator cuff work. Heavy legs 48 hours before a key run or long ride.
+
+FUELLING IS A TRAINABLE SKILL: gut tolerance for carbohydrate improves with practice at roughly +10g/hour every 2–3 weeks. Race nutrition must be rehearsed in training — the most common cause of a bad race is a fuelling plan attempted for the first time on race day.
+
+WATCH FOR UNDER-FUELLING: triathletes are the population most at risk of low energy availability. Chronic fatigue, stalled progress, poor sleep, frequent illness and stress fractures are the signs. The fix is almost always more carbohydrate, not more training.
+
+COMMON MISTAKES: Riding and running everything at moderate intensity; treating the swim as a fitness session rather than a skill session; building run volume too fast; skipping strength work entirely; under-fuelling long sessions and calling the resulting fatigue "the training working".`,
+  },
+
+  tri_sprint: {
+    label: 'Sprint Triathlon',
+    trainingFocus: 'threshold power and speed across 750m / 20km / 5km, plus fast transitions',
+    keyQualities: ['lactate threshold', 'VO2 max', 'transition speed', 'tolerance for sustained discomfort'],
+    nutritionFocus: 'carbohydrate 5–7g/kg on training days — total volume is modest so the huge intakes long-course athletes need do not apply; protein 1.6g/kg; body composition matters more here than fuelling volume',
+    mealTiming: 'normal pre-session meal 2–3 hours out; sessions are short enough that most need no in-session fuel; a race is over in roughly an hour, so it is fuelled by what you ate the day before, not by what you carry',
+    keyExercises: ['Barbell Back Squat', 'Hip Thrust', 'Single-Leg Romanian Deadlift', 'Nordic Hamstring Curl', 'Pull-Up', 'Cable Row', 'Pallof Press', 'A-Skip'],
+    coachingContext: `The user races SPRINT triathlon: 750m swim, 20km bike, 5km run. Typical finish 1:00–1:45.
+
+THIS IS A THRESHOLD RACE, NOT AN ENDURANCE RACE. It is roughly an hour at or just below threshold. Training should reflect that: threshold and VO2 max work carry more value here than at any other triathlon distance, and long slow volume carries less.
+
+KEY SESSIONS: bike threshold intervals (4x8 min at ~100% FTP), run intervals at 5K pace, and race-pace brick work. Weekly volume of 6–10 hours is plenty.
+
+TRANSITIONS ARE FREE TIME: at this distance T1 and T2 can be 3–5% of total race duration. Practising them is the highest return per hour in the sport. Nobody does it.
+
+RACE FUELLING IS ALMOST A NON-ISSUE: under 90 minutes there is enough muscle glycogen on board. Do not carb load — you will just carry water weight around the course. A normal high-carbohydrate day before and a light familiar breakfast 2–3 hours out is the whole plan. Sip water on the bike if it's hot.
+
+PACING: go out hard on the swim, settle, then ride at or just under threshold. The single biggest mistake is riding above threshold and walking the run.
+
+COMMON MISTAKES: Training like a long-course athlete for a one-hour race; ignoring transitions; over-fuelling a race that does not need it; treating the 5K as a jog rather than the hardest 20 minutes of the day.`,
+  },
+
+  tri_olympic: {
+    label: 'Olympic Triathlon',
+    trainingFocus: 'threshold endurance across 1.5km / 40km / 10km with the first real fuelling demands',
+    keyQualities: ['lactate threshold', 'aerobic capacity', 'pacing discipline', 'run-off-the-bike durability'],
+    nutritionFocus: 'carbohydrate 6–8g/kg on training days; protein 1.6–1.8g/kg; this is the shortest distance where in-race carbohydrate genuinely affects the outcome',
+    mealTiming: 'carbohydrate-rich meal 2–3 hours pre-race; 60–90g carbs per hour during the race, almost all of it on the bike; practise it — 2–3 hours is long enough for GI distress to end a race',
+    keyExercises: ['Barbell Back Squat', 'Hip Thrust', 'Single-Leg Romanian Deadlift', 'Nordic Hamstring Curl', 'Calf Raise', 'Pull-Up', 'Cable Row', 'Copenhagen Plank', 'Dead Bug'],
+    coachingContext: `The user races OLYMPIC / STANDARD distance: 1.5km swim, 40km bike, 10km run. Typical finish 2:00–3:30.
+
+THE BRIDGE DISTANCE. Long enough that fuelling matters, short enough that it is still raced near threshold. Training needs both: a genuine aerobic base and real threshold work.
+
+KEY SESSIONS: 2x20 min at sweet spot to threshold on the bike; 10K-pace and threshold run intervals; a weekly long ride of 2–3 hours; bike-to-run bricks at race intensity. Weekly volume 8–13 hours.
+
+FUELLING BECOMES REAL: 60–90g carbohydrate per hour, taken almost entirely on the bike because it is far easier to absorb there than running. Aim to arrive at T2 already fuelled — you cannot fix a deficit during a 10K. Above 60g/h you need mixed glucose:fructose or it will sit in your stomach.
+
+CARB LOADING: worth a modest version. A high-carbohydrate day before, not a three-day protocol.
+
+PACING: the bike is ridden just under threshold. Every watt spent above it costs disproportionately on the run.
+
+COMMON MISTAKES: Fuelling on the run instead of the bike; riding the first 10km too hard; treating this as a sprint with more distance; never practising race-day nutrition because "it's only three hours".`,
+  },
+
+  tri_70_3: {
+    label: '70.3 / Half Ironman',
+    trainingFocus: 'sub-threshold durability across 1.9km / 90km / 21.1km, and executing a fuelling plan for 4–7 hours',
+    keyQualities: ['aerobic durability', 'sub-threshold sustainability', 'gut tolerance', 'heat and hydration management', 'pacing discipline'],
+    nutritionFocus: 'carbohydrate periodized 5–10g/kg by session; protein 1.6–1.8g/kg; long sessions need 60–90g carbs per hour, and gut training is a formal part of the plan rather than an afterthought',
+    mealTiming: 'carbohydrate load 10–11g/kg for 24–36 hours pre-race; familiar breakfast 3 hours out; 80–100g carbs per hour on the bike and 60–75g per hour on the run; recovery carbs + protein within 30 minutes of every long session',
+    keyExercises: ['Single-Leg Romanian Deadlift', 'Barbell Back Squat', 'Hip Thrust', 'Nordic Hamstring Curl', 'Calf Raise', 'Pull-Up', 'Cable Row', 'Rotator Cuff External Rotation', 'Pallof Press', 'Copenhagen Plank'],
+    coachingContext: `The user races 70.3: 1.9km swim, 90km bike, 21.1km run. Typical finish 4:30–7:00.
+
+THIS IS WHERE FUELLING STARTS DECIDING RACES. Four to seven hours is well past what muscle glycogen covers. The athlete who fuels well and rides slightly conservatively beats the fitter athlete who does not, reliably.
+
+INTENSITY: raced at sub-threshold — roughly 75–85% FTP on the bike for age-groupers. It feels easy for the first 30km. It is supposed to.
+
+KEY SESSIONS: long ride building to 3–4 hours at race intensity with full race nutrition rehearsed; long run to 1:45–2:00; a weekly brick; threshold work maintained but subordinate to durability.
+
+GUT TRAINING IS PART OF THE PLAN: work up in roughly 10g/hour steps every 2–3 weeks on the long ride. Going from 60 to 90g/h takes about 8 weeks. Start when the block starts, not in the taper.
+
+HEAT AND SODIUM: at this duration sweat losses are significant. Know your sweat rate (weigh before and after a one-hour session, add fluid drunk). Replace 60–80% of losses, not 100%, and take 500–1000mg sodium per litre.
+
+RUN OFF THE BIKE: the half marathon is where a bad bike shows up. If you cannot run the first 5km comfortably, you rode too hard or ate too little.
+
+COMMON MISTAKES: Riding at Olympic intensity for a 70.3; trying a new gel or drink mix on race day; under-estimating sweat losses in heat; treating the taper as an excuse to stop eating carbohydrate.`,
+  },
+
+  tri_ironman: {
+    label: 'Ironman',
+    trainingFocus: 'aerobic durability and fuelling execution across 3.8km / 180km / 42.2km',
+    keyQualities: ['aerobic durability', 'fat oxidation at intensity', 'gut tolerance', 'heat management', 'pacing discipline', 'mental resilience'],
+    nutritionFocus: 'carbohydrate periodized 4–12g/kg depending on the day — rest days are genuinely low and long days are genuinely enormous; protein 1.6–1.8g/kg; total daily intake on big weeks routinely exceeds 5,000 kcal and under-eating it is the most common training error in the sport',
+    mealTiming: 'carbohydrate load 11–12g/kg for 36–48 hours pre-race with fibre reduced; familiar breakfast 3 hours out; 90–120g carbs per hour on the bike if trained for it, 60–90g per hour on the run; recovery nutrition within 30 minutes is non-negotiable when tomorrow holds another session',
+    keyExercises: ['Single-Leg Romanian Deadlift', 'Barbell Back Squat', 'Hip Thrust', 'Nordic Hamstring Curl', 'Calf Raise', 'Step-Up', 'Pull-Up', 'Cable Row', 'Rotator Cuff External Rotation', 'Pallof Press', 'Dead Bug', 'Copenhagen Plank'],
+    coachingContext: `The user is training for a full IRONMAN: 3.8km swim, 180km bike, 42.2km run. Typical finish 9:30–16:00.
+
+AN IRONMAN IS AN EATING COMPETITION WITH A RACE ATTACHED. Fitness gets you to T2. Fuelling determines what the marathon looks like. Treat nutrition as a primary training variable, not a detail.
+
+INTENSITY: raced well below threshold — roughly 65–75% FTP on the bike for age-groupers, and it must feel genuinely easy for the first two hours. Nearly every catastrophic Ironman marathon traces back to the first 60km of the bike.
+
+TRAINING STRUCTURE:
+- 80/20 or more extreme across the total week. Volume is the adaptation; intensity is the garnish
+- Long ride builds to 5–6 hours; long run to 2:30–3:00 (rarely beyond — the injury cost exceeds the benefit)
+- Big weekend blocks beat isolated hero sessions
+- Every long session is a nutrition rehearsal. There are no "just training" long rides
+
+FUELLING IN TRAINING: this is where most Ironman athletes fail. Daily requirements on a big week are enormous — 8–12g/kg carbohydrate on long days, 5,000+ kcal total for many athletes. Chronic under-eating produces exactly the symptoms people mistake for needing more training: stalled fitness, heavy legs, poor sleep, irritability, frequent colds.
+
+LOW ENERGY AVAILABILITY: the biggest health risk in this population. Below 30 kcal per kg of fat-free mass per day (after subtracting training) causes hormonal disruption, bone loss, and immune suppression. An athlete dieting through an Ironman build is almost always in this territory. Body composition work belongs in the off-season, not the build.
+
+RACE FUELLING: 90–120g carbohydrate per hour is what the front of the field now does, but ONLY at a rate that has been trained. Gut tolerance improves roughly 10g/hour every 2–3 weeks — 60 to 110g/h takes about 13 weeks. Above 60g/h mixed glucose:fructose (1:0.8) is mandatory. Fuel the bike, protect the run.
+
+HYDRATION AND SODIUM: 8–16 hours of sweating. Know the individual sweat rate; replace 60–80% of losses; 500–1000mg sodium per litre. Over-drinking plain water across an Ironman is a genuine hyponatraemia risk, not a theoretical one.
+
+TAPER: 2–3 weeks, volume down 40–50%, intensity maintained. Carbohydrate intake stays high while volume drops — this is the point at which athletes accidentally start a deficit right before the race.
+
+COMMON MISTAKES: Riding the first 60km at 70.3 intensity; attempting a race-day carbohydrate rate never practised in training; dieting during a build block; running long too often; treating the swim as fitness rather than skill; cutting carbohydrate during the taper because "volume is down".`,
+  },
+
+  hiking: {
+    label: 'Hiking',
+    trainingFocus: 'sustained low-intensity load carriage, climbing endurance, and ankle and knee resilience',
+    keyQualities: ['aerobic endurance', 'load carriage capacity', 'eccentric strength for descents', 'ankle stability', 'heat and altitude tolerance'],
+    nutritionFocus: 'moderate-high carbohydrate scaled to day length — a full day out is a genuine endurance event; steady grazing rather than large meals; sodium and fluid matter more than most hikers expect, particularly at altitude',
+    mealTiming: 'substantial breakfast before an early start; 30–60g carbs per hour on days over 3 hours, taken as regular small amounts rather than one big stop; protein and carbohydrate within an hour of finishing on multi-day trips, where tomorrow depends on today\'s recovery',
+    keyExercises: ['Step-Up', 'Bulgarian Split Squat', 'Reverse Lunge', 'Calf Raise', 'Single-Leg Romanian Deadlift', 'Farmer Carry', 'Side-Lying Hip Abduction', 'Dead Bug', 'Weighted Pack Carry'],
+    coachingContext: `The user hikes. Training should prepare them for long days on uneven ground, often carrying weight.
+
+THE DEMAND: hours of low-intensity work, large elevation change, and a pack. Energy cost is dominated by vertical gain and load carried rather than horizontal distance — 1,000m of climbing costs far more than the flat kilometres suggest.
+
+DESCENTS ARE THE INJURY RISK: downhill is eccentric loading, which causes most of the muscle damage and nearly all the knee complaints. Train it deliberately — step-downs, controlled eccentric lunges, and actual downhill practice under load.
+
+STRENGTH PRIORITIES: single-leg strength and stability first, calves for the climbing, hip abductors for uneven ground, and loaded carries for the pack. Ankle stability work materially reduces rolled-ankle risk on scree and roots.
+
+PROGRESSION: build pack weight and elevation gain separately, never both at once. A useful rule is to increase either by no more than 10% a week.
+
+NUTRITION ON THE TRAIL: a full day is an endurance event and should be fuelled like one. 30–60g carbohydrate per hour beyond the third hour. Under-eating on day one of a multi-day trip compounds — the deficit is very hard to claw back on the trail.
+
+ALTITUDE: above ~2,500m appetite drops, fluid losses rise through respiration, and perceived effort increases at the same output. Eat and drink on a schedule rather than by feel.
+
+COMMON MISTAKES: Training only on flat ground for a hilly objective; ignoring descent conditioning and then blowing out the quads; adding pack weight and distance in the same week; under-drinking in cool weather because thirst is blunted.`,
   },
 };
 

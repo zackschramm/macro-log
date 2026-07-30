@@ -29,10 +29,10 @@ export default function ShareCardGenerator(props: ShareCardProps) {
 
 function WeeklyCard({ data }: { data: WeeklyCardData }) {
   const stats = [
-    { val: data.avgCalories != null ? String(data.avgCalories) : '—', label: 'avg calories', emoji: '🔥' },
-    { val: data.avgProtein != null ? `${data.avgProtein}g` : '—', label: 'avg protein', emoji: '🥩' },
-    { val: data.workoutCount != null ? String(data.workoutCount) : '—', label: 'workouts logged', emoji: '💪' },
-    { val: data.streak > 0 ? `${data.streak}-day` : '—', label: 'streak', emoji: '🔥' },
+    { val: data.avgCalories != null ? String(data.avgCalories) : '—', label: 'avg calories', emoji: '' },
+    { val: data.avgProtein != null ? `${data.avgProtein}g` : '—', label: 'avg protein', emoji: '' },
+    { val: data.workoutCount != null ? String(data.workoutCount) : '—', label: 'workouts logged', emoji: '' },
+    { val: data.streak > 0 ? `${data.streak}-day` : '—', label: 'streak', emoji: '' },
   ];
 
   return (
@@ -74,7 +74,7 @@ function InBodyCard({ data }: { data: InBodyCardData }) {
         </Text>
         <Text style={s.statLabel}> body fat</Text>
         <View style={{ flex: 1 }} />
-        <Text style={s.statEmoji}>{data.fatChangeLb <= 0 ? '📉' : '📈'}</Text>
+        <Text style={s.statEmoji}>{data.fatChangeLb <= 0 ? '' : ''}</Text>
       </View>
       <View style={s.statRow}>
         <Text style={[s.statVal, { color: data.muscleChangeLb >= 0 ? '#C8FF3D' : '#FF4444' }]}>
@@ -82,13 +82,13 @@ function InBodyCard({ data }: { data: InBodyCardData }) {
         </Text>
         <Text style={s.statLabel}> muscle</Text>
         <View style={{ flex: 1 }} />
-        <Text style={s.statEmoji}>{data.muscleChangeLb >= 0 ? '📈' : '📉'}</Text>
+        <Text style={s.statEmoji}>{data.muscleChangeLb >= 0 ? '' : ''}</Text>
       </View>
       <View style={s.statRow}>
         <Text style={s.statVal}>{data.weeksTracked}</Text>
         <Text style={s.statLabel}> weeks of tracking</Text>
         <View style={{ flex: 1 }} />
-        <Text style={s.statEmoji}>📊</Text>
+        <Text style={s.statEmoji}></Text>
       </View>
       <View style={s.divider} />
       <Text style={s.footer}>fuelog.app</Text>

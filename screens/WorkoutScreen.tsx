@@ -16,6 +16,7 @@ import { PRESET_PROGRAMS } from '../constants/programs';
 import CoachScreen from './CoachScreen';
 import { callAI } from '../constants/ai';
 import { getSportProfile } from '../constants/sportProfiles';
+import { publishTodaySessions } from '../utils/sessionMapping';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useHealthKit, HealthKitWorkout, WeeklyTrainingLoad, STORAGE_PREFERRED_TRACKER, buildSourcePrefs } from '../hooks/useHealthKit';
 import { useUnits } from '../constants/units';
@@ -61,7 +62,7 @@ const BODYWEIGHT_PATTERNS = /pull.?up|push.?up|plank|dip|chin.?up|box jump|broad
 function groupExercisesWithSupersets(
   exercises: any[],
   supersets: Record<string, string>
-): Array<{ isSuperset: boolean; supersetId?: string; exercises: any[] }> {
+): Array<{ isSuperset: boolean; supersetId?: string; exercises: any[] }>{
   const groups: Array<{ isSuperset: boolean; supersetId?: string; exercises: any[] }> = [];
   const rendered = new Set<string>();
   for (const ex of exercises) {
@@ -102,7 +103,7 @@ export default function WorkoutScreen({ profile }: { profile?: any }) {
   const [coachExercise, setCoachExercise] = useState<string | null>(null);
   const [lastSession, setLastSession] = useState<Record<string, { sets: any[]; date: string }>>({});
   const [lastSessionLoaded, setLastSessionLoaded] = useState(false);
-  // Progressive overload: keyed `${exId}_${setIndex}` -> tip text shown after set completion
+  // Progressive overload: keyed `${exId}_${setIndex}` ->tip text shown after set completion
   const [nextSessionTips, setNextSessionTips] = useState<Record<string, string>>({});
   // Refs for dual-writing completed sets into workout_exercises / workout_sets
   const sessionIdRef = useRef<number | null>(null);
@@ -176,6 +177,10 @@ export default function WorkoutScreen({ profile }: { profile?: any }) {
       ]);
       setRecentWorkouts(workouts);
       setWeeklyLoad(load);
+      // Hand today's sessions to the endurance engine. getWorkoutHistory only
+      // exists on the hook, and buildCoachContext can't use hooks, so this is
+      // the hand-off point. Fails soft — the coach just loses today's detail.
+      publishTodaySessions(workouts as any, todayStr());
     })();
   }, []);
 
@@ -587,8 +592,7 @@ Return ONLY a JSON array, nothing else:
         Alert.alert('Saved!', `"${name.trim()}" saved as a template.`);
       },
       'plain-text',
-      activeProgram?.name || ''
-    );
+      activeProgram?.name || '');
   };
 
   const startWorkoutFromTemplate = async (template: WorkoutTemplate) => {
@@ -768,7 +772,7 @@ Return ONLY a JSON array, nothing else:
   useEffect(() => {
     if (view === 'workout') {
       workoutStartTimeRef.current = new Date();
-      setIsLastSetMap({}); // reset 🔥 "last set" flags for fresh workout
+      setIsLastSetMap({}); // reset  "last set" flags for fresh workout
     }
   }, [view]);
 
@@ -874,7 +878,7 @@ Return ONLY a JSON array, nothing else:
     setIsLastSetMap(cur => ({ ...cur, [exId]: newFlags }));
     if (!wasOn) {
       if (!hypeSongUri) {
-        Alert.alert('No Hype Song', 'Tap "🎵" in the header to pick a track first.');
+        Alert.alert('No Hype Song', 'Tap "" in the header to pick a track first.');
         return;
       }
       await playHypeSong(hypeSongUri);
@@ -964,14 +968,14 @@ Return ONLY a JSON array, nothing else:
       .join('\n');
     const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
     const text = [
-      '🏋️ Workout Complete — Fuelog',
-      `📅 ${dateStr}`,
-      `💪 ${activeProgram?.name || 'Workout'}`,
-      `📊 Volume: ${shareData.totalVolume.toLocaleString()} ${u.weightUnit} · Sets: ${shareData.totalSets}${shareData.durationMin > 0 ? ` · ${shareData.durationMin} min` : ''}`,
+      ' Workout Complete — Fuelog',
+      ` ${dateStr}`,
+      ` ${activeProgram?.name || 'Workout'}`,
+      ` Volume: ${shareData.totalVolume.toLocaleString()} ${u.weightUnit} · Sets: ${shareData.totalSets}${shareData.durationMin > 0 ? ` · ${shareData.durationMin} min` : ''}`,
       '',
       top3Text ? `Top lifts:\n${top3Text}` : '',
       '',
-      'Tracked with Fuelog 💚',
+      'Tracked with Fuelog ',
     ].filter(Boolean).join('\n').trim();
 
     try {
@@ -996,7 +1000,7 @@ Return ONLY a JSON array, nothing else:
     if (isBodyweight) {
       const maxReps = Math.max(...completedSets.map((s: any) => parseInt(s.reps) || 0));
       if (maxReps <= 0) return null;
-      return { message: `💡 Last time: ${maxReps} reps — try ${maxReps + 1} today`, fillWeight: null, fillReps: String(maxReps + 1) };
+      return { message: ` Last time: ${maxReps} reps — try ${maxReps + 1} today`, fillWeight: null, fillReps: String(maxReps + 1) };
     }
     let bestSet = completedSets[0];
     for (const s of completedSets) {
@@ -1012,11 +1016,11 @@ Return ONLY a JSON array, nothing else:
     const targetMax = parseInt(match[2] || match[1]);
     const increment = lastWeight >= 100 ? 5 : 2.5;
     if (lastReps >= targetMax + 3) {
-      return { message: `💡 Last: ${lastWeight} × ${Math.round(lastReps)} — you crushed it! Same weight`, fillWeight: String(lastWeight), fillReps: String(targetMax) };
+      return { message: ` Last: ${lastWeight} × ${Math.round(lastReps)} — you crushed it! Same weight`, fillWeight: String(lastWeight), fillReps: String(targetMax) };
     } else if (lastReps >= targetMin) {
-      return { message: `💡 Last: ${lastWeight} × ${Math.round(lastReps)} — try ${lastWeight + increment} ${u.weightUnit} today`, fillWeight: String(lastWeight + increment), fillReps: String(targetMin) };
+      return { message: ` Last: ${lastWeight} × ${Math.round(lastReps)} — try ${lastWeight + increment} ${u.weightUnit} today`, fillWeight: String(lastWeight + increment), fillReps: String(targetMin) };
     } else {
-      return { message: `💡 Last: ${lastWeight} × ${Math.round(lastReps)} — focus on form, same weight`, fillWeight: String(lastWeight), fillReps: String(targetMin) };
+      return { message: ` Last: ${lastWeight} × ${Math.round(lastReps)} — focus on form, same weight`, fillWeight: String(lastWeight), fillReps: String(targetMin) };
     }
   };
 
@@ -1027,7 +1031,7 @@ Return ONLY a JSON array, nothing else:
           <Text style={s.title}>Workout</Text>
           <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
             <TouchableOpacity style={s.programsBtn} onPress={() => setShowCalendar(true)}>
-              <Text style={s.programsBtnText}>📅</Text>
+              <Text style={s.programsBtnText}></Text>
             </TouchableOpacity>
             <TouchableOpacity style={s.programsBtn} onPress={() => setShowProgramScreen(true)}>
               <Text style={s.programsBtnText}>Programs</Text>
@@ -1180,7 +1184,7 @@ Return ONLY a JSON array, nothing else:
           <ActivityIndicator color={colors.text} style={{ marginTop: 60 }} />
         ) : dayRows.length === 0 ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 8 }}>
-            <Text style={{ fontSize: 40 }}>🗓️</Text>
+            <Text style={{ fontSize: 40 }}></Text>
             <Text style={{ fontSize: 17, fontWeight: weight.bold, color: colors.text }}>No workout logged</Text>
             <Text style={s.emptyText}>Nothing was logged on {dateLabel}.</Text>
             <TouchableOpacity style={s.addExBtn} onPress={() => setView('select')}>
@@ -1260,7 +1264,7 @@ Return ONLY a JSON array, nothing else:
           <View style={s.builderDayCard}>
             <View style={s.builderDayHeader}>
               <TouchableOpacity style={[s.restToggle, currentDay.type === 'rest' && s.restToggleActive]} onPress={() => toggleDayRest(builderDayIndex)}>
-                <Text style={[s.restToggleText, currentDay.type === 'rest' && s.restToggleTextActive]}>😴 Rest Day</Text>
+                <Text style={[s.restToggleText, currentDay.type === 'rest' && s.restToggleTextActive]}>Rest Day</Text>
               </TouchableOpacity>
             </View>
             {currentDay.type === 'training' && (
@@ -1280,7 +1284,7 @@ Return ONLY a JSON array, nothing else:
                   <View style={s.aiRow}>
                     <Text style={s.fieldLabel}>Add Exercise</Text>
                     <TouchableOpacity style={s.aiGenBtn} onPress={generateWorkoutDay} disabled={generatingWorkout}>
-                      {generatingWorkout ? <ActivityIndicator color={colors.accentText} size="small" /> : <Text style={s.aiGenBtnText}>✨ AI Fill</Text>}
+                      {generatingWorkout ? <ActivityIndicator color={colors.accentText} size="small" /> : <Text style={s.aiGenBtnText}>AI Fill</Text>}
                     </TouchableOpacity>
                   </View>
                   <TextInput style={s.input} value={exName} onChangeText={setExName} placeholder="Exercise name" placeholderTextColor={colors.textTertiary} />
@@ -1300,7 +1304,7 @@ Return ONLY a JSON array, nothing else:
                 </View>
               </>
             )}
-            {currentDay.type === 'rest' && <Text style={s.restLabel}>😴 Rest day — no exercises needed</Text>}
+            {currentDay.type === 'rest' && <Text style={s.restLabel}>Rest day — no exercises needed</Text>}
           </View>
         </ScrollView>
         <Modal visible={showPaywall} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowPaywall(false)}>
@@ -1357,7 +1361,7 @@ Return ONLY a JSON array, nothing else:
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
         {fromProgram && (
           <View style={s.fromProgramBadge}>
-            <Text style={s.fromProgramBadgeText}>📋 Week {fromProgram.week}, Day {fromProgram.day}</Text>
+            <Text style={s.fromProgramBadgeText}>Week {fromProgram.week}, Day {fromProgram.day}</Text>
           </View>
         )}
         <View style={s.dayHeader}>
@@ -1369,14 +1373,14 @@ Return ONLY a JSON array, nothing else:
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <View style={s.badge}><Text style={s.badgeText}>✓ Done</Text></View>
               <TouchableOpacity style={s.finishBtn} onPress={handleFinishWorkout}>
-                <Text style={s.finishBtnText}>Share 🎉</Text>
+                <Text style={s.finishBtnText}>Share </Text>
               </TouchableOpacity>
             </View>
           )}
         </View>
         {plan.type === 'rest' ? (
           <View style={s.restMsg}>
-            <Text style={s.restIcon}>😴</Text>
+            <Text style={s.restIcon}></Text>
             <Text style={s.restTitle}>Rest & Recover</Text>
             <Text style={s.restSub}>Growth happens outside the gym.{'\n'}Eat your macros and sleep well.</Text>
           </View>
@@ -1432,7 +1436,7 @@ Return ONLY a JSON array, nothing else:
                         <Text style={s.exSets}>{ex.sets} sets × {ex.reps} reps</Text>
                       </TouchableOpacity>
                       <TouchableOpacity style={s.coachBtn} onPress={() => setCoachExercise(ex.name)}>
-                        <Text style={s.coachBtnText}>💡</Text>
+                        <Text style={s.coachBtnText}></Text>
                       </TouchableOpacity>
                       <Text style={[s.arrow, isOpen && s.arrowOpen]}>▾</Text>
                     </TouchableOpacity>
@@ -1444,7 +1448,7 @@ Return ONLY a JSON array, nothing else:
                     )}
                     {!poResult && isNewExercise && (
                       <View style={s.poNewChip}>
-                        <Text style={s.poNewChipText}>🆕 First time logging this exercise</Text>
+                        <Text style={s.poNewChipText}>First time logging this exercise</Text>
                       </View>
                     )}
                     {isOpen && (
@@ -1458,7 +1462,7 @@ Return ONLY a JSON array, nothing else:
                           <Text style={[s.setHText, { flex: 1 }]}>Weight</Text>
                           <Text style={[s.setHText, { flex: 1 }]}>Reps</Text>
                           <Text style={[s.setHText, { width: 36 }]}>✓</Text>
-                          <Text style={[s.setHText, { width: 28 }]}>🔥</Text>
+                          <Text style={[s.setHText, { width: 28 }]}></Text>
                         </View>
                         {sets.map((set: any, si: number) => {
                           const prevSet = lastSession[ex.id]?.sets?.[si];
@@ -1474,7 +1478,7 @@ Return ONLY a JSON array, nothing else:
                                   <Text style={[s.setCheckText, set.done && s.setCheckTextDone]}>✓</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity style={s.lastSetBtn} onPress={() => toggleLastSet(ex.id, si)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-                                  <Text style={{ fontSize: 16, opacity: isLastSet ? 1 : 0.22 }}>🔥</Text>
+                                  <Text style={{ fontSize: 16, opacity: isLastSet ? 1 : 0.22 }}></Text>
                                 </TouchableOpacity>
                               </View>
                               {/* ── Auto-progression badge shown after set completion ── */}
@@ -1519,7 +1523,7 @@ Return ONLY a JSON array, nothing else:
       <Modal visible={!!prInfo} transparent animationType="none" statusBarTranslucent>
         <Animated.View style={[s.prOverlay, { opacity: prAnim }]}>
           <View style={s.prCard}>
-            <Text style={s.prEmoji}>🏆</Text>
+            <Text style={s.prEmoji}></Text>
             <Text style={s.prTitle}>New PR!</Text>
             <Text style={s.prExercise}>{prInfo?.exerciseName}</Text>
             <Text style={s.prWeight}>{prInfo?.weight} {u.weightUnit}</Text>
@@ -1541,7 +1545,7 @@ Return ONLY a JSON array, nothing else:
             <TouchableOpacity onPress={() => setShowShareCard(false)}>
               <Text style={s.shareCloseBtn}>Done</Text>
             </TouchableOpacity>
-            <Text style={s.shareHeaderTitle}>Workout Complete 🎉</Text>
+            <Text style={s.shareHeaderTitle}>Workout Complete </Text>
             <TouchableOpacity onPress={handleShare}>
               <Text style={s.shareActionBtn}>Share</Text>
             </TouchableOpacity>

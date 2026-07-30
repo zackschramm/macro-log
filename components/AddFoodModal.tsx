@@ -420,14 +420,14 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
                     </View>
                   </View>
                   <TouchableOpacity onPress={() => toggleFavorite(f)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Text style={s.starActive}>★</Text>
+                    <Text style={s.starActive}></Text>
                   </TouchableOpacity>
                 </TouchableOpacity>
               ))}
             </View>
           )}
           {favoriteFoods.length === 0 && !search && (
-            <Text style={s.quickEmpty}>Tap ☆ on any food to save it here</Text>
+            <Text style={s.quickEmpty}>Tap on any food to save it here</Text>
           )}
 
           {recentFoods.length > 0 && (
@@ -461,7 +461,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
               clearButtonMode="while-editing"
             />
             <TouchableOpacity style={s.scanBtn} onPress={() => setScannerOpen(true)}>
-              <Text style={s.scanBtnText}>📷</Text>
+              <Text style={s.scanBtnText}></Text>
             </TouchableOpacity>
           </View>
 
@@ -471,7 +471,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
               <Text style={s.actionBtnText}>＋ Create Food</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[s.actionBtn, s.actionBtnSecondary]} onPress={() => setRecipeBuilderVisible(true)}>
-              <Text style={[s.actionBtnText, { color: colors.text }]}>🍳 New Recipe</Text>
+              <Text style={[s.actionBtnText, { color: colors.text }]}>New Recipe</Text>
             </TouchableOpacity>
           </View>
 
@@ -538,7 +538,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
                           </View>
                         </View>
                         <TouchableOpacity onPress={() => toggleFavorite(f)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                          <Text style={isFav ? s.starActive : s.starInactive}>{isFav ? '★' : '☆'}</Text>
+                          <Text style={isFav ? s.starActive : s.starInactive}>{isFav ? '' : ''}</Text>
                         </TouchableOpacity>
                         <Text style={s.foodAdd}>+</Text>
                       </TouchableOpacity>
@@ -555,7 +555,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
                   <Text style={s.empty}>
                     {search
                       ? 'No matching recipes.'
-                      : 'No recipes yet. Tap "🍳 New Recipe" to build one.'}
+                      : 'No recipes yet. Tap "New Recipe" to build one.'}
                   </Text>
                 ) : null}
                 {filteredRecipes.map(r => (
@@ -581,7 +581,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
                       onPress={() => deleteRecipeItem(r)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <Text style={[s.starInactive, { fontSize: 16, paddingHorizontal: 6 }]}>🗑</Text>
+                      <Text style={[s.starInactive, { fontSize: 16, paddingHorizontal: 6 }]}></Text>
                     </TouchableOpacity>
                     <Text style={s.foodAdd}>+</Text>
                   </TouchableOpacity>
@@ -622,7 +622,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
                         </View>
                       </View>
                       <TouchableOpacity onPress={() => toggleFavorite(f)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                        <Text style={isFav ? s.starActive : s.starInactive}>{isFav ? '★' : '☆'}</Text>
+                        <Text style={isFav ? s.starActive : s.starInactive}>{isFav ? '' : ''}</Text>
                       </TouchableOpacity>
                       <Text style={s.foodAdd}>+</Text>
                     </TouchableOpacity>

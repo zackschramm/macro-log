@@ -302,7 +302,7 @@ export default function GlucoseScreen({ onClose }: { onClose: () => void }) {
               disabled={aiLoading}
             >
               <Text style={s.aiBtnText}>
-                {aiLoading ? 'Analyzing…' : showAI && aiExplanation ? 'Refresh AI Explanation' : '✨ What does this mean?'}
+                {aiLoading ? 'Analyzing…' : showAI && aiExplanation ? 'Refresh AI Explanation' : 'What does this mean?'}
               </Text>
             </TouchableOpacity>
           )}

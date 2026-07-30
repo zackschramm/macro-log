@@ -2,7 +2,7 @@
  * MusicControlWidget
  *
  * Compact collapsible music control widget for the workout screen.
- * Collapsed: a slim pill showing 🎵 + current status (tap to expand).
+ * Collapsed: a slim pill showing + current status (tap to expand).
  * Expanded: a panel with three tabs:
  *   1. Local File  — pick any audio file via expo-document-picker, play/pause via expo-av
  *   2. Apple Music — text search → deep-link to Apple Music app (or web fallback)
@@ -101,7 +101,7 @@ export default function MusicControlWidget({
         onPress={() => setExpanded(true)}
         activeOpacity={0.75}
       >
-        <Text style={s.pillIcon}>{isHypePlaying ? '▶' : '🎵'}</Text>
+        <Text style={s.pillIcon}>{isHypePlaying ? '▶' : ''}</Text>
         <Text style={s.pillLabel} numberOfLines={1}>{pillLabel}</Text>
         {isHypePlaying && (
           <TouchableOpacity
@@ -119,9 +119,9 @@ export default function MusicControlWidget({
   // ── Expanded panel ────────────────────────────────────────────────────────
 
   const tabs: Array<{ id: Tab; label: string }> = [
-    { id: 'local',   label: '📁 File' },
-    { id: 'apple',   label: '🍎 Apple Music' },
-    { id: 'spotify', label: '🟢 Spotify' },
+    { id: 'local',   label: 'File' },
+    { id: 'apple',   label: 'Apple Music' },
+    { id: 'spotify', label: 'Spotify' },
   ];
 
   return (
@@ -129,7 +129,7 @@ export default function MusicControlWidget({
 
       {/* Panel header */}
       <View style={s.panelHeader}>
-        <Text style={s.panelTitle}>🎵  Music</Text>
+        <Text style={s.panelTitle}> Music</Text>
         <TouchableOpacity
           onPress={() => setExpanded(false)}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -158,7 +158,7 @@ export default function MusicControlWidget({
         <View style={s.tabContent}>
           <TouchableOpacity style={s.pickBtn} onPress={onPickSong} activeOpacity={0.8}>
             <Text style={s.pickBtnText} numberOfLines={1}>
-              {hypeSongName ? `📁  ${hypeSongName}` : '📁  Pick audio file'}
+              {hypeSongName ? ` ${hypeSongName}` : ' Pick audio file'}
             </Text>
           </TouchableOpacity>
 
@@ -175,7 +175,7 @@ export default function MusicControlWidget({
           ) : (
             <Text style={s.hintText}>
               Pick a local MP3 or AAC file to play as your hype song.{'\n'}
-              Tap the 🔥 on any set to trigger it automatically.
+              Tap the on any set to trigger it automatically.
             </Text>
           )}
         </View>

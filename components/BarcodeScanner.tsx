@@ -124,7 +124,7 @@ export default function BarcodeScanner({ visible, onClose, onResult }: Props) {
 
         {hasPermission === false && (
           <View style={s.center}>
-            <Text style={s.permIcon}>📷</Text>
+            <Text style={s.permIcon}></Text>
             <Text style={s.permTitle}>Camera Access Needed</Text>
             <Text style={s.permSub}>Go to Settings → Fuelog → Camera to enable access.</Text>
             <TouchableOpacity style={s.cancelBtn} onPress={onClose} activeOpacity={0.8}>

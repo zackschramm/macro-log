@@ -266,7 +266,7 @@ export default function MicronutrientsScreen({
                     {loadingTip === n.key ? (
                       <ActivityIndicator size="small" color={colors.accent} style={{ marginTop: 10 }} />
                     ) : tips[n.key] ? (
-                      <Text style={s.tip}>💡 {tips[n.key]}</Text>
+                      <Text style={s.tip}>{tips[n.key]}</Text>
                     ) : null}
                   </View>
                 )}

@@ -200,7 +200,7 @@ export default function FoodsScreen() {
         <Text style={s.title}>My Foods</Text>
         <View style={{ flexDirection: 'row', gap: 8 }}>
           <TouchableOpacity style={[s.addBtn, { backgroundColor: colors.card }]} onPress={() => setUsdaVisible(true)}>
-            <Text style={[s.addBtnText, { color: colors.text }]}>🔍 Search</Text>
+            <Text style={[s.addBtnText, { color: colors.text }]}>Search</Text>
           </TouchableOpacity>
           <TouchableOpacity style={s.addBtn} onPress={openAdd}>
             <Text style={s.addBtnText}>+ Add</Text>
@@ -219,16 +219,16 @@ export default function FoodsScreen() {
         <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
           {filtered.length === 0 && (
             <View style={s.empty}>
-              <Text style={s.emptyIcon}>🥦</Text>
+              <Text style={s.emptyIcon}></Text>
               <Text style={s.emptyTitle}>{search ? 'No results' : 'No foods yet'}</Text>
-              <Text style={s.emptySub}>{search ? 'Try a different search' : 'Tap "🔍 Search" or "+ Add" to build your food list'}</Text>
+              <Text style={s.emptySub}>{search ? 'Try a different search' : 'Tap "Search" or "+ Add" to build your food list'}</Text>
             </View>
           )}
           {filtered.map(food => (
             <TouchableOpacity key={food.id} style={s.foodCard} onPress={() => openEdit(food)} activeOpacity={0.7}>
               {food.image_url
                 ? <Image source={{ uri: food.image_url }} style={s.foodThumb} />
-                : <View style={s.foodThumbPlaceholder}><Text style={s.foodThumbEmoji}>🍽️</Text></View>
+                : <View style={s.foodThumbPlaceholder}><Text style={s.foodThumbEmoji}></Text></View>
               }
               <View style={s.foodInfo}>
                 <Text style={s.foodName}>{food.name}</Text>
@@ -283,7 +283,7 @@ export default function FoodsScreen() {
             <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingTop: 8, paddingBottom: 40 }}>
               {usdaResults.length === 0 && !usdaSearching && (
                 <View style={s.empty}>
-                  <Text style={s.emptyIcon}>🔍</Text>
+                  <Text style={s.emptyIcon}></Text>
                   <Text style={s.emptyTitle}>Search Foods</Text>
                   <Text style={s.emptySub}>Powered by the USDA food database</Text>
                 </View>
@@ -327,7 +327,7 @@ export default function FoodsScreen() {
                 {imageUri
                   ? <Image source={{ uri: imageUri }} style={s.photoPreview} />
                   : <View style={s.photoPlaceholder}>
-                      <Text style={s.photoPlaceholderIcon}>📷</Text>
+                      <Text style={s.photoPlaceholderIcon}></Text>
                       <Text style={s.photoPlaceholderText}>Add Photo</Text>
                     </View>
                 }

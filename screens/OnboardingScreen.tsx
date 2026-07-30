@@ -338,7 +338,7 @@ export default function OnboardingScreen({
 
   const stepSummary = macros ? (
     <View style={s.summaryWrap}>
-      <Text style={s.summaryHeading}>You're all set 🎉</Text>
+      <Text style={s.summaryHeading}>You're all set</Text>
       <Text style={s.summarySubheading}>
         {hasFullStats
           ? 'Your daily targets, from your metabolic rate'

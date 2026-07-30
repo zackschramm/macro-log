@@ -15,6 +15,14 @@ import { buildCoachContext } from '../utils/buildCoachContext';
 import { logError } from '../utils/logError';
 import { track, EVENTS } from '../utils/analytics';
 import { requireAIAccess } from '../utils/proGate';
+import { publishTodaySessions } from '../utils/sessionMapping';
+import { toLocalDateString } from '../utils/dateUtils';
+// useHealthKit directly, not useHealth — `getWorkoutHistory` exists only on
+// the HealthKit hook, not the Health Connect one, so `useHealth()`'s union
+// type doesn't expose it. WorkoutScreen does the same. Android therefore has
+// no session history yet; the endurance briefing degrades to everything
+// except today's training until Health Connect grows a workouts reader.
+import { useHealthKit, STORAGE_PREFERRED_TRACKER, buildSourcePrefs } from '../hooks/useHealthKit';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -121,12 +129,13 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
   const { colors } = useTheme();
   const s = makeStyles(colors);
   const { user } = useAuth();
+  const health = useHealthKit();
 
   const defaultGreeting: Message = {
     role: 'assistant',
     content: initialExercise
       ? `Hey! Let's talk about the **${initialExercise}**. I'll break down the form, key cues, and common mistakes. What would you like to know?`
-      : `Hey! I'm your AI coach 💪\n\nAsk me anything — how to do a lift, form tips, what muscles an exercise targets, programming questions, or anything else fitness related.\n\nWhat's on your mind?`,
+      : `Hey! I'm your AI coach.\n\nAsk me anything — how to do a lift, form tips, what muscles an exercise targets, programming questions, or anything else fitness related.\n\nWhat's on your mind?`,
   };
 
   const [messages, setMessages] = useState<Message[]>([defaultGreeting]);
@@ -183,7 +192,28 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
 
   useEffect(() => {
     if (!user?.id) return;
-    buildCoachContext(user.id).then(setCoachContext).catch(() => {});
+    (async () => {
+      // Refresh today's sessions BEFORE building the context.
+      //
+      // Targets are computed from completed training, so they're only right if
+      // the wearable's numbers have landed first. Previously sessions were only
+      // published when the Workout tab mounted — an athlete who rode, then went
+      // straight to the Coach, got a briefing that thought they hadn't trained,
+      // and therefore a rest-day carbohydrate target on a five-hour day.
+      //
+      // getWorkoutHistory only exists on the hook, so this has to happen in a
+      // component. Fails soft: a stale or missing cache costs today's detail,
+      // never the conversation.
+      try {
+        if (health.isAuthorized) {
+          const tracker = await AsyncStorage.getItem(STORAGE_PREFERRED_TRACKER);
+          const workouts = await health.getWorkoutHistory(2, buildSourcePrefs(tracker));
+          await publishTodaySessions(workouts as any, toLocalDateString(new Date()));
+        }
+      } catch (e) { logError('CoachScreen.refreshSessions', e); }
+
+      buildCoachContext(user.id).then(setCoachContext).catch(() => {});
+    })();
   }, [user?.id]);
 
   const saveHistory = (msgs: Message[]) => {
@@ -302,7 +332,7 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
           accessibilityRole="button"
           accessibilityLabel="Clear conversation"
           accessibilityHint="Deletes your chat history with the Coach">
-          <Text style={s.clearBtnText}>🗑</Text>
+          <Text style={s.clearBtnText}></Text>
         </TouchableOpacity>
       </View>
 

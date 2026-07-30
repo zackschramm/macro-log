@@ -20,7 +20,7 @@ const PHOTO_PROMPT = `Analyze this food photo and estimate the nutritional conte
 Return ONLY valid JSON, no markdown fences, no explanation, no text before or after the JSON:
 {"items":[{"name":string,"calories":number,"protein":number,"carbs":number,"fat":number,"portion":string}],"totals":{"calories":number,"protein":number,"carbs":number,"fat":number},"confidence":"high"|"medium"|"low","notes":string}`;
 
-const CYCLE_EMOJIS = ['🍔', '🥗', '🍜', '🥩', '🍕'];
+const CYCLE_EMOJIS = ['', '', '', '', ''];
 
 type Phase = 'capture' | 'analyzing' | 'results' | 'editing';
 
@@ -202,7 +202,7 @@ export default function FoodPhotoScreen({ visible, date, defaultMeal, onClose, o
             )}
             {!imageUri && (
               <View style={s.placeholderBox}>
-                <Text style={s.placeholderEmoji}>📷</Text>
+                <Text style={s.placeholderEmoji}></Text>
                 <Text style={s.placeholderText}>Take a photo of your meal</Text>
               </View>
             )}

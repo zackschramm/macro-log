@@ -113,7 +113,7 @@ export default function WaterTracker() {
             <View style={[s.barFill, { width: `${pct * 100}%` as any, backgroundColor: barColor }]} />
           </View>
           <Text style={s.barSub}>
-            {goalHit ? 'Goal reached! 💧' : `${r1(Math.max(0, goal - total))} cups to go`}
+            {goalHit ? 'Goal reached!' : `${r1(Math.max(0, goal - total))} cups to go`}
           </Text>
         </TouchableOpacity>
 
@@ -121,7 +121,7 @@ export default function WaterTracker() {
           {([1, 2, 3] as const).map(cups => (
             <TouchableOpacity key={cups} style={s.addBtn} onPress={() => addCups(cups)} activeOpacity={0.7}>
               <Text style={[s.addBtnText, { color: barColor }]}>
-                {cups === 3 ? '🍼 +3 cups' : cups === 1 ? '💧 +1 cup' : '💧 +2 cups'}
+                {cups === 3 ? '+3 cups' : cups === 1 ? '+1 cup' : '+2 cups'}
               </Text>
             </TouchableOpacity>
           ))}

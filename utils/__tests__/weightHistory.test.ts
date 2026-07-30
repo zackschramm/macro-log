@@ -6,7 +6,7 @@
  * separately and tested here.
  */
 import assert from 'node:assert/strict';
-import { dedupeByDate, toWeighIns, latestWeight, WeightEntry } from '../weightHistory';
+import { dedupeByDate, toWeighIns, latestWeight, WeightEntry } from '../weightMerge';
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {

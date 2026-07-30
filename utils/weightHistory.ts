@@ -1,6 +1,6 @@
 import { supabase } from '../constants/supabase';
-import { WeighIn } from './weightTrend';
 import { logError } from './logError';
+import { plausible, toDay, dedupeByDate, type WeightEntry } from './weightMerge';
 
 /**
  * ONE weight history, assembled from every place the app stores weight.
@@ -23,35 +23,12 @@ import { logError } from './logError';
  * are left exactly where they are, so nothing needs migrating and no data can be
  * lost. Every weight-consuming path should use this instead of querying a single
  * table.
+ *
+ * The pure merge helpers live in `weightMerge.ts` so they are testable without
+ * dragging React Native in through the Supabase client; they are re-exported
+ * below so every existing call site keeps working.
  */
-
-export interface WeightEntry extends WeighIn {
-  /** Which table it came from — useful for debugging and for "source" badges. */
-  source: 'manual' | 'measurements' | 'inbody';
-}
-
-/**
- * Priority when two sources report the same date. InBody is a calibrated scale
- * reading, so it wins; a manual Stats entry and a Body Measurements entry are
- * equally trustworthy, so first-seen wins between those.
- */
-const SOURCE_RANK: Record<WeightEntry['source'], number> = {
-  inbody: 3,
-  measurements: 2,
-  manual: 1,
-};
-
-const plausible = (lb: unknown): lb is number =>
-  typeof lb === 'number' && Number.isFinite(lb) && lb > 20 && lb < 1500;
-
-/** Normalise a timestamp or date string to YYYY-MM-DD. */
-function toDay(v: unknown): string | null {
-  if (typeof v !== 'string' || !v) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
-  const d = new Date(v);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0, 10);
-}
+export { dedupeByDate, toWeighIns, latestWeight, type WeightEntry } from './weightMerge';
 
 /**
  * Every known weigh-in for a user, in POUNDS, oldest first, one per day.
@@ -59,7 +36,7 @@ function toDay(v: unknown): string | null {
  * Fails soft per-table: if one query errors the others still return, so a
  * permissions problem on one table degrades the trend rather than emptying it.
  */
-export async function getWeightHistory(userId: string): Promise<WeightEntry[]> {
+export async function getWeightHistory(userId: string): Promise<WeightEntry[]>{
   const [progressRes, measurementsRes, inbodyRes] = await Promise.allSettled([
     supabase.from('progress_logs')
       .select('date, weight_lbs')
@@ -111,29 +88,4 @@ export async function getWeightHistory(userId: string): Promise<WeightEntry[]> {
   }
 
   return dedupeByDate(collected);
-}
-
-/**
- * One entry per day, highest-ranked source winning. Exported separately so it
- * can be unit-tested without a database.
- */
-export function dedupeByDate(entries: WeightEntry[]): WeightEntry[] {
-  const best = new Map<string, WeightEntry>();
-  for (const e of entries) {
-    const existing = best.get(e.date);
-    if (!existing || SOURCE_RANK[e.source] > SOURCE_RANK[existing.source]) {
-      best.set(e.date, e);
-    }
-  }
-  return [...best.values()].sort((a, b) => a.date.localeCompare(b.date));
-}
-
-/** Strip the source tag — what analyzeWeightTrend() takes. */
-export function toWeighIns(entries: WeightEntry[]): WeighIn[] {
-  return entries.map(({ date, weight }) => ({ date, weight }));
-}
-
-/** Most recent weigh-in in pounds, or null. */
-export function latestWeight(entries: WeightEntry[]): number | null {
-  return entries.length ? entries[entries.length - 1].weight : null;
 }

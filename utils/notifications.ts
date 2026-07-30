@@ -33,7 +33,7 @@ export async function scheduleOnboardingNotifications(): Promise<void> {
         await Notifications.scheduleNotificationAsync({
           identifier: 'fuelog_day3_notif',
           content: {
-            title: 'Your AI Coach is ready 💬',
+            title: 'Your AI Coach is ready',
             body: 'Ask it anything about your macros, recovery, or workout plan',
             sound: true,
           },
@@ -51,7 +51,7 @@ export async function scheduleOnboardingNotifications(): Promise<void> {
         await Notifications.scheduleNotificationAsync({
           identifier: 'fuelog_day7_notif',
           content: {
-            title: "You've been using Fuelog for a week! 📈",
+            title: "You've been using Fuelog for a week!",
             body: 'Check your Progress tab to see your macro trend',
             sound: true,
           },
@@ -83,7 +83,7 @@ export async function scheduleWeeklyInsightNotification(): Promise<void> {
 
     const id = await Notifications.scheduleNotificationAsync({
       content: {
-        title: 'Your weekly fitness insight is ready 📊',
+        title: 'Your weekly fitness insight is ready',
         body: 'See how last week went and get your focus for this week.',
         sound: true,
       },
@@ -118,7 +118,7 @@ export async function maybeScheduleProNotification(): Promise<void> {
         await Notifications.scheduleNotificationAsync({
           identifier: 'fuelog_day30_notif',
           content: {
-            title: 'Your 30-day check-in 🏆',
+            title: 'Your 30-day check-in',
             body: 'Ask your AI Coach to review your progress and adjust your targets',
             sound: true,
           },

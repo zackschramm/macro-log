@@ -270,7 +270,7 @@ export default function RecipeBuilderScreen({ visible, onClose, onSaved }: Props
                     ? <Image source={{ uri: photoUri }} style={s.photoPreview} />
                     : (
                       <View style={s.photoPlaceholder}>
-                        <Text style={{ fontSize: 40 }}>📷</Text>
+                        <Text style={{ fontSize: 40 }}></Text>
                         <Text style={s.photoPlaceholderTxt}>Add Photo</Text>
                       </View>
                     )}
