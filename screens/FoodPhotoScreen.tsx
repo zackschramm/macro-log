@@ -12,6 +12,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import SkeletonBox from '../components/SkeletonBox';
 import FoodAnalysisResults, { AnalysisResult, AnalyzedItem } from '../components/FoodAnalysisResults';
+import { useAIGate } from '../hooks/useAIGate';
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE';
 
@@ -32,6 +33,7 @@ type Props = {
 };
 
 export default function FoodPhotoScreen({ visible, date, defaultMeal, onClose, onLogged }: Props) {
+  const { requestAccess, paywall } = useAIGate();
   const { colors } = useTheme();
   const s = makeStyles(colors);
   const { user } = useAuth();
@@ -99,6 +101,8 @@ export default function FoodPhotoScreen({ visible, date, defaultMeal, onClose, o
   const MAX_UPLOAD_WIDTH = 1024;
 
   const analyzePhoto = async () => {
+  // Pro gate: consumes one free trial use, then paywalls.
+  if (!(await requestAccess('food_photo'))) return;
     if (!imageUri) return;
     setPhase('analyzing');
     try {
@@ -178,6 +182,7 @@ export default function FoodPhotoScreen({ visible, date, defaultMeal, onClose, o
   };
 
   return (
+    <>
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={[s.safe, { flex: 1 }]} edges={['top', 'bottom']}>
         <View style={s.handle} />
@@ -290,6 +295,8 @@ export default function FoodPhotoScreen({ visible, date, defaultMeal, onClose, o
         )}
       </SafeAreaView>
     </Modal>
+      {paywall}
+    </>
   );
 }
 

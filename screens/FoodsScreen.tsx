@@ -11,6 +11,7 @@ import BarcodeScanner from '../components/BarcodeScanner';
 import { useAuth } from '../hooks/useAuth';
 import { MC } from '../constants/data';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
+import { useAIGate } from '../hooks/useAIGate';
 
 interface Food {
   id: number;
@@ -26,6 +27,7 @@ interface Food {
 const EMPTY_FORM = { name: '', serving_size: '', calories: '', protein: '', carbs: '', fat: '' };
 
 export default function FoodsScreen() {
+  const { requestAccess, paywall } = useAIGate();
   const { colors } = useTheme();
   const s = makeStyles(colors);
   const { user } = useAuth();
@@ -57,6 +59,8 @@ export default function FoodsScreen() {
 
   const searchUSDA = async () => {
     if (!usdaQuery.trim()) return;
+    // Pro gate: consumes one free trial use, then paywalls.
+    if (!(await requestAccess('food_text'))) return;
     setUsdaSearching(true);
     try {
       const res = await fetch('https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy/food-search', {
@@ -190,6 +194,7 @@ export default function FoodsScreen() {
   const filtered = foods.filter(f => f.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
+    <>
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
         <Text style={s.title}>My Foods</Text>
@@ -378,6 +383,8 @@ export default function FoodsScreen() {
         }}
       />
     </SafeAreaView>
+      {paywall}
+    </>
   );
 }
 

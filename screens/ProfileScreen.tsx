@@ -16,12 +16,13 @@ import FoodsScreen from './FoodsScreen';
 import MealPlanScreen from './MealPlanScreen';
 import NotificationsScreen from './NotificationsScreen';
 import MineralsScreen from './MineralsScreen';
+import CoachMemoryScreen from './CoachMemoryScreen';
 import ReferralScreen from './ReferralScreen';
 import { useAuth } from '../hooks/useAuth';
 import { calculateTargets, MC } from '../constants/data';
 import { useUnits, UnitSystem, KG_PER_LB, CM_PER_IN } from '../constants/units';
 import { colors, radius, weight } from '../constants/theme';
-import { useHealthKit, STORAGE_PREFERRED_TRACKER, STORAGE_HK_SOURCES, SOURCE_PREF_KEYS } from '../hooks/useHealthKit';
+import { useHealth, STORAGE_PREFERRED_TRACKER, STORAGE_HK_SOURCES, SOURCE_PREF_KEYS } from '../hooks/useHealth';
 import { useRestTimer } from '../contexts/RestTimerContext';
 import { WATER_GOAL_KEY, DEFAULT_WATER_GOAL } from '../components/WaterTracker';
 import { getOllamaSettings, setOllamaSettings, pingOllama, DEFAULT_OLLAMA_ENDPOINT, DEFAULT_OLLAMA_MODEL } from '../constants/ollama';
@@ -30,6 +31,7 @@ import {
   WEARABLE_CALLBACK_RESULT_KEY, type Provider,
 } from '../utils/wearables';
 import { toLocalDateString } from '../utils/dateUtils';
+import { logError } from '../utils/logError';
 
 const wearableLabel = (provider: Provider) =>
   provider === 'whoop' ? 'Whoop' : provider === 'oura' ? 'Oura Ring' : 'Garmin';
@@ -64,7 +66,7 @@ const SPORT_OPTIONS = [
   { key: 'wrestling',    label: 'Wrestling/MMA',  emoji: '🥊' },
 ];
 
-type SubScreen = 'foods' | 'plan' | 'minerals' | 'notifs' | 'referral';
+type SubScreen = 'foods' | 'plan' | 'minerals' | 'notifs' | 'referral' | 'memory';
 
 function SubScreenHeader({ title, onBack }: { title: string; onBack: () => void }) {
   return (
@@ -81,7 +83,7 @@ function SubScreenHeader({ title, onBack }: { title: string; onBack: () => void 
 
 export default function ProfileScreen({ profile, onUpdate }: { profile: any; onUpdate: (p: any) => void }) {
   const { user, signOut } = useAuth();
-  const health = useHealthKit();
+  const health = useHealth();
   const u = useUnits();
   const restTimer = useRestTimer();
   const [preferredTracker, setPreferredTracker] = useState('auto');
@@ -124,6 +126,9 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   const [todayNutrients, setTodayNutrients] = useState<Record<string, number>>({});
   const [waterGoalCups, setWaterGoalCups] = useState(DEFAULT_WATER_GOAL);
   const [exporting, setExporting] = useState(false);
+  // Latest measured body fat %, used to upgrade the BMR estimate from
+  // Mifflin-St Jeor to Katch-McArdle and to anchor protein to lean mass.
+  const [bodyFatPct, setBodyFatPct] = useState<number | null>(null);
   const [connectedWearables, setConnectedWearables] = useState<Provider[]>([]);
   const [wearableConnecting, setWearableConnecting] = useState<Provider | null>(null);
   const [dexcomConnected, setDexcomConnected] = useState(false);
@@ -138,6 +143,18 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   const [ollamaEndpoint, setOllamaEndpoint] = useState(DEFAULT_OLLAMA_ENDPOINT);
   const [ollamaModel, setOllamaModel] = useState(DEFAULT_OLLAMA_MODEL);
   const [ollamaTestStatus, setOllamaTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
+
+  // Pull the most recent body-fat reading so targets can use Katch-McArdle.
+  React.useEffect(() => {
+    if (!user?.id) return;
+    supabase.from('inbody_logs').select('body_fat_pct')
+      .eq('user_id', user.id)
+      .not('body_fat_pct', 'is', null)
+      .order('measured_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => setBodyFatPct(data?.body_fat_pct ?? null));
+  }, [user?.id]);
 
   React.useEffect(() => {
     if (subScreen !== 'minerals' || !user?.id) return;
@@ -179,7 +196,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   React.useEffect(() => {
     if (Platform.OS !== 'ios') return;
     AsyncStorage.getItem(STORAGE_PREFERRED_TRACKER).then(val => { if (val) setPreferredTracker(val); });
-    AsyncStorage.getItem(STORAGE_HK_SOURCES).then(val => { if (val) { try { setHkSources(JSON.parse(val)); } catch {} } });
+    AsyncStorage.getItem(STORAGE_HK_SOURCES).then(val => { if (val) { try { setHkSources(JSON.parse(val)); } catch (e) { logError('ProfileScreen.ProfileScreen', e); } } });
     if (user?.id) {
       getConnectedWearables(user.id).then(setConnectedWearables);
       supabase.from('wearable_tokens').select('provider').eq('user_id', user.id).eq('provider', 'dexcom').maybeSingle()
@@ -218,7 +235,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
         } else {
           Alert.alert('Connection failed', `Couldn't connect to ${wearableLabel(provider)}. Please try again.`);
         }
-      } catch {}
+      } catch (e) { logError('ProfileScreen.check', e); }
     };
     check();
     const sub = AppState.addEventListener('change', state => {
@@ -450,16 +467,21 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
 
   const handleSave = async () => {
     setLoading(true);
+    // profileData is what gets written to the `profiles` row. body_fat_pct
+    // lives in inbody_logs (no such column here), so it's kept separate and
+    // only fed into the target math.
     const profileData = {
       weight_lbs: u.toLb(weight), height_in: totalHeightIn,
       age: parseInt(age), sex, activity, goal, sport,
     };
+    const calcInput = { ...profileData, body_fat_pct: bodyFatPct };
+    const auto = calculateTargets(calcInput);
     const targets = customGoals ? {
-      calories: parseInt(customCal) || calculateTargets(profileData).calories,
-      protein: parseInt(customProtein) || calculateTargets(profileData).protein,
-      carbs: parseInt(customCarbs) || calculateTargets(profileData).carbs,
-      fat: parseInt(customFat) || calculateTargets(profileData).fat,
-    } : calculateTargets(profileData);
+      calories: parseInt(customCal) || auto.calories,
+      protein: parseInt(customProtein) || auto.protein,
+      carbs: parseInt(customCarbs) || auto.carbs,
+      fat: parseInt(customFat) || auto.fat,
+    } : auto;
     const periodization_settings = periodizationEnabled ? {
       enabled: true,
       trainingDay: {
@@ -487,6 +509,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
     height_in: totalHeightIn || profile.height_in,
     age: parseInt(age) || profile.age,
     sex, activity, goal, sport,
+    body_fat_pct: bodyFatPct,
   });
 
   const handlePeriodizationToggle = () => {
@@ -577,6 +600,12 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
       <NotificationsScreen />
     </SafeAreaView>
   );
+  if (subScreen === 'memory') return (
+    <SafeAreaView style={s.safe} edges={['top']}>
+      <SubScreenHeader title="Coach Memory" onBack={() => setSubScreen(null)} />
+      <CoachMemoryScreen />
+    </SafeAreaView>
+  );
 
   // ── Main profile view ──────────────────────────────────────────────────────────
   return (
@@ -646,6 +675,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
             { key: 'foods',    icon: 'nutrition-outline',       label: 'My Foods',       sub: 'Custom food database' },
             { key: 'plan',     icon: 'calendar-outline',        label: 'Meal Plan',      sub: 'AI-generated meal plans' },
             { key: 'minerals', icon: 'flask-outline',           label: 'Nutrients',      sub: 'Vitamins & minerals today' },
+            { key: 'memory',   icon: 'sparkles-outline',        label: 'Coach Memory',   sub: 'What Fuelog remembers about you' },
             { key: 'notifs',   icon: 'notifications-outline',   label: 'Notifications',  sub: 'Reminders & alerts' },
           ] as const).map((item, i, arr) => (
             <TouchableOpacity key={item.key} style={[s.linkRow, i < arr.length - 1 && s.linkRowBorder]} onPress={() => setSubScreen(item.key)} activeOpacity={0.7}>

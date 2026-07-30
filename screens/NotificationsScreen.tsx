@@ -7,6 +7,7 @@ import * as Notifications from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
+import { logError } from '../utils/logError';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -78,7 +79,7 @@ export default function NotificationsScreen() {
     try {
       const stored = await AsyncStorage.getItem(STORAGE_KEY);
       if (stored) setSettings(JSON.parse(stored));
-    } catch {}
+    } catch (e) { logError('NotificationsScreen.loadSettings', e); }
   };
 
   const saveSettings = async (newSettings: NotifSetting[]) => {

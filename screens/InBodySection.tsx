@@ -21,6 +21,7 @@ import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/the
 import ShareCardGenerator from '../components/ShareCardGenerator';
 import { maybeRequestReview } from '../utils/storeReview';
 import InBodyCompareModal from '../components/InBodyCompareModal';
+import { requireAIAccess } from '../utils/proGate';
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE';
 
@@ -137,6 +138,10 @@ export default function InBodySection() {
   useEffect(() => { void load(); }, [load]);
 
   const onScan = async () => {
+    // The scan is a VISION call — the display gate below only hid the results,
+    // so free users could burn unlimited vision calls reading InBody sheets.
+    const gate = await requireAIAccess('inbody_scan');
+    if (!gate.allowed) { setShowPaywall(true); return; }
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         base64: true, quality: 0.5, allowsEditing: false,

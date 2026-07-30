@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../constants/supabase';
+import { logError } from './logError';
 
 export const RECIPES_KEY = 'fuelog_recipes';
 
@@ -59,7 +60,7 @@ export async function loadRecipes(userId: string): Promise<Recipe[]> {
       await AsyncStorage.setItem(RECIPES_KEY, JSON.stringify(recipes));
       return recipes;
     }
-  } catch {}
+  } catch (e) { logError('recipes.loadRecipes', e); }
   return getLocal();
 }
 
@@ -89,7 +90,7 @@ export async function saveRecipe(
       await AsyncStorage.setItem(RECIPES_KEY, JSON.stringify([saved, ...existing]));
       return saved;
     }
-  } catch {}
+  } catch (e) { logError('recipes.saveRecipe', e); }
   // AsyncStorage fallback
   const id = `local_${Date.now()}`;
   const saved: Recipe = { ...recipe, id, created_at: new Date().toISOString() };
@@ -106,7 +107,7 @@ export async function deleteRecipe(userId: string, recipeId: string): Promise<vo
         .delete()
         .eq('id', recipeId)
         .eq('user_id', userId);
-    } catch {}
+    } catch (e) { logError('recipes.deleteRecipe', e); }
   }
   const existing = await getLocal();
   await AsyncStorage.setItem(

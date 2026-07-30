@@ -2,7 +2,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../constants/supabase';
 import { getTodayTDEE } from './tdee';
 import { getConnectedWearables, getWhoopData, getOuraData, getGarminData } from './wearables';
+import { getCoachMemories, formatMemoriesForPrompt } from './coachMemory';
+import { analyzeWeightTrend, describeTrend } from './weightTrend';
 import { toLocalDateString } from './dateUtils';
+import { logError } from './logError';
 
 const GOAL_LABELS: Record<string, string> = {
   lose: 'lose fat',
@@ -229,7 +232,7 @@ export async function buildCoachContext(userId: string): Promise<string> {
       lines.push(...wearableLines);
       lines.push('');
     }
-  } catch {}
+  } catch (e) { logError('buildCoachContext.dates', e); }
 
   try {
     const { data: cs } = await supabase.from('cycle_settings')
@@ -254,7 +257,49 @@ export async function buildCoachContext(userId: string): Promise<string> {
       lines.push(`- Average cycle length: ${cycleLen} days`);
       lines.push('');
     }
-  } catch {}
+  } catch (e) { logError('buildCoachContext.cycleDay', e); }
+
+  // Weight trend. The Coach previously saw individual weigh-ins but had no
+  // notion of rate of change, so it couldn't say whether a plan was working.
+  try {
+    const { data: rows } = await supabase
+      .from('body_measurements')
+      .select('date, weight_lb')
+      .eq('user_id', userId)
+      .not('weight_lb', 'is', null)
+      .order('date', { ascending: false })
+      .limit(120);
+
+    const trend = analyzeWeightTrend(
+      (rows ?? []).map((r: any) => ({ date: r.date, weight: r.weight_lb }))
+    );
+
+    if (trend.hasEnoughData && trend.current !== null) {
+      lines.push('WEIGHT TREND:');
+      lines.push(`- Trend weight: ${trend.current} lbs (smoothed — ignores daily water swings)`);
+      lines.push(`- Rate: ${describeTrend(trend)}`);
+      if (trend.totalChange !== null) {
+        lines.push(`- Net change over ${trend.daysTracked} days: ${trend.totalChange > 0 ? '+' : ''}${trend.totalChange} lbs`);
+      }
+      lines.push(
+        '- Use the trend, not the latest scale reading, when judging progress. ' +
+        'A single high or low weigh-in is water, not fat.'
+      );
+      lines.push('');
+    }
+  } catch (e) { logError('buildCoachContext.cycleDay', e); }
+
+  // Durable memories last, immediately before the closing instruction, so they
+  // sit closest to the model's attention at generation time. Fails soft — a
+  // memory outage costs personalisation, never the conversation.
+  try {
+    const memories = await getCoachMemories();
+    const block = formatMemoriesForPrompt(memories);
+    if (block) {
+      lines.push(block);
+      lines.push('');
+    }
+  } catch (e) { logError('buildCoachContext.cycleDay', e); }
 
   lines.push('Always reference this data when relevant. Be specific, not generic.');
 

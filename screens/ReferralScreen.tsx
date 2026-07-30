@@ -11,6 +11,7 @@ import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { hasPro } from '../constants/purchases';
 import { colors, weight, radius } from '../constants/theme';
+import { logError } from '../utils/logError';
 
 interface Props {
   onBack: () => void;
@@ -95,7 +96,7 @@ export default function ReferralScreen({ onBack, profile }: Props) {
         message: `Join me on Fuelog — the best fitness & nutrition tracker.\n\nUse my code ${code} or this link to get 1 month of Pro free:\nhttps://fuelog.app/invite/${code}`,
         url: `https://fuelog.app/invite/${code}`,
       });
-    } catch {}
+    } catch (e) { logError('ReferralScreen.shareLink', e); }
   };
 
   const copyCode = async () => {

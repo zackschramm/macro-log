@@ -8,7 +8,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
-import { LB_PER_KG } from '../constants/units';
+import { LB_PER_KG, CM_PER_IN } from '../constants/units';
+import { deriveMacrosFromCalories, calculateTargets } from '../constants/data';
+import { STATS_BACKFILL_KEY } from '../components/StatsBackfillPrompt';
+import { track, EVENTS } from '../utils/analytics';
 
 const GOAL_OPTIONS = [
   { key: 'lose',     label: 'Lose Fat',           sub: 'Burn fat while preserving muscle' },
@@ -34,17 +37,34 @@ const ACTIVITY_OPTIONS = [
   { key: 'very_active', label: 'Very Active',   sub: 'Athlete or manual labor',             mult: 1.35 },
 ];
 
+const SEX_OPTIONS = [
+  { key: 'male',   label: 'Male'   },
+  { key: 'female', label: 'Female' },
+];
+
+/**
+ * Onboarding FALLBACK calorie estimate.
+ *
+ * Onboarding now asks for height, age, and sex, so the normal path is
+ * calculateTargets() (Mifflin-St Jeor / Katch-McArdle) — the same math Profile
+ * and the TDEE layer use. This cal-per-lb shortcut is only used when one of
+ * those three fields is somehow missing (e.g. a user skips ahead on a future
+ * variant of the flow), so we still produce *something* usable rather than 0s.
+ *
+ * The MACRO SPLIT still goes through the shared deriveMacrosFromCalories so
+ * protein and fat follow the same goal-aware rules as everywhere else.
+ *
+ * This used to be a fourth private copy of the macro math, and its protein
+ * ratios were backwards relative to the evidence (more protein for gaining than
+ * for cutting; the ISSN position stand says the opposite).
+ */
 function calcMacros(goal: string, activity: string, weight_lbs: number) {
   const baseCalMap: Record<string, number> = { lose: 12, gain: 16, maintain: 14 };
-  const protPerLbMap: Record<string, number> = { lose: 0.8, gain: 1.0, maintain: 0.85 };
   const multMap: Record<string, number> = { sedentary: 1.0, light: 1.1, active: 1.2, very_active: 1.35 };
 
   const baseCal = (baseCalMap[goal] ?? 14) * weight_lbs;
   const calories = Math.round(baseCal * (multMap[activity] ?? 1.0));
-  const protein  = Math.round(weight_lbs * (protPerLbMap[goal] ?? 0.85));
-  const fat      = Math.round((calories * 0.25) / 9);
-  const carbs    = Math.round((calories - protein * 4 - fat * 9) / 4);
-  return { calories, protein, fat, carbs };
+  return deriveMacrosFromCalories(calories, { weight_lbs, goal });
 }
 
 export default function OnboardingScreen({
@@ -56,11 +76,22 @@ export default function OnboardingScreen({
   const s = makeStyles(colors);
   const { user } = useAuth();
 
-  const [step, setStep]       = useState(0);   // 0=goal 1=activity 2=weight 3=source 4=summary
+  // 0=goal 1=activity 2=weight 3=body stats (height+age+sex) 4=source 5=summary
+  const QUESTION_COUNT = 5;
+  const SUMMARY_STEP   = QUESTION_COUNT;
+  /** Readable names so funnel drop-off is legible without decoding indices. */
+  const STEP_NAMES = ['goal', 'activity', 'weight', 'body_stats', 'source', 'summary'];
+
+  const [step, setStep]       = useState(0);
   const [goal, setGoal]       = useState('');
   const [activity, setActivity] = useState('');
   const [source, setSource]   = useState('');
   const [weightStr, setWeightStr] = useState('');
+  const [heightFtStr, setHeightFtStr]   = useState('');
+  const [heightInStr, setHeightInStr]   = useState('');
+  const [heightCmStr, setHeightCmStr]   = useState('');
+  const [ageStr, setAgeStr]   = useState('');
+  const [sex, setSex]         = useState('');
   const [isKg, setIsKg]       = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -68,15 +99,31 @@ export default function OnboardingScreen({
     ? (parseFloat(weightStr) || 0) * LB_PER_KG
     : parseFloat(weightStr) || 0;
 
-  const macros = step === 4 && goal && activity && weight_lbs
-    ? calcMacros(goal, activity, weight_lbs)
+  // Canonical storage is always imperial (see constants/units.tsx) — the metric
+  // toggle only changes what we ask for at the input edge.
+  const height_in = isKg
+    ? (parseFloat(heightCmStr) || 0) / CM_PER_IN
+    : (parseInt(heightFtStr, 10) || 0) * 12 + (parseInt(heightInStr, 10) || 0);
+
+  const age = parseInt(ageStr, 10) || 0;
+
+  // Mifflin-St Jeor needs all three. When we have them, targets come from the
+  // shared calculateTargets() — the same function Profile uses — so a new user
+  // gets accurate numbers on day one instead of only after visiting Profile.
+  const hasFullStats = height_in > 0 && age > 0 && !!sex;
+
+  const macros = step === SUMMARY_STEP && goal && activity && weight_lbs
+    ? (hasFullStats
+        ? calculateTargets({ weight_lbs, height_in, age, sex, activity, goal })
+        : calcMacros(goal, activity, weight_lbs))
     : null;
 
   const canNext = () => {
     if (step === 0) return !!goal;
     if (step === 1) return !!activity;
     if (step === 2) return weight_lbs > 0;
-    if (step === 3) return !!source;
+    if (step === 3) return hasFullStats;
+    if (step === 4) return !!source;
     return false;
   };
 
@@ -88,6 +135,9 @@ export default function OnboardingScreen({
         id: user.id,
         name: '',
         weight_lbs,
+        height_in: height_in || null,
+        age: age || null,
+        sex: sex || null,
         unit_system: isKg ? 'metric' : 'imperial',
         goal,
         activity,
@@ -98,6 +148,14 @@ export default function OnboardingScreen({
       if (error) { Alert.alert('Error', error.message); return; }
       await AsyncStorage.setItem('fuelog_onboarding_complete', Date.now().toString());
       await AsyncStorage.setItem('fuelog_weight_unit', isKg ? 'kg' : 'lbs');
+      // New users answered height/age/sex here, so they never need the
+      // one-time backfill banner that existing users get.
+      await AsyncStorage.setItem(STATS_BACKFILL_KEY, 'onboarded');
+      track(EVENTS.ONBOARDING_COMPLETED, {
+        goal, activity, source: source || null,
+        // Did they give us enough for the accurate BMR path?
+        accurate_targets: !!(height_in && age && sex),
+      });
       onComplete(profile, openTab);
     } finally {
       setLoading(false);
@@ -115,6 +173,9 @@ export default function OnboardingScreen({
             key={opt.key}
             style={[s.card, goal === opt.key && s.cardActive]}
             onPress={() => setGoal(opt.key)}
+            accessibilityRole="radio"
+            accessibilityLabel={`${opt.label}. ${opt.sub}`}
+            accessibilityState={{ selected: goal === opt.key }}
             activeOpacity={0.75}
           >
             <Text style={[s.cardLabel, goal === opt.key && s.cardLabelActive]}>{opt.label}</Text>
@@ -134,6 +195,9 @@ export default function OnboardingScreen({
             key={opt.key}
             style={[s.card, activity === opt.key && s.cardActive]}
             onPress={() => setActivity(opt.key)}
+            accessibilityRole="radio"
+            accessibilityLabel={`${opt.label}. ${opt.sub}`}
+            accessibilityState={{ selected: activity === opt.key }}
             activeOpacity={0.75}
           >
             <Text style={[s.cardLabel, activity === opt.key && s.cardLabelActive]}>{opt.label}</Text>
@@ -171,6 +235,85 @@ export default function OnboardingScreen({
     </KeyboardAvoidingView>
   );
 
+  // Height + age + sex in ONE step. These three are what Mifflin-St Jeor needs;
+  // splitting them across three screens would add friction at the top of the
+  // funnel for no benefit.
+  const stepBodyStats = (
+    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={s.stepWrap}>
+      <Text style={s.question}>A few quick stats</Text>
+      <Text style={s.questionSub}>
+        Height, age, and sex let us calculate your calorie needs properly instead of estimating.
+      </Text>
+
+      <Text style={s.inlineLabel}>Height</Text>
+      {isKg ? (
+        <View style={s.statRow}>
+          <TextInput
+            style={[s.statInput, { flex: 1 }]}
+            value={heightCmStr}
+            onChangeText={setHeightCmStr}
+            placeholder="178"
+            placeholderTextColor={colors.textTertiary}
+            keyboardType="number-pad"
+          />
+          <Text style={s.statSuffix}>cm</Text>
+        </View>
+      ) : (
+        <View style={s.statRow}>
+          <TextInput
+            style={[s.statInput, { flex: 1 }]}
+            value={heightFtStr}
+            onChangeText={setHeightFtStr}
+            placeholder="5"
+            placeholderTextColor={colors.textTertiary}
+            keyboardType="number-pad"
+          />
+          <Text style={s.statSuffix}>ft</Text>
+          <TextInput
+            style={[s.statInput, { flex: 1 }]}
+            value={heightInStr}
+            onChangeText={setHeightInStr}
+            placeholder="10"
+            placeholderTextColor={colors.textTertiary}
+            keyboardType="number-pad"
+          />
+          <Text style={s.statSuffix}>in</Text>
+        </View>
+      )}
+
+      <Text style={s.inlineLabel}>Age</Text>
+      <View style={s.statRow}>
+        <TextInput
+          style={[s.statInput, { flex: 1 }]}
+          value={ageStr}
+          onChangeText={setAgeStr}
+          placeholder="28"
+          placeholderTextColor={colors.textTertiary}
+          keyboardType="number-pad"
+        />
+        <Text style={s.statSuffix}>years</Text>
+      </View>
+
+      <Text style={s.inlineLabel}>Sex</Text>
+      <View style={s.unitRow}>
+        {SEX_OPTIONS.map(opt => (
+          <TouchableOpacity
+            key={opt.key}
+            style={[s.unitBtn, sex === opt.key && s.unitBtnActive]}
+            onPress={() => setSex(opt.key)}
+            activeOpacity={0.75}
+            accessibilityRole="radio"
+            accessibilityLabel={opt.label}
+            accessibilityState={{ selected: sex === opt.key }}
+          >
+            <Text style={sex === opt.key ? s.unitBtnTextActive : s.unitBtnText}>{opt.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <Text style={s.statHint}>Used only for the Mifflin-St Jeor metabolic formula.</Text>
+    </KeyboardAvoidingView>
+  );
+
   const stepSource = (
     <View style={s.stepWrap}>
       <Text style={s.question}>How did you hear about Fuelog?</Text>
@@ -180,6 +323,9 @@ export default function OnboardingScreen({
             key={opt.key}
             style={[s.card, source === opt.key && s.cardActive]}
             onPress={() => setSource(opt.key)}
+            accessibilityRole="radio"
+            accessibilityLabel={`${opt.label}. ${opt.sub}`}
+            accessibilityState={{ selected: source === opt.key }}
             activeOpacity={0.75}
           >
             <Text style={[s.cardLabel, source === opt.key && s.cardLabelActive]}>{opt.label}</Text>
@@ -193,7 +339,11 @@ export default function OnboardingScreen({
   const stepSummary = macros ? (
     <View style={s.summaryWrap}>
       <Text style={s.summaryHeading}>You're all set 🎉</Text>
-      <Text style={s.summarySubheading}>Your suggested daily targets</Text>
+      <Text style={s.summarySubheading}>
+        {hasFullStats
+          ? 'Your daily targets, from your metabolic rate'
+          : 'Your suggested daily targets'}
+      </Text>
 
       <View style={s.macroGrid}>
         <View style={s.macroCard}>
@@ -216,11 +366,11 @@ export default function OnboardingScreen({
     </View>
   ) : null;
 
-  const steps = [stepGoal, stepActivity, stepWeight, stepSource];
+  const steps = [stepGoal, stepActivity, stepWeight, stepBodyStats, stepSource];
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
-  if (step === 4) {
+  if (step === SUMMARY_STEP) {
     return (
       <SafeAreaView style={s.safe}>
         <ScrollView contentContainerStyle={s.summaryScroll} showsVerticalScrollIndicator={false}>
@@ -243,9 +393,9 @@ export default function OnboardingScreen({
 
   return (
     <SafeAreaView style={s.safe}>
-      {/* Progress dots (4 dots for 4 questions) */}
+      {/* Progress dots — one per question */}
       <View style={s.dots}>
-        {[0, 1, 2, 3].map(i => (
+        {Array.from({ length: QUESTION_COUNT }, (_, i) => (
           <View key={i} style={[s.dot, i === step && s.dotActive, i < step && s.dotDone]} />
         ))}
       </View>
@@ -256,18 +406,28 @@ export default function OnboardingScreen({
 
       <View style={s.footer}>
         {step > 0 && (
-          <TouchableOpacity style={s.backBtn} onPress={() => setStep(step - 1)}>
+          <TouchableOpacity
+            style={s.backBtn}
+            onPress={() => setStep(step - 1)}
+            accessibilityRole="button"
+            accessibilityLabel="Back">
             <Text style={s.backBtnText}>Back</Text>
           </TouchableOpacity>
         )}
         <TouchableOpacity
           style={[s.nextBtn, step > 0 ? { flex: 1 } : { width: '100%' }]}
           onPress={() => {
-            if (step < 3) { setStep(step + 1); }
-            else { setStep(4); }
+            // Step-level funnel event — this is what shows WHERE people abandon
+            // onboarding, which is currently invisible.
+            track(EVENTS.ONBOARDING_STEP_COMPLETED, { step, name: STEP_NAMES[step] ?? String(step) });
+            setStep(step + 1);
           }}
           disabled={!canNext()}
           activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Continue"
+          accessibilityState={{ disabled: !canNext() }}
+          accessibilityHint={canNext() ? undefined : 'Answer the question above to continue'}
         >
           <Text style={s.nextBtnText}>Continue →</Text>
         </TouchableOpacity>
@@ -286,6 +446,7 @@ function makeStyles(c: ThemeColors) {
     content: { padding: spacing.xl, paddingBottom: 12 },
     stepWrap: { flex: 1 },
     question: { fontSize: 26, fontWeight: weight.heavy, color: c.text, letterSpacing: -0.5, marginBottom: spacing.xxl },
+    questionSub: { fontSize: 14, color: c.textSecondary, fontWeight: weight.regular, marginTop: -spacing.lg, marginBottom: spacing.xl, lineHeight: 20 },
     cardList: { gap: 12 },
     card: {
       backgroundColor: c.card,
@@ -314,6 +475,19 @@ function makeStyles(c: ThemeColors) {
       textAlign: 'center', letterSpacing: -1, marginBottom: spacing.sm,
     },
     weightUnit: { textAlign: 'center', fontSize: 14, color: c.textSecondary, fontWeight: weight.medium },
+    // Body stats step (height / age / sex)
+    inlineLabel: {
+      fontSize: 12, color: c.textSecondary, fontWeight: weight.semibold,
+      textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: spacing.sm,
+    },
+    statRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: spacing.lg },
+    statInput: {
+      backgroundColor: c.card, borderRadius: radius.md, borderWidth: 1.5, borderColor: c.border,
+      color: c.text, paddingVertical: 14, paddingHorizontal: 16, fontSize: 22,
+      fontWeight: weight.bold, textAlign: 'center',
+    },
+    statSuffix: { fontSize: 14, color: c.textSecondary, fontWeight: weight.medium, minWidth: 34 },
+    statHint: { fontSize: 12, color: c.textTertiary, fontWeight: weight.regular, marginTop: spacing.md },
     // Summary
     summaryScroll: { flexGrow: 1, padding: spacing.xl, justifyContent: 'center' },
     summaryWrap:  { alignItems: 'center' },

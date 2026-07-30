@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { hasPro } from '../constants/purchases';
+import { logError } from './logError';
 
 export async function requestNotificationPermission(): Promise<boolean> {
   try {
@@ -59,7 +60,7 @@ export async function scheduleOnboardingNotifications(): Promise<void> {
       }
       await AsyncStorage.setItem('fuelog_day7_notif_scheduled', '1');
     }
-  } catch {}
+  } catch (e) { logError('notifications.scheduleOnboardingNotifications', e); }
 }
 
 export async function scheduleWeeklyInsightNotification(): Promise<void> {
@@ -90,7 +91,7 @@ export async function scheduleWeeklyInsightNotification(): Promise<void> {
     });
 
     await AsyncStorage.setItem('fuelog_weekly_insight_notif_id', id);
-  } catch {}
+  } catch (e) { logError('notifications.scheduleWeeklyInsightNotification', e); }
 }
 
 export async function maybeScheduleProNotification(): Promise<void> {
@@ -126,5 +127,5 @@ export async function maybeScheduleProNotification(): Promise<void> {
       }
       await AsyncStorage.setItem('fuelog_day30_notif_scheduled', '1');
     }
-  } catch {}
+  } catch (e) { logError('notifications.maybeScheduleProNotification', e); }
 }

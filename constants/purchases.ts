@@ -1,5 +1,6 @@
 import Purchases, { LOG_LEVEL } from 'react-native-purchases';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { logError } from '../utils/logError';
 
 const PRO_CACHE_KEY = 'fuelog_has_pro';
 
@@ -16,14 +17,14 @@ export function configureRevenueCat() {
 export async function loginRevenueCat(userId: string) {
   try {
     await Purchases.logIn(userId);
-  } catch {}
+  } catch (e) { logError('purchases.loginRevenueCat', e); }
 }
 
 // Call when the user logs out.
 export async function logoutRevenueCat() {
   try {
     await Purchases.logOut();
-  } catch {}
+  } catch (e) { logError('purchases.logoutRevenueCat', e); }
 }
 
 export async function hasPro(): Promise<boolean> {

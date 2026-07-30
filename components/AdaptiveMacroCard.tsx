@@ -5,6 +5,7 @@ import { supabase } from '../constants/supabase';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { useUnits } from '../constants/units';
 import { toLocalDateString } from '../utils/dateUtils';
+import { logError } from '../utils/logError';
 
 const DISMISS_KEY = 'fuelog_adaptive_macro_dismissed_until';
 
@@ -120,7 +121,7 @@ export default function AdaptiveMacroCard({ userId, profile, onTargetUpdated }: 
       }
 
       setSuggestion(sug);
-    } catch {}
+    } catch (e) { logError('AdaptiveMacroCard.avg', e); }
     setReady(true);
   };
 
@@ -140,7 +141,7 @@ export default function AdaptiveMacroCard({ userId, profile, onTargetUpdated }: 
               await supabase.from('profiles').update({ calories: newCal }).eq('id', userId);
               onTargetUpdated?.();
               handleDismiss();
-            } catch {}
+            } catch (e) { logError('AdaptiveMacroCard.handleApply', e); }
             setApplying(false);
           },
         },

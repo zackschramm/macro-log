@@ -27,6 +27,7 @@ import { toLocalDateString } from '../utils/dateUtils';
 import * as Haptics from 'expo-haptics';
 import SkeletonBox from '../components/SkeletonBox';
 import MicronutrientsScreen from './MicronutrientsScreen';
+import { trackOnce, EVENTS } from '../utils/analytics';
 
 const todayStr = () => toLocalDateString();
 const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -499,6 +500,9 @@ export default function LogScreen({
         onLogged={async (tempId, real) => {
           confirmOptimisticEntry(tempId, real);
           if (!user) return;
+          // The core activation event: a user who never logs food never
+          // activates, so this is the number to watch against signups.
+          trackOnce(EVENTS.FIRST_FOOD_LOGGED);
           if (health.isAuthorized) refreshTdee();
           const weekStart = new Date();
           weekStart.setDate(weekStart.getDate() - weekStart.getDay());

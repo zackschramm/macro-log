@@ -11,6 +11,7 @@ import { callAI } from '../constants/ai';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import SkeletonBox from '../components/SkeletonBox';
 import FoodAnalysisResults, { AnalysisResult, AnalyzedItem } from '../components/FoodAnalysisResults';
+import { useAIGate } from '../hooks/useAIGate';
 
 type Phase = 'input' | 'analyzing' | 'results' | 'editing';
 
@@ -25,6 +26,7 @@ type Props = {
 };
 
 export default function VoiceLogScreen({ visible, date, defaultMeal, initialText, onClose, onLogged }: Props) {
+  const { requestAccess, paywall } = useAIGate();
   const { colors } = useTheme();
   const s = makeStyles(colors);
   const { user } = useAuth();
@@ -65,6 +67,8 @@ export default function VoiceLogScreen({ visible, date, defaultMeal, initialText
   };
 
   const handleSubmit = async () => {
+  // Pro gate: consumes one free trial use, then paywalls.
+  if (!(await requestAccess('voice_log'))) return;
     const trimmed = text.trim();
     if (!trimmed) return;
     setPhase('analyzing');
@@ -124,6 +128,7 @@ export default function VoiceLogScreen({ visible, date, defaultMeal, initialText
   };
 
   return (
+    <>
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={[s.safe, { flex: 1 }]} edges={['top', 'bottom']}>
         <View style={s.handle} />
@@ -240,6 +245,8 @@ export default function VoiceLogScreen({ visible, date, defaultMeal, initialText
         )}
       </SafeAreaView>
     </Modal>
+      {paywall}
+    </>
   );
 }
 

@@ -11,6 +11,11 @@ import { useAuth } from '../hooks/useAuth';
 import { useUnits } from '../constants/units';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { toLocalDateString } from '../utils/dateUtils';
+import { analyzeWeightTrend, detectMilestones, Milestone } from '../utils/weightTrend';
+import { getUnseenMilestones, celebrateAndMaybeAskForReview } from '../utils/milestones';
+import { syncWeightToProfile, describeTargetChange } from '../utils/syncWeightToProfile';
+import WeightTrendCard from '../components/WeightTrendCard';
+import { track, trackOnce, EVENTS } from '../utils/analytics';
 
 const { width } = Dimensions.get('window');
 const CHART_W = width - 64;
@@ -144,6 +149,8 @@ export default function BodyMeasurementsScreen({
   const [loading, setLoading] = useState(true);
   const [logVisible, setLogVisible] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [pendingMilestone, setPendingMilestone] = useState<Milestone | null>(null);
+  const [weightJustLogged, setWeightJustLogged] = useState(false);
 
   const [form, setForm] = useState({
     date: todayStr(),
@@ -253,6 +260,14 @@ export default function BodyMeasurementsScreen({
     setSaving(false);
     resetForm();
     await loadData();
+
+    // Weight changed → BMR changed → targets should follow. Without this the
+    // profile stays pinned to the onboarding weight forever.
+    if (entry.weight_lb != null) {
+      // trackOnce: activation signal, only meaningful the first time.
+      trackOnce(EVENTS.FIRST_WEIGH_IN);
+      setWeightJustLogged(true);
+    }
   };
 
   const deleteEntry = (date: string) => {
@@ -293,6 +308,42 @@ export default function BodyMeasurementsScreen({
     .map(m => ({ date: m.date, value: u.dispWeight(m.weight_lb!) }))
     .reverse();
 
+  // Smoothed weight trend. Merges manual weigh-ins with InBody weights so a
+  // user who only ever scans still gets a trend. Computed in display units so
+  // the card's numbers match everything else on screen.
+  // Raw weigh-ins in canonical POUNDS, merged manual + InBody so a user who
+  // only ever scans still gets a trend.
+  const weighInsLb = React.useMemo(() => {
+    const manualDatesW = new Set(
+      measurements.filter(m => m.weight_lb != null).map(m => m.date)
+    );
+    return [
+      ...measurements
+        .filter(m => m.weight_lb != null)
+        .map(m => ({ date: m.date, weight: m.weight_lb! })),
+      ...inbodyEntries
+        .filter(ib => ib.weight_lb != null && ib.date && !manualDatesW.has(ib.date))
+        .map(ib => ({ date: ib.date, weight: ib.weight_lb! })),
+    ];
+  }, [measurements, inbodyEntries]);
+
+  /** Canonical lb trend — this is what gets written to profiles.weight_lbs. */
+  const weightTrendLb = React.useMemo(
+    () => analyzeWeightTrend(weighInsLb),
+    [weighInsLb]
+  );
+
+  /**
+   * Display-unit trend for the card. Computed separately rather than converting
+   * the lb trend, so a metric user's chart and numbers are in kg while the
+   * profile write above stays in pounds — mixing those up would store kg in a
+   * lbs column.
+   */
+  const weightTrend = React.useMemo(
+    () => analyzeWeightTrend(weighInsLb.map(w => ({ ...w, weight: u.dispWeight(w.weight) }))),
+    [weighInsLb, u.isMetric]
+  );
+
   const waistData: ChartPoint[] = measurements
     .filter(m => m.waist_in != null)
     .map(m => ({ date: m.date, value: u.dispLength(m.waist_in!) }))
@@ -302,6 +353,64 @@ export default function BodyMeasurementsScreen({
     ...measurements.filter(m => m.body_fat_pct != null).map(m => ({ date: m.date, value: m.body_fat_pct! })),
     ...inbodyEntries.filter(ib => ib.body_fat_pct != null && ib.date).map(ib => ({ date: ib.date, value: ib.body_fat_pct! })),
   ].sort((a, b) => a.date.localeCompare(b.date));
+
+  // Recompute targets from the new trend weight after a weigh-in, and tell the
+  // user why their numbers moved. Runs after loadData so the trend already
+  // includes the entry just saved.
+  React.useEffect(() => {
+    if (!weightJustLogged || !user || !weightTrendLb.hasEnoughData) {
+      if (weightJustLogged) setWeightJustLogged(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const latestBf = [...measurements]
+        .filter(m => m.body_fat_pct != null)
+        .sort((a, b) => b.date.localeCompare(a.date))[0]?.body_fat_pct ?? null;
+
+      // weightTrendLb (not weightTrend) — profiles.weight_lbs is pounds.
+      const result = await syncWeightToProfile(user.id, weightTrendLb, { bodyFatPct: latestBf });
+      if (cancelled) return;
+      setWeightJustLogged(false);
+      if (!result.updated) return;
+
+      // Report the change in the user's own units.
+      const msg = describeTargetChange({
+        ...result,
+        previousWeight: result.previousWeight === null ? null : u.dispWeight(result.previousWeight),
+        newWeight: result.newWeight === null ? null : u.dispWeight(result.newWeight),
+      }, u.weightUnit);
+      if (msg) Alert.alert('Targets updated', msg);
+    })();
+    return () => { cancelled = true; };
+  }, [weightJustLogged, user, weightTrendLb, measurements, u.weightUnit]);
+
+  // Surface a newly-earned milestone once the trend is on screen. The review
+  // prompt fires only after the user dismisses it — asking mid-celebration
+  // hijacks the moment, asking just after it rides the good feeling.
+  React.useEffect(() => {
+    if (!visible || !weightTrend.hasEnoughData) return;
+    let cancelled = false;
+    (async () => {
+      // No goal-weight field exists yet, so goal_reached can't fire — the
+      // change and consistency milestones carry this for now.
+      const unseen = await getUnseenMilestones(
+        detectMilestones(weightTrend, { unit: u.weightUnit })
+      );
+      if (cancelled || unseen.length === 0) return;
+      // Show the most significant one; the rest stay unseen for next time.
+      const m = unseen[unseen.length - 1];
+      track(EVENTS.WEIGHT_MILESTONE_SHOWN, { kind: m.kind, key: m.key });
+      setPendingMilestone(m);
+    })();
+    return () => { cancelled = true; };
+  }, [visible, weightTrend, u.weightUnit]);
+
+  const dismissMilestone = async () => {
+    const m = pendingMilestone;
+    setPendingMilestone(null);
+    if (m) await celebrateAndMaybeAskForReview(m);
+  };
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -323,10 +432,7 @@ export default function BodyMeasurementsScreen({
 
             {/* Trend charts */}
             {weightData.length >= 2 && (
-              <View style={s.card}>
-                <Text style={s.cardTitle}>WEIGHT TREND</Text>
-                <SparklineChart data={weightData} color={colors.text} unit={u.weightUnit} />
-              </View>
+              <WeightTrendCard trend={weightTrend} unit={u.weightUnit} />
             )}
             {waistData.length >= 2 && (
               <View style={s.card}>
@@ -492,6 +598,25 @@ export default function BodyMeasurementsScreen({
             </ScrollView>
           </SafeAreaView>
         </Modal>
+
+        {/* Milestone celebration */}
+        <Modal
+          visible={!!pendingMilestone}
+          transparent
+          animationType="fade"
+          onRequestClose={dismissMilestone}
+        >
+          <View style={s.celebrateBackdrop}>
+            <View style={s.celebrateCard}>
+              <Text style={s.celebrateEmoji}>🎉</Text>
+              <Text style={s.celebrateTitle}>{pendingMilestone?.title}</Text>
+              <Text style={s.celebrateBody}>{pendingMilestone?.detail}</Text>
+              <TouchableOpacity style={s.celebrateBtn} onPress={dismissMilestone} activeOpacity={0.8}>
+                <Text style={s.celebrateBtnText}>Nice</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </Modal>
   );
@@ -525,6 +650,30 @@ function makeStyles(c: ThemeColors) {
     metricVal: { fontSize: 16, fontWeight: weight.heavy, color: c.text },
     metricLabel: { fontSize: 10, color: c.textTertiary, fontWeight: weight.semibold, marginTop: 2 },
     timelineNotes: { fontSize: 12, color: c.textTertiary, marginTop: 8, fontStyle: 'italic' },
+    // Milestone celebration
+    celebrateBackdrop: {
+      flex: 1, backgroundColor: 'rgba(0,0,0,0.75)',
+      alignItems: 'center', justifyContent: 'center', padding: spacing.xl,
+    },
+    celebrateCard: {
+      width: '100%', backgroundColor: c.card, borderRadius: radius.card,
+      padding: spacing.xl, alignItems: 'center',
+      borderWidth: 1, borderColor: c.accent + '55',
+    },
+    celebrateEmoji: { fontSize: 40, marginBottom: spacing.sm },
+    celebrateTitle: {
+      fontSize: 20, fontWeight: weight.heavy, color: c.text,
+      textAlign: 'center', marginBottom: spacing.sm,
+    },
+    celebrateBody: {
+      fontSize: 13, lineHeight: 19, color: c.textSecondary,
+      textAlign: 'center', marginBottom: spacing.lg,
+    },
+    celebrateBtn: {
+      backgroundColor: c.accent, borderRadius: radius.pill,
+      paddingVertical: 12, paddingHorizontal: 44,
+    },
+    celebrateBtnText: { color: c.accentText, fontSize: 15, fontWeight: weight.bold },
     // Form modal
     formSafe: { flex: 1, backgroundColor: c.bgSecondary },
     formHeader: {

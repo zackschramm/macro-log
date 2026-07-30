@@ -3,7 +3,7 @@ import {
   View, Text, TouchableOpacity, Modal, ScrollView, StyleSheet, Alert, ActivityIndicator,
 } from 'react-native';
 import { supabase } from '../constants/supabase';
-import { getWeeklyAvgTDEE } from '../utils/tdee';
+import { getWeeklyAvgTDEE, USER_GOAL_ADJUSTMENTS } from '../utils/tdee';
 import type { TDEEResult, UserGoal } from '../utils/tdee';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 
@@ -13,16 +13,12 @@ const GOAL_LABELS: Record<UserGoal, string> = {
   maintain: 'Maintain',
 };
 
-const GOAL_ADJ_LABELS: Record<UserGoal, string> = {
-  lose_fat: '−400 cal deficit',
-  build_muscle: '+250 cal surplus',
-  maintain: 'maintenance',
-};
-
-const GOAL_ADJ_VALUES: Record<UserGoal, number> = {
-  lose_fat: -400,
-  build_muscle: 250,
-  maintain: 0,
+// Labels are DERIVED from the shared adjustments so the copy can never drift
+// out of sync with the math again (it previously hardcoded its own numbers).
+const goalAdjLabel = (goal: UserGoal): string => {
+  const adj = USER_GOAL_ADJUSTMENTS[goal];
+  if (adj === 0) return 'maintenance';
+  return `${adj < 0 ? '−' : '+'}${Math.abs(adj)} cal ${adj < 0 ? 'deficit' : 'surplus'}`;
 };
 
 interface Props {
@@ -52,7 +48,7 @@ export default function CalorieBurnModal({ visible, onClose, userId, tdeeData, o
 
   const handleUpdateTarget = () => {
     if (!weeklyAvg) return;
-    const newTarget = Math.round(weeklyAvg + GOAL_ADJ_VALUES[tdeeData.goal]);
+    const newTarget = Math.round(weeklyAvg + USER_GOAL_ADJUSTMENTS[tdeeData.goal]);
     Alert.alert(
       'Update Calorie Target?',
       `Set daily calorie target to ${newTarget.toLocaleString()} cal?\n\nBased on your 7-day average burn (${weeklyAvg.toLocaleString()} cal) adjusted for your ${GOAL_LABELS[tdeeData.goal]} goal.`,
@@ -131,7 +127,7 @@ export default function CalorieBurnModal({ visible, onClose, userId, tdeeData, o
             <View style={s.card}>
               <View style={s.metaRow}>
                 <Text style={s.metaLabel}>Your goal</Text>
-                <Text style={s.metaValue}>{GOAL_LABELS[tdeeData.goal]} · {GOAL_ADJ_LABELS[tdeeData.goal]}</Text>
+                <Text style={s.metaValue}>{GOAL_LABELS[tdeeData.goal]} · {goalAdjLabel(tdeeData.goal)}</Text>
               </View>
               {tdeeData.projectedTdee != null && (
                 <View style={s.metaRow}>

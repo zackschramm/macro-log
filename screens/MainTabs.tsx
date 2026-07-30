@@ -17,6 +17,7 @@ import SocialScreen from './SocialScreen';
 import { useTheme, ThemeColors, weight } from '../constants/theme';
 import { useRestTimer } from '../contexts/RestTimerContext';
 import CancellationSaveModal from '../components/CancellationSaveModal';
+import StatsBackfillPrompt from '../components/StatsBackfillPrompt';
 
 type Tab = {
   key: string;
@@ -117,6 +118,12 @@ export default function MainTabs({ profile, onProfileUpdate, initialTab, forceTa
         {activeTab === 'profile'    && <ProfileScreen profile={profile} onUpdate={onProfileUpdate} />}
       </View>
 
+      {/* One-time nudge for pre-existing users whose profile predates the
+          height/age/sex onboarding step — without those, their targets are
+          still the crude cal-per-lb estimate. Sits above the tab bar so it
+          never blocks the screen, and self-hides once seen. */}
+      <StatsBackfillPrompt profile={profile} onUpdate={onProfileUpdate} />
+
       <RestTimerPill colors={colors} />
 
       <SafeAreaView edges={['bottom']} style={s.tabBar}>
@@ -128,6 +135,12 @@ export default function MainTabs({ profile, onProfileUpdate, initialTab, forceTa
               style={s.tab}
               onPress={() => setActiveTab(tab.key)}
               activeOpacity={0.7}
+              // Tab role + selected state let VoiceOver announce "Coach, tab,
+              // 4 of 8, selected" instead of just reading the label.
+              accessibilityRole="tab"
+              accessibilityLabel={tab.label}
+              accessibilityState={{ selected: active }}
+              accessibilityHint={`Opens the ${tab.label} screen`}
             >
               <Ionicons
                 name={active ? tab.iconActive : tab.icon}

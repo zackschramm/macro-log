@@ -10,7 +10,7 @@ import CycleTrackingScreen from './CycleTrackingScreen';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle, Polyline, Line, Text as SvgText } from 'react-native-svg';
-import { useHealthKit, RecoveryData, WeeklyTrainingLoad, STORAGE_PREFERRED_TRACKER, STORAGE_HK_SOURCES, STORAGE_LAST_SYNC, buildSourcePrefs } from '../hooks/useHealthKit';
+import { useHealth, RecoveryData, WeeklyTrainingLoad, STORAGE_PREFERRED_TRACKER, STORAGE_HK_SOURCES, STORAGE_LAST_SYNC, buildSourcePrefs } from '../hooks/useHealth';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { supabase } from '../constants/supabase';
 import { toLocalDateString } from '../utils/dateUtils';
@@ -18,6 +18,7 @@ import {
   getConnectedWearables, getWhoopData, getWhoopTrends, getOuraData, getGarminData,
   type Provider, type WhoopData, type WhoopTrends, type OuraData, type GarminData,
 } from '../utils/wearables';
+import { logError } from '../utils/logError';
 
 const { width } = Dimensions.get('window');
 const CHART_W = (width - 64) / 2 - 8;
@@ -495,7 +496,7 @@ export default function RecoveryScreen({
   const { colors } = useTheme();
   const s = makeStyles(colors);
   const sc = makeStatCardStyles(colors);
-  const health = useHealthKit();
+  const health = useHealth();
   const [data, setData] = useState<RecoveryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
@@ -667,7 +668,7 @@ export default function RecoveryScreen({
           saveSnapshot({ dexcomData: dex });
         }
       }
-    } catch {}
+    } catch (e) { logError('RecoveryScreen.RecoveryScreen', e); }
 
     // Load cycle phase
     try {
@@ -679,7 +680,7 @@ export default function RecoveryScreen({
         setCyclePhase(phase);
         saveSnapshot({ cyclePhase: phase });
       }
-    } catch {}
+    } catch (e) { logError('RecoveryScreen.RecoveryScreen', e); }
   }, [saveSnapshot]);
 
   useEffect(() => { loadRef.current = load; }, [load]);
@@ -708,7 +709,7 @@ export default function RecoveryScreen({
           setLoading(false);
           setWearablesChecked(true);
         }
-      } catch {}
+      } catch (e) { logError('RecoveryScreen.RecoveryScreen', e); }
       // Fresh data in the background (silent when cache painted).
       load(undefined, hasCacheRef.current);
       loadWearableData();

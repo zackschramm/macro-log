@@ -1,5 +1,6 @@
 import * as StoreReview from 'expo-store-review';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { logError } from './logError';
 
 const LAST_REVIEW_KEY = 'fuelog_last_review_prompt';
 const SIXTY_DAYS_MS = 60 * 24 * 60 * 60 * 1000;
@@ -14,5 +15,5 @@ export async function maybeRequestReview(): Promise<void> {
 
     await AsyncStorage.setItem(LAST_REVIEW_KEY, Date.now().toString());
     await StoreReview.requestReview();
-  } catch {}
+  } catch (e) { logError('storeReview.maybeRequestReview', e); }
 }

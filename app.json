@@ -50,6 +50,7 @@
       ]
     },
     "plugins": [
+      "@sentry/react-native/expo",
       "expo-image-picker",
       [
         "expo-camera",
@@ -65,6 +66,17 @@
         }
       ],
       "react-native-health",
+      [
+        "react-native-health-connect",
+        {
+          "healthConnectPermissions": [
+            "HeartRateVariabilityRmssd", "RestingHeartRate", "HeartRate",
+            "SleepSession", "Steps", "ActiveCaloriesBurned", "TotalCaloriesBurned",
+            "BasalMetabolicRate", "OxygenSaturation", "RespiratoryRate",
+            "Vo2Max", "ExerciseSession"
+          ]
+        }
+      ],
       "./plugins/withWidget",
       "./plugins/withSiriShortcuts",
       "./plugins/withCodeSigningFix",
@@ -74,11 +86,19 @@
         {
           "ios": {
             "deploymentTarget": "15.1"
+          },
+          "android": {
+            "minSdkVersion": 26,
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35
           }
         }
       ]
     ],
     "extra": {
+      "sentryDsn": "",
+      "analyticsEndpoint": "",
+      "analyticsKey": "",
       "eas": {
         "projectId": "d47c3758-3b67-47fa-a584-9353dfd02ce0",
         "build": {

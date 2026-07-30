@@ -13,6 +13,7 @@ import { captureRef } from 'react-native-view-shot';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { useUnits } from '../constants/units';
 import { useHealthKit } from '../hooks/useHealthKit';
+import { logError } from '../utils/logError';
 
 const PHOTOS_KEY = 'fuelog_progress_photos';
 const MAX_PHOTOS = 50;
@@ -169,7 +170,7 @@ export default function ProgressPhotosScreen({ visible, onClose }: Props) {
 
   const cancelAdd = async () => {
     if (pendingUri) {
-      try { await FileSystem.deleteAsync(pendingUri, { idempotent: true }); } catch {}
+      try { await FileSystem.deleteAsync(pendingUri, { idempotent: true }); } catch (e) { logError('ProgressPhotosScreen.cancelAdd', e); }
     }
     setWeightPromptVisible(false);
     setPendingUri(null);
@@ -180,7 +181,7 @@ export default function ProgressPhotosScreen({ visible, onClose }: Props) {
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive', onPress: async () => {
-          try { await FileSystem.deleteAsync(photo.uri, { idempotent: true }); } catch {}
+          try { await FileSystem.deleteAsync(photo.uri, { idempotent: true }); } catch (e) { logError('ProgressPhotosScreen.deletePhoto', e); }
           const updated = photos.filter(p => p.id !== photo.id);
           await savePhotos(updated);
           setPhotos(updated);

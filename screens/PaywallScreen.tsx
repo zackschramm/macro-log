@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Purchases, { PurchasesPackage } from 'react-native-purchases';
 import { ENTITLEMENT_ID } from '../constants/purchases';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
+import { track, EVENTS } from '../utils/analytics';
 
 const FEATURES = [
   { icon: '🤖', label: 'AI Coaching', desc: 'Unlimited AI-powered nutrition & fitness coach' },
@@ -34,6 +35,9 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
   const [restoring, setRestoring] = useState(false);
 
   useEffect(() => {
+    // Denominator of the conversion funnel — without this you can't tell
+    // whether a low conversion rate is a pricing problem or a traffic problem.
+    track(EVENTS.PAYWALL_SHOWN, { trial: !!trialMessage });
     Purchases.getOfferings().then(offerings => {
       const pkgs = offerings.current?.availablePackages ?? [];
       setPackages(pkgs);
@@ -61,6 +65,7 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
     try {
       const { customerInfo } = await Purchases.purchasePackage(pkg);
       if (customerInfo.entitlements.active[ENTITLEMENT_ID]) {
+        track(EVENTS.PAYWALL_CONVERTED, { plan: selected });
         onUnlock();
       }
     } catch (e: any) {
@@ -90,7 +95,12 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
 
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
-      <TouchableOpacity style={s.closeBtn} onPress={onClose}>
+      <TouchableOpacity
+        style={s.closeBtn}
+        onPress={onClose}
+        accessibilityRole="button"
+        accessibilityLabel="Close"
+        accessibilityHint="Dismisses the upgrade screen">
         <Text style={s.closeBtnText}>×</Text>
       </TouchableOpacity>
 
@@ -124,7 +134,10 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
             <TouchableOpacity
               style={[s.planCard, selected === 'yearly' && s.planCardActive]}
               onPress={() => setSelected('yearly')}
-              activeOpacity={0.8}>
+              activeOpacity={0.8}
+              accessibilityRole="radio"
+              accessibilityLabel="Yearly plan, best value"
+              accessibilityState={{ selected: selected === 'yearly' }}>
               <View style={s.planCardInner}>
                 <View style={s.bestValueBadge}>
                   <Text style={s.bestValueText}>BEST VALUE</Text>
@@ -139,7 +152,10 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
             <TouchableOpacity
               style={[s.planCard, selected === 'monthly' && s.planCardActive]}
               onPress={() => setSelected('monthly')}
-              activeOpacity={0.8}>
+              activeOpacity={0.8}
+              accessibilityRole="radio"
+              accessibilityLabel="Monthly plan"
+              accessibilityState={{ selected: selected === 'monthly' }}>
               <View style={s.planCardInner}>
                 <Text style={[s.planName, selected === 'monthly' && s.planNameActive]}>Monthly</Text>
                 <Text style={[s.planPrice, selected === 'monthly' && s.planPriceActive]}>{monthlyPrice}</Text>
@@ -150,7 +166,13 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
           </View>
         )}
 
-        <TouchableOpacity style={s.ctaBtn} onPress={purchase} disabled={purchasing || loading}>
+        <TouchableOpacity
+          style={s.ctaBtn}
+          onPress={purchase}
+          disabled={purchasing || loading}
+          accessibilityRole="button"
+          accessibilityLabel={purchasing ? 'Starting your free trial' : 'Start free trial'}
+          accessibilityState={{ disabled: purchasing || loading, busy: purchasing }}>
           {purchasing
             ? <ActivityIndicator color={colors.accentText} />
             : <Text style={s.ctaBtnText}>Start Free Trial</Text>}

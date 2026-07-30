@@ -14,6 +14,7 @@ import CreateFoodModal from './CreateFoodModal';
 import RecipeBuilderScreen from '../screens/RecipeBuilderScreen';
 import { loadRecipes, deleteRecipe as deleteRecipeUtil, Recipe } from '../utils/recipes';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
+import { useAIGate } from '../hooks/useAIGate';
 
 const RECENT_KEY    = 'fuelog_recent_foods';
 const FAVORITES_KEY = 'fuelog_favorite_foods';
@@ -66,6 +67,7 @@ function suggestMealForNow(): string {
 }
 
 export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOptimisticAdd, onLogged, onLogFailed }: Props) {
+  const { requestAccess, paywall } = useAIGate();
   const { user } = useAuth();
   const { colors } = useTheme();
   const s = makeStyles(colors);
@@ -141,6 +143,8 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
   }, [visible, loadMyFoods, loadRecipesData]);
 
   const searchUSDA = async () => {
+  // Pro gate: consumes one free trial use, then paywalls.
+  if (!(await requestAccess('food_text'))) return;
     if (!search.trim()) return;
     setSearchingUSDA(true);
     setTab('usda');
@@ -745,6 +749,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
           setTab('recipes');
         }}
       />
+      {paywall}
     </>
   );
 }

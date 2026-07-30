@@ -7,12 +7,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { callCoachAI } from '../utils/coachAI';
 import { getSportProfile } from '../constants/sportProfiles';
-import { hasPro } from '../constants/purchases';
 import PaywallScreen from './PaywallScreen';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import SkeletonBox from '../components/SkeletonBox';
 import { useAuth } from '../hooks/useAuth';
 import { buildCoachContext } from '../utils/buildCoachContext';
+import { logError } from '../utils/logError';
+import { track, EVENTS } from '../utils/analytics';
+import { requireAIAccess } from '../utils/proGate';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -25,7 +27,6 @@ interface YoutubeLink {
   url: string;
 }
 
-const COACH_MSG_KEY = 'fuelog_coach_message_count';
 const HISTORY_KEY = 'fuelog_coach_history';
 const MAX_HISTORY = 50;
 
@@ -158,21 +159,24 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
             return;
           }
         }
-      } catch {}
+      } catch (e) { logError('CoachScreen.CoachScreen', e); }
 
       try {
-        const [historyRaw, countRaw] = await AsyncStorage.multiGet([HISTORY_KEY, COACH_MSG_KEY]);
-        const historyStr = historyRaw[1];
-        const countStr = countRaw[1];
+        const historyStr = await AsyncStorage.getItem(HISTORY_KEY);
 
+        let restored = 0;
         if (historyStr) {
           const parsed: Message[] = JSON.parse(historyStr);
-          if (parsed.length > 0) setMessages(parsed);
+          if (parsed.length > 0) { setMessages(parsed); restored = parsed.length; }
         }
 
-        const msgCount = countStr ? parseInt(countStr, 10) : 0;
-        if (msgCount === 0) setShowChips(true);
-      } catch {}
+        // Suggestion chips are for first-time users. This used to key off the
+        // AsyncStorage message counter, which now lives server-side and is never
+        // written here — so it would have read 0 forever and shown chips to
+        // everyone. Conversation history is the better signal anyway.
+        const hasChatted = restored > 1 || (restored === 1 && messages[0]?.role === 'user');
+        if (!hasChatted) setShowChips(true);
+      } catch (e) { logError('CoachScreen.CoachScreen', e); }
       setHistoryLoading(false);
     })();
   }, []);
@@ -197,21 +201,16 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
     const messageText = text || input.trim();
     if (!messageText) return;
 
-    const countStr = await AsyncStorage.getItem(COACH_MSG_KEY);
-    const msgCount = countStr ? parseInt(countStr, 10) : 0;
+    track(EVENTS.COACH_MESSAGE_SENT);
 
-    if (msgCount >= 3) {
-      const isPro = await hasPro();
-      if (!isPro) {
-        pendingMessageRef.current = messageText;
-        paywallMessageRef.current = "You've used your 3 free AI coaching messages. Upgrade to Pro for unlimited coaching.";
-        setShowPaywall(true);
-        return;
-      }
-    }
-
-    if (msgCount < 3) {
-      await AsyncStorage.setItem(COACH_MSG_KEY, String(msgCount + 1));
+    // Server-side gate: checks Pro, then consumes one free trial use.
+    // Replaces the old AsyncStorage counter, which reset on reinstall.
+    const gate = await requireAIAccess('coach');
+    if (!gate.allowed) {
+      pendingMessageRef.current = messageText;
+      paywallMessageRef.current = gate.message ?? 'Upgrade to Pro for unlimited coaching.';
+      setShowPaywall(true);
+      return;
     }
 
     setShowChips(false);
@@ -296,7 +295,13 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
           <Text style={s.title}>AI Coach</Text>
           <Text style={s.subtitle}>Powered by AI</Text>
         </View>
-        <TouchableOpacity style={s.clearBtn} onPress={clearHistory} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <TouchableOpacity
+          style={s.clearBtn}
+          onPress={clearHistory}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Clear conversation"
+          accessibilityHint="Deletes your chat history with the Coach">
           <Text style={s.clearBtnText}>🗑</Text>
         </TouchableOpacity>
       </View>
@@ -348,11 +353,15 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
             maxLength={500}
             returnKeyType="send"
             onSubmitEditing={() => sendMessage()}
+            accessibilityLabel="Message to your Coach"
           />
           <TouchableOpacity
             style={[s.sendBtn, (!input.trim() || loading) && s.sendBtnDisabled]}
             onPress={() => sendMessage()}
-            disabled={!input.trim() || loading}>
+            disabled={!input.trim() || loading}
+            accessibilityRole="button"
+            accessibilityLabel="Send message"
+            accessibilityState={{ disabled: !input.trim() || loading, busy: loading }}>
             <Text style={[s.sendBtnText, (!input.trim() || loading) && s.sendBtnTextDisabled]}>↑</Text>
           </TouchableOpacity>
         </View>

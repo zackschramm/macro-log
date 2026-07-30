@@ -22,6 +22,7 @@ import ShareCardGenerator from '../components/ShareCardGenerator';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import SkeletonBox from '../components/SkeletonBox';
 import { toLocalDateString } from '../utils/dateUtils';
+import { logError } from '../utils/logError';
 
 const { width } = Dimensions.get('window');
 const CHART_WIDTH = width - 64;
@@ -373,11 +374,11 @@ export default function ProgressScreen({ profile }: { profile: any }) {
             if (weekHrv.length > 0) {
               avgHrv = Math.round(weekHrv.reduce((sum, h) => sum + h.value, 0) / weekHrv.length);
             }
-          } catch {}
+          } catch (e) { logError('ProgressScreen.weekHrv', e); }
         }
 
         setWeeklyStats({ avgCalories, avgProtein, workoutCount, avgHrv });
-      } catch {}
+      } catch (e) { logError('ProgressScreen.weekHrv', e); }
       setWeeklyLoading(false);
     };
     fetchWeekly();

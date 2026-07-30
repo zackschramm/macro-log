@@ -19,7 +19,6 @@ import { getSportProfile } from '../constants/sportProfiles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useHealthKit, HealthKitWorkout, WeeklyTrainingLoad, STORAGE_PREFERRED_TRACKER, buildSourcePrefs } from '../hooks/useHealthKit';
 import { useUnits } from '../constants/units';
-import { hasPro } from '../constants/purchases';
 import PaywallScreen from './PaywallScreen';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import ExerciseHistoryModal from '../components/ExerciseHistoryModal';
@@ -27,6 +26,7 @@ import WorkoutProgramScreen, { ProgramExercise } from './WorkoutProgramScreen';
 import WorkoutCalendarModal from '../components/WorkoutCalendarModal';
 import MusicControlWidget from '../components/MusicControlWidget';
 import { toLocalDateString } from '../utils/dateUtils';
+import { requireAIAccess } from '../utils/proGate';
 
 const TEMPLATES_KEY = 'fuelog_workout_templates';
 
@@ -453,15 +453,9 @@ export default function WorkoutScreen({ profile }: { profile?: any }) {
     setBuilderDays(days);
   };
 
-  const AI_FILL_COUNT_KEY = 'fuelog_ai_workout_fill_count';
-
   const generateWorkoutDay = async () => {
-    const countStr = await AsyncStorage.getItem(AI_FILL_COUNT_KEY);
-    const fillCount = countStr ? parseInt(countStr, 10) : 0;
-    if (fillCount >= 3) {
-      const isPro = await hasPro();
-      if (!isPro) { setShowPaywall(true); return; }
-    }
+    const gate = await requireAIAccess('workout_fill');
+    if (!gate.allowed) { setShowPaywall(true); return; }
 
     setGeneratingWorkout(true);
     try {
@@ -501,9 +495,6 @@ Return ONLY a JSON array, nothing else:
         i === builderDayIndex ? { ...d, exercises: [...d.exercises, ...newExercises] } : d
       );
       setBuilderDays(days);
-      const countStr2 = await AsyncStorage.getItem(AI_FILL_COUNT_KEY);
-      const currentCount = countStr2 ? parseInt(countStr2, 10) : 0;
-      await AsyncStorage.setItem(AI_FILL_COUNT_KEY, String(currentCount + 1));
     } catch (e) {
       Alert.alert('Error', 'Could not generate workout. Try again.');
     } finally {

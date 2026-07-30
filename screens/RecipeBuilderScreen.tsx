@@ -12,6 +12,7 @@ import { useAuth } from '../hooks/useAuth';
 import { MC } from '../constants/data';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { saveRecipe, Recipe, RecipeIngredient } from '../utils/recipes';
+import { useAIGate } from '../hooks/useAIGate';
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE';
 
@@ -35,6 +36,7 @@ type Props = {
 };
 
 export default function RecipeBuilderScreen({ visible, onClose, onSaved }: Props) {
+  const { requestAccess, paywall } = useAIGate();
   const { user } = useAuth();
   const { colors } = useTheme();
   const s = makeStyles(colors);
@@ -97,6 +99,8 @@ export default function RecipeBuilderScreen({ visible, onClose, onSaved }: Props
   }, [visible, loadMyFoods]);
 
   const searchUSDA = async () => {
+  // Pro gate: consumes one free trial use, then paywalls.
+  if (!(await requestAccess('recipe'))) return;
     if (!ingredientSearch.trim()) return;
     setSearchingUSDA(true);
     setSearchTab('usda');
@@ -594,6 +598,7 @@ export default function RecipeBuilderScreen({ visible, onClose, onSaved }: Props
           </View>
         </View>
       </Modal>
+      {paywall}
     </>
   );
 }

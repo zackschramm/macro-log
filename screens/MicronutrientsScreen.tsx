@@ -8,6 +8,7 @@ import { useAuth } from '../hooks/useAuth';
 import { callAI } from '../constants/ai';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { toLocalDateString } from '../utils/dateUtils';
+import { useAIGate } from '../hooks/useAIGate';
 
 type MicroKey =
   | 'fiber_g' | 'calcium_mg' | 'iron_mg' | 'vitamin_d_mcg' | 'vitamin_c_mg'
@@ -49,6 +50,7 @@ export default function MicronutrientsScreen({
   date: string;
   onBack: () => void;
 }) {
+  const { requestAccess, paywall } = useAIGate();
   const { colors } = useTheme();
   const s = makeStyles(colors);
   const { user } = useAuth();
@@ -137,6 +139,8 @@ export default function MicronutrientsScreen({
   }, [todayRows]);
 
   const fetchTip = async (n: NutrientDef) => {
+  // Pro gate: consumes one free trial use, then paywalls.
+  if (!(await requestAccess('micronutrients'))) return;
     if (tips[n.key] !== undefined || loadingTip === n.key) return;
     setLoadingTip(n.key);
     try {
@@ -166,6 +170,7 @@ export default function MicronutrientsScreen({
   const currentValues = viewMode === 'today' ? todayTotals : weeklyAvg;
 
   return (
+    <>
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
         <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -271,6 +276,8 @@ export default function MicronutrientsScreen({
         </ScrollView>
       )}
     </SafeAreaView>
+      {paywall}
+    </>
   );
 }
 

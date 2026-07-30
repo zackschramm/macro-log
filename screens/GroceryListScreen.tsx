@@ -7,6 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { callAI } from '../constants/ai';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
+import { logError } from '../utils/logError';
+import { useAIGate } from '../hooks/useAIGate';
 
 const GROCERY_KEY = 'fuelog_grocery_checklist';
 
@@ -91,6 +93,7 @@ export default function GroceryListScreen({
   plan: any[] | null;
   onBack: () => void;
 }) {
+  const { requestAccess, paywall } = useAIGate();
   const { colors } = useTheme();
   const s = makeStyles(colors);
 
@@ -114,7 +117,7 @@ export default function GroceryListScreen({
           setCustomItems(stored.customItems ?? []);
         }
       }
-    } catch {}
+    } catch (e) { logError('GroceryListScreen.GroceryListScreen', e); }
     setLoaded(true);
   }, [currentHash]);
 
@@ -135,6 +138,8 @@ export default function GroceryListScreen({
   }, [currentHash]);
 
   const generate = async () => {
+  // Pro gate: consumes one free trial use, then paywalls.
+  if (!(await requestAccess('grocery_list'))) return;
     if (!plan) return;
     setGenerating(true);
     try {
@@ -224,6 +229,7 @@ Use these sections (include only sections that have items):
   const hasGenerated = sections.length > 0;
 
   return (
+    <>
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}>
         <TouchableOpacity onPress={onBack} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -319,6 +325,8 @@ Use these sections (include only sections that have items):
         </ScrollView>
       )}
     </SafeAreaView>
+      {paywall}
+    </>
   );
 }
 

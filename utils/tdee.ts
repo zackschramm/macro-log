@@ -1,15 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../constants/supabase';
+import { GOAL_ADJUSTMENTS, estimateBmr, USER_GOAL_ADJUSTMENTS } from '../constants/data';
+import type { UserGoal } from '../constants/data';
 import { getTodayBurn, getWeeklyBurnData } from '../hooks/useHealthKit';
 import { toLocalDateString } from './dateUtils';
 
-const GOAL_ADJUSTMENTS: Record<string, number> = {
-  lose: -400,
-  gain: 250,
-  maintain: 0,
-};
-
-export type UserGoal = 'lose_fat' | 'build_muscle' | 'maintain';
+// Re-exported from constants/data so existing importers keep working. The
+// definitions live there because it has no imports, which keeps the macro math
+// testable without a React Native harness.
+export type { UserGoal };
+export { USER_GOAL_ADJUSTMENTS };
 
 export interface TDEEResult {
   bmr: number | null;           // basal calories burned so far today
@@ -22,34 +22,27 @@ export interface TDEEResult {
   goal: UserGoal;
 }
 
-// Mifflin-St Jeor full-day BMR from profile stats; null if stats are incomplete
-function mifflinBmr(p: {
-  weight_lbs?: number | null; height_in?: number | null;
-  age?: number | null; sex?: string | null;
-} | null | undefined): number | null {
-  if (!p?.weight_lbs || !p?.height_in || !p?.age) return null;
-  const kg = p.weight_lbs * 0.453592;
-  const cm = p.height_in * 2.54;
-  return Math.round(
-    p.sex === 'female'
-      ? 10 * kg + 6.25 * cm - 5 * p.age - 161
-      : 10 * kg + 6.25 * cm - 5 * p.age + 5
-  );
-}
-
 export async function getTodayTDEE(userId: string): Promise<TDEEResult> {
   const today = toLocalDateString();
 
-  const [burnData, goalRaw, profileResult, logsResult] = await Promise.all([
+  const [burnData, goalRaw, profileResult, logsResult, inbodyResult] = await Promise.all([
     getTodayBurn(),
     AsyncStorage.getItem('fuelog_onboarding_goal'),
-    supabase.from('profiles').select('goal, weight_lbs, height_in, age, sex').eq('id', userId).single(),
+    supabase.from('profiles').select('goal, weight_lbs, height_in, age, sex, sport').eq('id', userId).single(),
     supabase.from('macro_logs').select('calories').eq('user_id', userId).eq('date', today),
+    // Latest body composition — enables the Katch-McArdle BMR estimate, which
+    // doesn't underestimate muscular users the way Mifflin does.
+    supabase.from('inbody_logs').select('body_fat_pct').eq('user_id', userId)
+      .not('body_fat_pct', 'is', null)
+      .order('measured_at', { ascending: false }).limit(1).maybeSingle(),
   ]);
 
-  const profile = profileResult.data;
+  const profile = profileResult.data
+    ? { ...profileResult.data, body_fat_pct: inbodyResult.data?.body_fat_pct ?? null }
+    : null;
   const rawGoal = goalRaw ?? profile?.goal ?? 'maintain';
-  const adjustment = GOAL_ADJUSTMENTS[rawGoal] ?? 0;
+  const adjustment =
+    GOAL_ADJUSTMENTS[rawGoal as keyof typeof GOAL_ADJUSTMENTS] ?? 0;
   const goal: UserGoal =
     rawGoal === 'lose' ? 'lose_fat' : rawGoal === 'gain' ? 'build_muscle' : 'maintain';
 
@@ -58,7 +51,7 @@ export async function getTodayTDEE(userId: string): Promise<TDEEResult> {
   );
 
   const { bmr, active } = burnData;
-  const estimatedBmr = mifflinBmr(profile);
+  const estimatedBmr = estimateBmr(profile).bmr;
 
   // Require at least one real burn signal from HealthKit — a pure formula
   // estimate adds nothing over the static profile target

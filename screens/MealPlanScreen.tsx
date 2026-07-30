@@ -8,12 +8,14 @@ import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { MC } from '../constants/data';
 import { callAI } from '../constants/ai';
+import { parseMealPlanResponse, validateMealPlan, summarizeIssues } from '../utils/validateMealPlan';
+import { logError } from '../utils/logError';
 import { getSportProfile } from '../constants/sportProfiles';
-import { hasPro } from '../constants/purchases';
 import PaywallScreen from './PaywallScreen';
 import GroceryListScreen from './GroceryListScreen';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { toLocalDateString } from '../utils/dateUtils';
+import { requireAIAccess } from '../utils/proGate';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEALS = ['Breakfast', 'Lunch', 'Dinner', 'Snack'];
@@ -88,8 +90,8 @@ export default function MealPlanScreen({ targets, profile }: {
   useEffect(() => { fetchExisting(); }, [fetchExisting]);
 
   const generatePlan = async () => {
-    const isPro = await hasPro();
-    if (!isPro) { setShowPaywall(true); return; }
+    const gate = await requireAIAccess('meal_plan');
+    if (!gate.allowed) { setShowPaywall(true); return; }
 
     setLoading(true);
     try {
@@ -138,21 +140,38 @@ RULES:
 Format: [{"day":"Monday","meals":[{"meal":"Breakfast","items":[{"name":"Oats","serving":"1 cup dry","calories":300,"protein":10,"carbs":54,"fat":6}],"totals":{"calories":300,"protein":10,"carbs":54,"fat":6}}],"totals":{"calories":${targets.calories},"protein":${targets.protein},"carbs":${targets.carbs},"fat":${targets.fat}}}]
 Complete all 7 days. Valid JSON only.${remainingNote}`;
 
-      const rawText = await callAI([{ role: 'user', content: prompt }]);
-      console.log('AI response length:', rawText.length);
+      // Generate, validate, and retry once. The old code appended a ']' when the
+      // response didn't close — silently saving a truncated week — and never
+      // checked that the macros summed. Macro accuracy is the product, so a
+      // plan that doesn't add up is worse than no plan.
+      let parsed: DayPlan[] | null = null;
+      let lastSummary = '';
 
-      const cleaned = rawText.replace(/```json|```/g, '').trim();
-      const match = cleaned.match(/\[\s*\{[\s\S]*\}/);
-      if (!match) throw new Error('Could not parse meal plan response');
-      let text = match[0];
-      if (!text.trimEnd().endsWith(']')) text = text + ']';
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        const rawText = await callAI([{ role: 'user', content: prompt }]);
+        const candidate = parseMealPlanResponse(rawText);
+        if (!candidate) {
+          lastSummary = 'unparseable or truncated response';
+          logError('MealPlan.parse', new Error(lastSummary), { attempt, len: rawText.length });
+          continue;
+        }
 
-      let parsed: DayPlan[];
-      try {
-        parsed = JSON.parse(text);
-      } catch (e) {
-        console.log('Parse error:', e);
-        throw new Error('Could not parse meal plan response');
+        const result = validateMealPlan(candidate, targets);
+        lastSummary = summarizeIssues(result);
+
+        if (result.ok) {
+          // repaired = totals recomputed from the items the user will log
+          parsed = result.repaired as DayPlan[];
+          if (result.issues.length) {
+            logError('MealPlan.warnings', new Error(lastSummary), { attempt });
+          }
+          break;
+        }
+        logError('MealPlan.invalid', new Error(lastSummary), { attempt });
+      }
+
+      if (!parsed) {
+        throw new Error(`Could not generate a valid meal plan (${lastSummary})`);
       }
 
       const { error: saveError } = await supabase.from('meal_plans').upsert({

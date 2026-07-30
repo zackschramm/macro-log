@@ -8,6 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../constants/supabase';
 import { callAI } from '../constants/ai';
 import { useTheme, spacing, radius, weight } from '../constants/theme';
+import { logError } from '../utils/logError';
+import { useAIGate } from '../hooks/useAIGate';
 
 const { width } = Dimensions.get('window');
 const CHART_W = width - 40;
@@ -82,6 +84,7 @@ function yForValue(v: number): number {
 }
 
 export default function GlucoseScreen({ onClose }: { onClose: () => void }) {
+  const { requestAccess, paywall } = useAIGate();
   const { colors } = useTheme();
   const s = makeStyles(colors);
   const [readings, setReadings] = useState<GlucoseReading[]>([]);
@@ -97,13 +100,15 @@ export default function GlucoseScreen({ onClose }: { onClose: () => void }) {
       const resp = await callCgmProxy({ action: 'readings' });
       if (resp.data?.readings) setReadings(resp.data.readings);
       if (resp.data?.stats) setStats(resp.data.stats);
-    } catch {}
+    } catch (e) { logError('GlucoseScreen.GlucoseScreen', e); }
     setLoading(false);
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
   const handleAIExplain = async () => {
+  // Pro gate: consumes one free trial use, then paywalls.
+  if (!(await requestAccess('glucose_insight'))) return;
     if (!stats) return;
     setAiLoading(true);
     setShowAI(true);
@@ -130,6 +135,7 @@ export default function GlucoseScreen({ onClose }: { onClose: () => void }) {
     : colors.textTertiary;
 
   return (
+    <>
     <SafeAreaView style={s.safe}>
       <View style={s.header}>
         <Text style={s.title}>Glucose</Text>
@@ -314,6 +320,8 @@ export default function GlucoseScreen({ onClose }: { onClose: () => void }) {
         </ScrollView>
       )}
     </SafeAreaView>
+      {paywall}
+    </>
   );
 }
 

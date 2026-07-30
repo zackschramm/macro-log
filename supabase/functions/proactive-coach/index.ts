@@ -225,7 +225,7 @@ serve(async (req) => {
   try {
     const body = await req.json()
     if (typeof body.localHour === 'number') localHour = body.localHour
-  } catch {}
+  } catch (e) { console.error('callClaude failed', e); }
 
   const userId = user.id
   const today = todayStr()

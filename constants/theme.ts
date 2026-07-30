@@ -14,7 +14,11 @@ export const darkColors = {
   accentText:     '#08090B',
   text:           '#F5F6F4',
   textSecondary:  '#9A9D9F',
-  textTertiary:   '#5F6264',
+  // Was #5F6264 — only 2.90:1 against `card`, failing WCAG AA (needs 4.5:1).
+  // #84878A measures 4.93:1 on card / 5.51:1 on bg while staying visually
+  // recessed. This is the lowest-contrast colour in the palette; don't darken
+  // it again without re-checking. Brand lime on bg is 16.91:1 and is fine.
+  textTertiary:   '#84878A',
   border:         '#232527',
   borderStrong:   '#33363A',
   danger:         '#FF4444',

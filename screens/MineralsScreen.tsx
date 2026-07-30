@@ -6,11 +6,11 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
-import { hasPro } from '../constants/purchases';
 import { useUnits } from '../constants/units';
 import PaywallScreen from './PaywallScreen';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { toLocalDateString } from '../utils/dateUtils';
+import { requireAIAccess } from '../utils/proGate';
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE';
 
@@ -155,15 +155,9 @@ export default function MineralsScreen({ profile }: Props) {
     loadBloodwork();
   }, [user]);
 
-  const BLOODWORK_SCAN_KEY = 'fuelog_bloodwork_scan_count';
-
   const uploadBloodwork = useCallback(async () => {
-    const countStr = await AsyncStorage.getItem(BLOODWORK_SCAN_KEY);
-    const scanCount = countStr ? parseInt(countStr, 10) : 0;
-    if (scanCount >= 3) {
-      const isPro = await hasPro();
-      if (!isPro) { setShowPaywall(true); return; }
-    }
+    const gate = await requireAIAccess('bloodwork_scan');
+    if (!gate.allowed) { setShowPaywall(true); return; }
 
     const result = await ImagePicker.launchImageLibraryAsync({
       base64: true, quality: 0.5, allowsEditing: false,
@@ -192,9 +186,6 @@ export default function MineralsScreen({ profile }: Props) {
       const text = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
       const parsed = JSON.parse(text);
       if (parsed.error) { Alert.alert('Could not read lab results', 'Please try a clearer image.'); return; }
-      const countStr2 = await AsyncStorage.getItem(BLOODWORK_SCAN_KEY);
-      const currentCount = countStr2 ? parseInt(countStr2, 10) : 0;
-      await AsyncStorage.setItem(BLOODWORK_SCAN_KEY, String(currentCount + 1));
       const today = toLocalDateString();
       await supabase.from('bloodwork').upsert({ user_id: user!.id, date: today, results: parsed }, { onConflict: 'user_id,date' });
       setBloodworkResults(parsed);

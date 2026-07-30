@@ -14,6 +14,7 @@ import MainTabs from './screens/MainTabs';
 import ResetPasswordScreen from './screens/ResetPasswordScreen';
 import { supabase } from './constants/supabase';
 import { configureRevenueCat, loginRevenueCat, logoutRevenueCat } from './constants/purchases';
+import { migrateLegacyTrialCounts } from './utils/proGate';
 import { UnitsProvider } from './constants/units';
 import { RestTimerProvider } from './contexts/RestTimerContext';
 import {
@@ -21,6 +22,13 @@ import {
   scheduleOnboardingNotifications,
   maybeScheduleProNotification,
 } from './utils/notifications';
+import { initErrorReporting, logError, setErrorUser } from './utils/logError';
+import { identify } from './utils/analytics';
+
+// Crash reporting first, so anything that blows up during the rest of module
+// init is captured. No-ops cleanly until a Sentry DSN is configured —
+// see the "WHERE TO PASTE YOUR SENTRY DSN" comment in utils/logError.ts.
+initErrorReporting();
 
 // Configure RevenueCat once when the module loads — before any component mounts.
 configureRevenueCat();
@@ -133,7 +141,13 @@ function AppContent() {
   useEffect(() => {
     let cancelled = false;
     if (session?.user) {
+      setErrorUser(session.user.id);
+      identify(session.user.id);
       loginRevenueCat(session.user.id);
+      // One-time move of the old device-local AI trial counters to the server.
+      // Without it, everyone updating from a previous build would get a fresh
+      // set of free uses. No-ops after the first success; retries on failure.
+      migrateLegacyTrialCounts();
       supabase.from('profiles').select('*').eq('id', session.user.id).single()
         .then(async ({ data, error }) => {
           if (cancelled) return;
@@ -168,6 +182,8 @@ function AppContent() {
           }
         });
     } else {
+      setErrorUser(null);
+      identify(null);
       logoutRevenueCat();
       setProfile(null);
       setProfileLoading(false);

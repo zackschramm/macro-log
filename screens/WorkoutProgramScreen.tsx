@@ -9,6 +9,7 @@ import { callAI } from '../constants/ai';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { toLocalDateString } from '../utils/dateUtils';
+import { useAIGate } from '../hooks/useAIGate';
 
 export interface ProgramExercise {
   name: string;
@@ -46,6 +47,7 @@ const EXPERIENCE = [
 ];
 
 export default function WorkoutProgramScreen({ visible, onClose, onStartDay }: Props) {
+  const { requestAccess, paywall } = useAIGate();
   const { colors } = useTheme();
   const s = makeStyles(colors);
   const { user } = useAuth();
@@ -161,6 +163,8 @@ Requirements:
   };
 
   const generateProgram = async () => {
+  // Pro gate: consumes one free trial use, then paywalls.
+  if (!(await requestAccess('workout_program'))) return;
     setGenerating(true);
     setGeneratedProgram(null);
     try {
@@ -444,6 +448,7 @@ Requirements:
   );
 
   return (
+    <>
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
         <View style={s.header}>
@@ -465,6 +470,8 @@ Requirements:
         {tab === 'program' ? renderMyProgram() : renderGenerate()}
       </SafeAreaView>
     </Modal>
+      {paywall}
+    </>
   );
 }
 

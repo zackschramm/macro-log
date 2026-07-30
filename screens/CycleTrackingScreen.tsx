@@ -8,6 +8,7 @@ import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme, spacing, radius, weight } from '../constants/theme';
 import { toLocalDateString } from '../utils/dateUtils';
+import { logError } from '../utils/logError';
 
 type CycleSettings = {
   cycle_length_days: number;
@@ -124,7 +125,7 @@ export default function CycleTrackingScreen({
           setPhase(computePhase(data.last_period_start, data.cycle_length_days, data.period_length_days));
         }
       }
-    } catch {}
+    } catch (e) { logError('CycleTrackingScreen.CycleTrackingScreen', e); }
     setLoading(false);
   }, [user?.id]);
 

@@ -6,6 +6,7 @@ import AppleHealthKit, {
   HealthValue,
 } from 'react-native-health';
 import { toLocalDateString } from '../utils/dateUtils';
+import { logError } from '../utils/logError';
 
 const isHealthAvailable = Platform.OS === 'ios' && AppleHealthKit && typeof AppleHealthKit.isAvailable === 'function';
 
@@ -992,7 +993,7 @@ export function useHealthKit() {
     if (!moduleAuthorized || Platform.OS !== 'ios') return;
     const types = ['Workout', 'HeartRate', 'RestingHeartRate'];
     types.forEach((type) => {
-      try { (AppleHealthKit as any).setObserver({ type }); } catch {}
+      try { (AppleHealthKit as any).setObserver({ type }); } catch (e) { logError('useHealthKit.registerObservers', e); }
     });
     // Trigger an immediate refresh so the caller's data is current after setup.
     onNewData();
