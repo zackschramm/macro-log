@@ -61,7 +61,12 @@ async function refreshWhoop(userId: string, staleAccessToken?: string | null): P
   }
 
   let row = await readRow()
-  if (!row?.refresh_token) return null
+  // No refresh token stored at all. This is PERMANENT, not transient — it means
+  // the grant was created without the `offline` scope (every connection made
+  // before 2026-07-30). Signal it distinctly so the app can prompt a reconnect
+  // instead of showing an empty Recovery tab forever.
+  if (!row) return null
+  if (!row.refresh_token) throw new Error('reauth_required')
   // Another instance already refreshed while we were waiting on the API.
   if (staleAccessToken && row.access_token && row.access_token !== staleAccessToken) {
     return row.access_token
@@ -72,6 +77,11 @@ async function refreshWhoop(userId: string, staleAccessToken?: string | null): P
     refresh_token: row.refresh_token,
     client_id: Deno.env.get('WHOOP_CLIENT_ID')!,
     client_secret: Deno.env.get('WHOOP_CLIENT_SECRET')!,
+    // Whoop requires `offline` on the REFRESH call too, not just on authorize.
+    // Omit it and the response comes back with a new access token but no new
+    // refresh token — so the next refresh (after Whoop rotates and invalidates
+    // the old one) fails, and the connection dies a token-lifetime later.
+    scope: 'offline',
   })
   const res = await fetch(WHOOP_TOKEN_URL, {
     method: 'POST',
@@ -86,7 +96,20 @@ async function refreshWhoop(userId: string, staleAccessToken?: string | null): P
     await new Promise((r) => setTimeout(r, 1200))
     row = await readRow()
     if (row?.access_token && row.access_token !== staleAccessToken) return row.access_token
+
+    // invalid_grant means the refresh token is dead for good: either it was
+    // already rotated away, or the user revoked access in their Whoop account.
+    // Retrying will never help, so tell the app to prompt a reconnect.
+    if (tokens.error === 'invalid_grant') throw new Error('reauth_required')
     return null
+  }
+
+  // Whoop rotates refresh tokens and only returns a new one when `offline` was
+  // requested. If it comes back without one, the token we just used is now
+  // invalid and we have nothing to replace it with — surface that immediately
+  // rather than discovering it on the next call.
+  if (!tokens.refresh_token) {
+    console.error('whoop refresh returned no refresh_token — offline scope missing on this grant')
   }
 
   await supabaseAdmin.from('wearable_tokens').update({
@@ -126,7 +149,22 @@ async function whoopFetch(userId: string, path: string): Promise<unknown> {
     })
   }
 
-  if (!res.ok) throw new Error(`whoop_api_error_${res.status}`)
+  // Whoop rate-limits (100 req/min, 10k/day). A 429 used to bubble up as a hard
+  // failure and blank the whole Recovery tab; one retry after the advertised
+  // backoff clears it, since the summary action only makes three calls.
+  if (res.status === 429) {
+    const retryAfter = Math.min(Number(res.headers.get('retry-after')) || 2, 10)
+    await new Promise((r) => setTimeout(r, retryAfter * 1000))
+    res = await fetch(`${WHOOP_API}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+  }
+
+  if (!res.ok) {
+    // 401 after a successful refresh means the grant itself is gone.
+    if (res.status === 401 || res.status === 403) throw new Error('reauth_required')
+    throw new Error(`whoop_api_error_${res.status}`)
+  }
   return res.json()
 }
 
@@ -331,7 +369,20 @@ serve(async (req) => {
         return errorResponse(400, 'Unknown action')
     }
   } catch (err: any) {
+    // Not connected — a normal state, not an error.
     if (err.message === 'no_token') return okResponse(null)
+
+    // The grant is unrecoverable; the user must reconnect. 200 with an explicit
+    // flag rather than a 5xx, so the app can render a "Reconnect Whoop" prompt
+    // instead of treating it as a transient outage and silently retrying.
+    if (err.message === 'reauth_required' || err.message === 'token_refresh_failed') {
+      console.error('whoop-proxy reauth required for user', user.id)
+      return new Response(
+        JSON.stringify({ data: null, reauthRequired: true }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
     console.error('whoop-proxy error:', err)
     return errorResponse(500, err.message ?? 'Internal error')
   }

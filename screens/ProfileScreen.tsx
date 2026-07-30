@@ -472,16 +472,31 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
     // only fed into the target math.
     const profileData = {
       weight_lbs: u.toLb(weight), height_in: totalHeightIn,
-      age: parseInt(age), sex, activity, goal, sport,
+      // parseInt('') is NaN, which Postgres rejects / stores as null. Fall back
+      // to the value already on the profile so saving an unrelated field can't
+      // wipe the user's age.
+      age: parseInt(age, 10) || profile.age || null,
+      sex, activity, goal, sport,
     };
     const calcInput = { ...profileData, body_fat_pct: bodyFatPct };
     const auto = calculateTargets(calcInput);
+
+    // calculateTargets returns all zeros when weight/height/age are incomplete.
+    // Writing that would zero out the user's calorie and macro targets, so if
+    // the math couldn't run we keep whatever they already had.
+    const safeAuto = auto.calories > 0 ? auto : {
+      calories: profile.calories ?? 0,
+      protein: profile.protein ?? 0,
+      carbs: profile.carbs ?? 0,
+      fat: profile.fat ?? 0,
+    };
+
     const targets = customGoals ? {
-      calories: parseInt(customCal) || auto.calories,
-      protein: parseInt(customProtein) || auto.protein,
-      carbs: parseInt(customCarbs) || auto.carbs,
-      fat: parseInt(customFat) || auto.fat,
-    } : auto;
+      calories: parseInt(customCal, 10) || safeAuto.calories,
+      protein: parseInt(customProtein, 10) || safeAuto.protein,
+      carbs: parseInt(customCarbs, 10) || safeAuto.carbs,
+      fat: parseInt(customFat, 10) || safeAuto.fat,
+    } : safeAuto;
     const periodization_settings = periodizationEnabled ? {
       enabled: true,
       trainingDay: {

@@ -11,7 +11,9 @@ import { useAuth } from '../hooks/useAuth';
 import { useUnits } from '../constants/units';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { toLocalDateString } from '../utils/dateUtils';
-import { analyzeWeightTrend, detectMilestones, Milestone } from '../utils/weightTrend';
+import { analyzeWeightTrend, detectMilestones, Milestone, type WeighIn } from '../utils/weightTrend';
+import { getWeightHistory, toWeighIns } from '../utils/weightHistory';
+import { logError } from '../utils/logError';
 import { getUnseenMilestones, celebrateAndMaybeAskForReview } from '../utils/milestones';
 import { syncWeightToProfile, describeTargetChange } from '../utils/syncWeightToProfile';
 import WeightTrendCard from '../components/WeightTrendCard';
@@ -151,6 +153,8 @@ export default function BodyMeasurementsScreen({
   const [saving, setSaving] = useState(false);
   const [pendingMilestone, setPendingMilestone] = useState<Milestone | null>(null);
   const [weightJustLogged, setWeightJustLogged] = useState(false);
+  /** Weight merged across progress_logs + body_measurements + inbody_logs. */
+  const [mergedWeighIns, setMergedWeighIns] = useState<WeighIn[]>([]);
 
   const [form, setForm] = useState({
     date: todayStr(),
@@ -205,6 +209,15 @@ export default function BodyMeasurementsScreen({
           muscle_mass_lb: r.skeletal_muscle_mass_lb ?? null,
         }))
       );
+
+      // Weight also lives in progress_logs (written by the Stats tab). Without
+      // this, a weigh-in logged there was invisible to the trend, the milestones
+      // and the target sync. See utils/weightHistory.ts.
+      try {
+        setMergedWeighIns(toWeighIns(await getWeightHistory(user.id)));
+      } catch (e) {
+        logError('BodyMeasurements.weightHistory', e);
+      }
     } finally {
       setLoading(false);
     }
@@ -314,6 +327,11 @@ export default function BodyMeasurementsScreen({
   // Raw weigh-ins in canonical POUNDS, merged manual + InBody so a user who
   // only ever scans still gets a trend.
   const weighInsLb = React.useMemo(() => {
+    // Prefer the merged history (covers progress_logs too). Fall back to the
+    // locally-loaded rows if that query failed, so the trend degrades rather
+    // than disappearing.
+    if (mergedWeighIns.length) return mergedWeighIns;
+
     const manualDatesW = new Set(
       measurements.filter(m => m.weight_lb != null).map(m => m.date)
     );
@@ -325,7 +343,7 @@ export default function BodyMeasurementsScreen({
         .filter(ib => ib.weight_lb != null && ib.date && !manualDatesW.has(ib.date))
         .map(ib => ({ date: ib.date, weight: ib.weight_lb! })),
     ];
-  }, [measurements, inbodyEntries]);
+  }, [mergedWeighIns, measurements, inbodyEntries]);
 
   /** Canonical lb trend — this is what gets written to profiles.weight_lbs. */
   const weightTrendLb = React.useMemo(

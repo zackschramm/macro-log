@@ -113,7 +113,13 @@ export async function connectWearable(provider: 'whoop' | 'oura'): Promise<boole
   let authUrl: string
   const state = generateState()
   if (provider === 'whoop') {
-    const scopes = 'read:recovery read:cycles read:sleep read:workout read:profile'
+    // `offline` is REQUIRED to receive a refresh_token. Without it Whoop returns
+    // only a ~1-hour access token and no refresh token, so wearable_tokens gets
+    // refresh_token = null, refreshWhoop() can never renew, and sync dies
+    // permanently about an hour after connecting. That was the "Whoop won't
+    // sync" bug — it always worked immediately after connecting, which is what
+    // made it look intermittent rather than structural.
+    const scopes = 'offline read:recovery read:cycles read:sleep read:workout read:profile'
     authUrl = `https://api.prod.whoop.com/oauth/oauth2/auth?client_id=${WHOOP_CLIENT_ID}&redirect_uri=${encodeURIComponent(WHOOP_REDIRECT_URI)}&scope=${encodeURIComponent(scopes)}&response_type=code&state=${state}`
   } else {
     const scopes = 'daily email personal'
@@ -162,6 +168,8 @@ export async function handleWearableRedirect(url: string): Promise<void> {
   }
 
   const resp = await callProxy(`${provider}-proxy`, { action: 'exchange_code', code })
+  // A fresh, successful connection clears any stale reauth flag.
+  if (provider === 'whoop' && !resp.error) await setWhoopReauth(false)
   await AsyncStorage.setItem(WEARABLE_CALLBACK_RESULT_KEY, JSON.stringify({ provider, success: !resp.error }))
 }
 
@@ -207,10 +215,35 @@ function fetchWhoopSummary(): Promise<any> {
   return whoopSummaryInflight
 }
 
+/**
+ * Set when Whoop's grant is dead and the user must reconnect (no refresh token,
+ * revoked access, or a rotated-away token). Screens read this to show a
+ * "Reconnect Whoop" prompt instead of an empty Recovery tab — the failure mode
+ * that made the old bug invisible.
+ */
+export const WHOOP_REAUTH_KEY = 'fuelog_whoop_reauth_required'
+
+export async function isWhoopReauthRequired(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(WHOOP_REAUTH_KEY)) === '1'
+  } catch {
+    return false
+  }
+}
+
+async function setWhoopReauth(needed: boolean): Promise<void> {
+  try {
+    if (needed) await AsyncStorage.setItem(WHOOP_REAUTH_KEY, '1')
+    else await AsyncStorage.removeItem(WHOOP_REAUTH_KEY)
+  } catch { /* non-fatal */ }
+}
+
 export async function getWhoopData(userId: string): Promise<WhoopData | null> {
   try {
     const resp = await fetchWhoopSummary()
     if (resp.error) console.error('whoop summary fetch failed:', resp.error)
+    // The proxy returns 200 + reauthRequired when the grant is unrecoverable.
+    await setWhoopReauth(!!resp.reauthRequired)
     const r = resp.data?.recovery
     const sl = resp.data?.sleep
     if (!r) return null

@@ -86,17 +86,26 @@ export default function StatsBackfillPrompt({
     setSaving(true);
     try {
       const stats = { height_in, age: ageNum, sex };
-      const targets = calculateTargets({
-        weight_lbs: profile?.weight_lbs || 0,
-        height_in,
-        age: ageNum,
-        sex,
-        activity: profile?.activity || 'moderate',
-        goal: profile?.goal || 'maintain',
-        sport: profile?.sport || undefined,
-      });
-      // Never overwrite hand-tuned targets — those users chose their numbers.
-      const patch = profile?.custom_goals ? stats : { ...stats, ...targets };
+      const weightLbs = Number(profile?.weight_lbs) || 0;
+
+      // Guard: calculateTargets returns all zeros when weight is missing
+      // (mifflinBmr can't run without it). Writing that would ZERO OUT the
+      // user's calorie and macro targets — far worse than leaving them alone.
+      // Save the stats regardless; only touch targets when we can compute real
+      // ones, and never when the user set their own.
+      let patch: Record<string, unknown> = stats;
+      if (weightLbs > 0 && !profile?.custom_goals) {
+        const targets = calculateTargets({
+          weight_lbs: weightLbs,
+          height_in,
+          age: ageNum,
+          sex,
+          activity: profile?.activity || 'moderate',
+          goal: profile?.goal || 'maintain',
+          sport: profile?.sport || undefined,
+        });
+        if (targets.calories > 0) patch = { ...stats, ...targets };
+      }
       const { error } = await supabase.from('profiles').update(patch).eq('id', user.id);
       if (error) { Alert.alert('Error', error.message); return; }
       onUpdate({ ...profile, ...patch });

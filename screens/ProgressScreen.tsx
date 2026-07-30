@@ -23,6 +23,9 @@ import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/the
 import SkeletonBox from '../components/SkeletonBox';
 import { toLocalDateString } from '../utils/dateUtils';
 import { logError } from '../utils/logError';
+import { getWeightHistory, toWeighIns, type WeightEntry } from '../utils/weightHistory';
+import { analyzeWeightTrend } from '../utils/weightTrend';
+import { syncWeightToProfile, describeTargetChange } from '../utils/syncWeightToProfile';
 
 const { width } = Dimensions.get('window');
 const CHART_WIDTH = width - 64;
@@ -253,6 +256,8 @@ export default function ProgressScreen({ profile }: { profile: any }) {
   const health = useHealthKit();
   const u = useUnits();
   const [logs, setLogs] = useState<any[]>([]);
+  /** Merged weight from progress_logs + body_measurements + inbody_logs. */
+  const [weightHistory, setWeightHistory] = useState<WeightEntry[]>([]);
   const [macroLogs, setMacroLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [weeklyStats, setWeeklyStats] = useState<WeeklyStats | null>(null);
@@ -274,27 +279,44 @@ export default function ProgressScreen({ profile }: { profile: any }) {
 
   const fetchLogs = useCallback(async () => {
     if (!user) return;
-    const { data } = await supabase.from('progress_logs').select('*').eq('user_id', user.id).order('date');
-    setLogs(data || []);
+    // try/finally: setLoading(false) used to sit after the awaits with no
+    // handler, so any query error left the Stats tab stuck on its spinner
+    // forever with no way to recover but restarting the app.
+    try {
+      const { data } = await supabase.from('progress_logs').select('*').eq('user_id', user.id).order('date');
+      setLogs(data || []);
 
-    const since = new Date();
-    since.setDate(since.getDate() - 30);
-    const { data: mData } = await supabase.from('macro_logs')
-      .select('date, calories, protein, carbs, fat')
-      .eq('user_id', user.id)
-      .gte('date', toLocalDateString(since))
-      .order('date');
+      // Weight lives in three tables (see utils/weightHistory.ts). Reading only
+      // progress_logs meant weight logged in Body Measurements or imported from
+      // an InBody scan never appeared on this screen.
+      try {
+        setWeightHistory(await getWeightHistory(user.id));
+      } catch (e) {
+        logError('ProgressScreen.weightHistory', e);
+      }
 
-    const byDate: Record<string, any> = {};
-    (mData || []).forEach((row: any) => {
-      if (!byDate[row.date]) byDate[row.date] = { date: row.date, calories: 0, protein: 0, carbs: 0, fat: 0 };
-      byDate[row.date].calories += row.calories;
-      byDate[row.date].protein += row.protein;
-      byDate[row.date].carbs += row.carbs;
-      byDate[row.date].fat += row.fat;
-    });
-    setMacroLogs(Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date)));
-    setLoading(false);
+      const since = new Date();
+      since.setDate(since.getDate() - 30);
+      const { data: mData } = await supabase.from('macro_logs')
+        .select('date, calories, protein, carbs, fat')
+        .eq('user_id', user.id)
+        .gte('date', toLocalDateString(since))
+        .order('date');
+
+      const byDate: Record<string, any> = {};
+      (mData || []).forEach((row: any) => {
+        if (!byDate[row.date]) byDate[row.date] = { date: row.date, calories: 0, protein: 0, carbs: 0, fat: 0 };
+        byDate[row.date].calories += row.calories ?? 0;
+        byDate[row.date].protein += row.protein ?? 0;
+        byDate[row.date].carbs += row.carbs ?? 0;
+        byDate[row.date].fat += row.fat ?? 0;
+      });
+      setMacroLogs(Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date)));
+    } catch (e) {
+      logError('ProgressScreen.fetchLogs', e);
+    } finally {
+      setLoading(false);
+    }
   }, [user]);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
@@ -398,6 +420,26 @@ export default function ProgressScreen({ profile }: { profile: any }) {
     console.log('Progress save:', saveError?.message || 'success', JSON.stringify(payload));
     if (form.weight_lbs && health.isAuthorized) await health.saveWeight(u.toLb(form.weight_lbs));
     await fetchLogs();
+
+    // A weigh-in here changes BMR, so targets should follow — same behaviour as
+    // logging in Body Measurements. Without this, weight logged on the Stats tab
+    // left calorie targets pinned to the onboarding weight forever.
+    // Re-fetches rather than reading state: setWeightHistory hasn't flushed yet.
+    if (form.weight_lbs) {
+      try {
+        const trend = analyzeWeightTrend(toWeighIns(await getWeightHistory(user.id)));
+        const result = await syncWeightToProfile(user.id, trend);
+        const msg = describeTargetChange({
+          ...result,
+          previousWeight: result.previousWeight === null ? null : u.dispWeight(result.previousWeight),
+          newWeight: result.newWeight === null ? null : u.dispWeight(result.newWeight),
+        }, u.weightUnit);
+        if (msg) Alert.alert('Targets updated', msg);
+      } catch (e) {
+        logError('ProgressScreen.syncWeight', e);
+      }
+    }
+
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setModalVisible(false);
     setSaving(false);
@@ -418,9 +460,16 @@ export default function ProgressScreen({ profile }: { profile: any }) {
     }
   };
 
-  const weightData = logs.filter(l => l.weight_lbs).map(l => ({ date: l.date, value: u.dispWeight(l.weight_lbs) }));
-  const currentWeight = [...logs].reverse().find(l => l.weight_lbs)?.weight_lbs;
-  const startWeight = logs.find(l => l.weight_lbs)?.weight_lbs;
+  // Sourced from the merged history so a weigh-in logged anywhere in the app
+  // shows up here. Falls back to progress_logs alone if the merge failed, so a
+  // query error degrades the chart rather than blanking it.
+  const weightSeries: { date: string; weight: number }[] = weightHistory.length
+    ? weightHistory
+    : logs.filter(l => l.weight_lbs).map(l => ({ date: l.date, weight: l.weight_lbs }));
+
+  const weightData = weightSeries.map(w => ({ date: w.date, value: u.dispWeight(w.weight) }));
+  const currentWeight = weightSeries.length ? weightSeries[weightSeries.length - 1].weight : undefined;
+  const startWeight = weightSeries.length ? weightSeries[0].weight : undefined;
   const dispCurrent = currentWeight != null ? u.dispWeight(currentWeight) : null;
   const dispStart = startWeight != null ? u.dispWeight(startWeight) : null;
   const dispChange = dispStart != null && dispCurrent != null ? Math.round((dispCurrent - dispStart) * 10) / 10 : null;

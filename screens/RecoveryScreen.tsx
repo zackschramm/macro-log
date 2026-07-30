@@ -16,6 +16,7 @@ import { supabase } from '../constants/supabase';
 import { toLocalDateString } from '../utils/dateUtils';
 import {
   getConnectedWearables, getWhoopData, getWhoopTrends, getOuraData, getGarminData,
+  isWhoopReauthRequired,
   type Provider, type WhoopData, type WhoopTrends, type OuraData, type GarminData,
 } from '../utils/wearables';
 import { logError } from '../utils/logError';
@@ -645,9 +646,17 @@ export default function RecoveryScreen({
     setWearableLoading(false);
     // Whoop returning nothing when it's connected = sync problem worth surfacing.
     if (connected.includes('whoop')) {
-      const whoopFailed = results[0].status === 'rejected' ||
-        (results[0].status === 'fulfilled' && results[0].value == null && !snapshotRef.current.whoopData);
-      if (whoopFailed) setWearableError('Whoop sync failed — pull down to retry');
+      // Distinguish "needs reconnecting" from "transient failure". Retrying will
+      // never fix a dead grant, so telling the user to pull-to-refresh would
+      // leave them stuck forever — which is exactly how the missing-`offline`-
+      // scope bug stayed invisible.
+      if (await isWhoopReauthRequired()) {
+        setWearableError('Whoop needs reconnecting — open Profile → Wearables and connect again');
+      } else {
+        const whoopFailed = results[0].status === 'rejected' ||
+          (results[0].status === 'fulfilled' && results[0].value == null && !snapshotRef.current.whoopData);
+        if (whoopFailed) setWearableError('Whoop sync failed — pull down to retry');
+      }
     }
 
     // Load Dexcom CGM data

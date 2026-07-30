@@ -4,6 +4,7 @@ import { getTodayTDEE } from './tdee';
 import { getConnectedWearables, getWhoopData, getOuraData, getGarminData } from './wearables';
 import { getCoachMemories, formatMemoriesForPrompt } from './coachMemory';
 import { analyzeWeightTrend, describeTrend } from './weightTrend';
+import { getWeightHistory, toWeighIns } from './weightHistory';
 import { toLocalDateString } from './dateUtils';
 import { logError } from './logError';
 
@@ -262,17 +263,9 @@ export async function buildCoachContext(userId: string): Promise<string> {
   // Weight trend. The Coach previously saw individual weigh-ins but had no
   // notion of rate of change, so it couldn't say whether a plan was working.
   try {
-    const { data: rows } = await supabase
-      .from('body_measurements')
-      .select('date, weight_lb')
-      .eq('user_id', userId)
-      .not('weight_lb', 'is', null)
-      .order('date', { ascending: false })
-      .limit(120);
-
-    const trend = analyzeWeightTrend(
-      (rows ?? []).map((r: any) => ({ date: r.date, weight: r.weight_lb }))
-    );
+    // Merged across all three weight tables — reading body_measurements alone
+    // meant a user who logs weight on the Stats tab had no trend at all here.
+    const trend = analyzeWeightTrend(toWeighIns(await getWeightHistory(userId)));
 
     if (trend.hasEnoughData && trend.current !== null) {
       lines.push('WEIGHT TREND:');
