@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Platform } from 'react-native';
-import { bucketByDayAndSource, type RawSample } from '../utils/healthBuckets';
+import { bucketByDayAndSource, SAMPLE_UNITS, type RawSample } from '../utils/healthBuckets';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import AppleHealthKit, {
   HealthKitPermissions,
@@ -50,10 +50,10 @@ const STATISTICS_COLLECTION_UNSAFE =
  */
 function samplesFallback(
   type: 'ActiveEnergyBurned' | 'BasalEnergyBurned' | 'StepCount',
-  unit: string,
   opts: any,
   cb: (err: any, data: any[]) => void
 ) {
+  const { unit, scale } = SAMPLE_UNITS[type] ?? { unit: 'count', scale: 1 };
   try {
     (AppleHealthKit as any).getSamples(
       { ...opts, type, unit },
@@ -67,7 +67,7 @@ function samplesFallback(
           logError(`useHealthKit.samplesFallback.${type}`, err);
           return cb(null, []);
         }
-        const buckets = bucketByDayAndSource(raw ?? []);
+        const buckets = bucketByDayAndSource(raw ?? [], scale);
         // An empty result here is itself the symptom worth knowing about: the
         // query succeeded but HealthKit returned nothing for a range the user
         // has data in.
@@ -85,15 +85,15 @@ function samplesFallback(
 }
 
 function safeGetDailyStepCountSamples(opts: any, cb: (err: any, data: any[]) => void) {
-  if (STATISTICS_COLLECTION_UNSAFE) { samplesFallback('StepCount', 'count', opts, cb); return; }
+  if (STATISTICS_COLLECTION_UNSAFE) { samplesFallback('StepCount', opts, cb); return; }
   (AppleHealthKit as any).getDailyStepCountSamples(opts, cb);
 }
 function safeGetActiveEnergyBurned(opts: any, cb: (err: any, data: any[]) => void) {
-  if (STATISTICS_COLLECTION_UNSAFE) { samplesFallback('ActiveEnergyBurned', 'kilocalorie', opts, cb); return; }
+  if (STATISTICS_COLLECTION_UNSAFE) { samplesFallback('ActiveEnergyBurned', opts, cb); return; }
   AppleHealthKit.getActiveEnergyBurned(opts, cb);
 }
 function safeGetBasalEnergyBurned(opts: any, cb: (err: any, data: any[]) => void) {
-  if (STATISTICS_COLLECTION_UNSAFE) { samplesFallback('BasalEnergyBurned', 'kilocalorie', opts, cb); return; }
+  if (STATISTICS_COLLECTION_UNSAFE) { samplesFallback('BasalEnergyBurned', opts, cb); return; }
   (AppleHealthKit as any).getBasalEnergyBurned(opts, cb);
 }
 
@@ -946,7 +946,22 @@ export function useHealthKit() {
       (AppleHealthKit as any).getSamples(
         { type: 'Workout', startDate: start.toISOString(), endDate: now.toISOString(), ascending: false },
         (err: any, data: any[]) => {
-          if (err || !data?.length) return resolve([]);
+          // Same rule as samplesFallback: fail soft for the UI, but never fail
+          // silently. `fetchSamplesOfType` builds each workout into an
+          // NSDictionary literal and wraps it in @try/@catch — so a single nil
+          // field (productType, metadata) throws, gets NSLogged, and that
+          // workout vanishes with no error and no gap in the array. A source
+          // that writes one nil field disappears entirely and looks to us
+          // exactly like "the user didn't train". See patches/.
+          if (err) {
+            logError('useHealthKit.getWorkoutHistory', err);
+            return resolve([]);
+          }
+          if (!data?.length) {
+            logError('useHealthKit.getWorkoutHistory.empty',
+              new Error(`0 workouts over ${days}d (raw=${Array.isArray(data) ? data.length : typeof data})`));
+            return resolve([]);
+          }
           let workouts: HealthKitWorkout[] = data.map((w: any) => {
             const startDate = w.start ?? w.startDate;
             const endDate = w.end ?? w.endDate;

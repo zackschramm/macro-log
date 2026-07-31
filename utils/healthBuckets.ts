@@ -24,6 +24,35 @@
  * Zero runtime imports.
  */
 
+/**
+ * Unit string + scale factor for each quantity type we read via `getSamples`.
+ *
+ * ── The trap this encodes ───────────────────────────────────────────────────
+ *
+ * react-native-health's TypeScript enum exports `kilocalorie = 'kilocalorie'`
+ * (index.d.ts), but its NATIVE unit parser (`hkUnitFromOptions` in
+ * RCTAppleHealthKit+Utils.m) only recognises these strings:
+ *
+ *   gram kg stone pound meter cm inch mile foot second minute hour day
+ *   joule calorie count percent bpm fahrenheit celsius mmhg mmolPerL
+ *   literPerMinute mgPerdL mlPerKgMin
+ *
+ * "kilocalorie" is NOT among them. An unrecognised string falls through to the
+ * caller's default — which for getSamples is `countUnit` — and then
+ * `doubleValueForUnit:` throws "incompatible units" on every energy sample.
+ * That throw is caught per-sample and only NSLogged, so the query returns an
+ * EMPTY ARRAY WITH NO ERROR. Silent, total data loss that looks exactly like
+ * "the user has no data".
+ *
+ * So: ask for `calorie` (the gram calorie) and scale to kcal ourselves.
+ * 1 kcal = 1000 cal.
+ */
+export const SAMPLE_UNITS: Record<string, { unit: string; scale: number }> = {
+  ActiveEnergyBurned: { unit: 'calorie', scale: 1 / 1000 },
+  BasalEnergyBurned:  { unit: 'calorie', scale: 1 / 1000 },
+  StepCount:          { unit: 'count',   scale: 1 },
+};
+
 export interface RawSample {
   value?: number;
   /** getSamples returns `start`/`end`; the aggregated APIs return `startDate`/`endDate`. */
@@ -43,14 +72,17 @@ export interface Bucket {
   sourceId?: string;
 }
 
-export function bucketByDayAndSource(raw: RawSample[] | null | undefined): Bucket[] {
+export function bucketByDayAndSource(
+  raw: RawSample[] | null | undefined,
+  scale = 1,
+): Bucket[] {
   if (!Array.isArray(raw)) return [];
   const buckets = new Map<string, Bucket>();
 
   for (const s of raw) {
     const startIso = s?.start ?? s?.startDate;
     if (!startIso) continue;                       // undateable sample — drop it
-    const value = typeof s.value === 'number' && Number.isFinite(s.value) ? s.value : 0;
+    const value = (typeof s.value === 'number' && Number.isFinite(s.value) ? s.value : 0) * scale;
     const day = String(startIso).slice(0, 10);
     const source = s.sourceName ?? 'unknown';
     const key = `${day}|${source}`;

@@ -7,7 +7,7 @@
  * that read per-day values.
  */
 import assert from 'node:assert/strict';
-import { bucketByDayAndSource, type RawSample } from '../healthBuckets';
+import { bucketByDayAndSource, SAMPLE_UNITS, type RawSample } from '../healthBuckets';
 
 let passed = 0, failed = 0;
 function test(name: string, fn: () => void) {
@@ -90,6 +90,55 @@ test('the aggregated API shape (startDate/endDate) is accepted too', () => {
 test('buckets expose startDate/endDate, not start/end', () => {
   const out = bucketByDayAndSource([S(1, '2026-07-30T08:00:00Z')]);
   assert.ok('startDate' in out[0] && 'endDate' in out[0]);
+});
+
+console.log('\nUnit scaling — the bug that blanked Stats on iOS 27');
+
+test('energy types ask for `calorie`, never `kilocalorie`', () => {
+  // react-native-health's TS enum exports `kilocalorie`, but its native unit
+  // parser does not recognise that string. It silently falls back to a count
+  // unit, every energy sample throws "incompatible units" internally, each
+  // throw is caught and skipped, and the query returns [] with NO error.
+  for (const type of ['ActiveEnergyBurned', 'BasalEnergyBurned']) {
+    assert.equal(SAMPLE_UNITS[type].unit, 'calorie',
+      `${type} must not request an unparseable unit string`);
+  }
+  const accepted = new Set([
+    'gram', 'kg', 'stone', 'pound', 'meter', 'cm', 'inch', 'mile', 'foot',
+    'second', 'minute', 'hour', 'day', 'joule', 'calorie', 'count', 'percent',
+    'bpm', 'fahrenheit', 'celsius', 'mmhg', 'mmolPerL', 'literPerMinute',
+    'mgPerdL', 'mlPerKgMin',
+  ]);
+  for (const [type, { unit }] of Object.entries(SAMPLE_UNITS)) {
+    assert.ok(accepted.has(unit), `${type} requests "${unit}", which hkUnitFromOptions cannot parse`);
+  }
+});
+
+test('gram calories are scaled to kcal — 1 kcal = 1000 cal', () => {
+  // A 500 kcal ride comes back as 500,000 from HealthKit's calorieUnit.
+  const { scale } = SAMPLE_UNITS.ActiveEnergyBurned;
+  const out = bucketByDayAndSource([S(500_000, '2026-07-30T08:00:00Z')], scale);
+  assert.equal(out[0].value, 500);
+});
+
+test('steps are not scaled', () => {
+  const { scale } = SAMPLE_UNITS.StepCount;
+  const out = bucketByDayAndSource([S(8421, '2026-07-30T08:00:00Z')], scale);
+  assert.equal(out[0].value, 8421);
+});
+
+test('scaling applies to every sample in a bucket, not just the first', () => {
+  const out = bucketByDayAndSource([
+    S(120_000, '2026-07-30T08:00:00Z'),
+    S(80_000,  '2026-07-30T12:00:00Z'),
+  ], 1 / 1000);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].value, 200);
+});
+
+test('omitting scale leaves values untouched — existing callers are unaffected', () => {
+  const out = bucketByDayAndSource([S(300, '2026-07-30T08:00:00Z')]);
+  assert.equal(out[0].value, 300);
 });
 
 console.log('\nJunk tolerance — this runs against live device data');

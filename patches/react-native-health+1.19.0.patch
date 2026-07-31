@@ -1,0 +1,60 @@
+diff --git a/node_modules/react-native-health/RCTAppleHealthKit/RCTAppleHealthKit+Methods_Vitals.m b/node_modules/react-native-health/RCTAppleHealthKit/RCTAppleHealthKit+Methods_Vitals.m
+--- a/node_modules/react-native-health/RCTAppleHealthKit/RCTAppleHealthKit+Methods_Vitals.m
++++ b/node_modules/react-native-health/RCTAppleHealthKit/RCTAppleHealthKit+Methods_Vitals.m
+@@ -590,7 +590,7 @@
+                       @"classification": classification,
+                       @"averageHeartRate": @(averageHeartRate),
+                       @"samplingFrequency": @([sample.samplingFrequency doubleValueForUnit:HKUnit.hertzUnit]),
+-                      @"device": [[sample sourceRevision] productType],
++                      @"device": [[sample sourceRevision] productType] ?: @"unknown",
+                       @"algorithmVersion": @([[sample metadata][HKMetadataKeyAppleECGAlgorithmVersion] intValue]),
+                       @"voltageMeasurements": @[]
+                   };
+diff --git a/node_modules/react-native-health/RCTAppleHealthKit/RCTAppleHealthKit+Queries.m b/node_modules/react-native-health/RCTAppleHealthKit/RCTAppleHealthKit+Queries.m
+--- a/node_modules/react-native-health/RCTAppleHealthKit/RCTAppleHealthKit+Queries.m
++++ b/node_modules/react-native-health/RCTAppleHealthKit/RCTAppleHealthKit+Queries.m
+@@ -141,7 +141,7 @@
+                     
+                     NSString* device = @"";
+                     if (@available(iOS 11.0, *)) {
+-                        device = [[routeSample sourceRevision] productType];
++                        device = [[routeSample sourceRevision] productType] ?: @"unknown";
+                     } else {
+                         device = [[routeSample device] name];
+                         if (!device) {
+@@ -334,7 +334,7 @@
+ 
+                             NSString* device = @"";
+                             if (@available(iOS 11.0, *)) {
+-                                device = [[sample sourceRevision] productType];
++                                device = [[sample sourceRevision] productType] ?: @"unknown";
+                             } else {
+                                 device = [[sample device] name];
+                                 if (!device) {
+@@ -383,7 +383,7 @@
+ 
+                             NSString* device = @"";
+                             if (@available(iOS 11.0, *)) {
+-                                device = [[sample sourceRevision] productType];
++                                device = [[sample sourceRevision] productType] ?: @"unknown";
+                             } else {
+                                 device = [[sample device] name];
+                                 if (!device) {
+@@ -528,7 +528,7 @@
+ 
+                         NSString* device = @"";
+                         if (@available(iOS 11.0, *)) {
+-                            device = [[sample sourceRevision] productType];
++                            device = [[sample sourceRevision] productType] ?: @"unknown";
+                         } else {
+                             device = [[sample device] name];
+                             if (!device) {
+@@ -542,7 +542,7 @@
+                                                @"activityName" : type,
+                                                @"calories" : @(energy),
+                                                @"tracked" : @(isTracked),
+-                                               @"metadata" : [sample metadata],
++                                               @"metadata" : [sample metadata] ?: [NSNull null],
+                                                @"sourceName" : [[[sample sourceRevision] source] name],
+                                                @"sourceId" : [[[sample sourceRevision] source] bundleIdentifier],
+                                                @"device": device,
