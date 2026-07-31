@@ -8,7 +8,8 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://5d3bb82a46d9dd0d2a7908cb67110ca5@o4511830428221440.ingest.us.sentry.io/4511830440935424"
       }
     },
     "preview": {
@@ -17,7 +18,8 @@
         "buildType": "apk"
       },
       "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://5d3bb82a46d9dd0d2a7908cb67110ca5@o4511830428221440.ingest.us.sentry.io/4511830440935424"
       }
     },
     "production": {
@@ -26,7 +28,8 @@
         "image": "macos-sequoia-15.6-xcode-26.0"
       },
       "env": {
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://5d3bb82a46d9dd0d2a7908cb67110ca5@o4511830428221440.ingest.us.sentry.io/4511830440935424"
       }
     }
   },
