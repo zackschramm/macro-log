@@ -58,11 +58,30 @@ function samplesFallback(
     (AppleHealthKit as any).getSamples(
       { ...opts, type, unit },
       (err: any, raw: RawSample[]) => {
-        if (err) return cb(null, []);   // fail soft, exactly as before
-        cb(null, bucketByDayAndSource(raw ?? []));
+        // REPORT, don't just swallow. This path failing silently is precisely
+        // why the Stats page went blank on iOS 27 with no crash, no exception
+        // and nothing in Sentry — the callback returned [] and every caller
+        // treated "no data" as a legitimate answer. Failing soft is still the
+        // right behaviour for the UI; being invisible is not.
+        if (err) {
+          logError(`useHealthKit.samplesFallback.${type}`, err);
+          return cb(null, []);
+        }
+        const buckets = bucketByDayAndSource(raw ?? []);
+        // An empty result here is itself the symptom worth knowing about: the
+        // query succeeded but HealthKit returned nothing for a range the user
+        // has data in.
+        if (!buckets.length) {
+          logError(`useHealthKit.samplesFallback.${type}.empty`,
+            new Error(`getSamples returned 0 samples (raw=${Array.isArray(raw) ? raw.length : typeof raw})`));
+        }
+        cb(null, buckets);
       }
     );
-  } catch { cb(null, []); }
+  } catch (e) {
+    logError(`useHealthKit.samplesFallback.${type}.threw`, e);
+    cb(null, []);
+  }
 }
 
 function safeGetDailyStepCountSamples(opts: any, cb: (err: any, data: any[]) => void) {
@@ -274,19 +293,27 @@ export async function getTodayBurn(): Promise<{ bmr: number | null; active: numb
         safeGetBasalEnergyBurned(
           { startDate: todayStart.toISOString(), endDate: now.toISOString() },
           (err: any, data: any[]) => {
-            if (err || !data?.length) return resolve(null);
+            if (err) { logError('useHealthKit.tdee.basal', err); return resolve(null); }
+            if (!data?.length) {
+              logError('useHealthKit.tdee.basal.empty', new Error('no basal energy samples today'));
+              return resolve(null);
+            }
             const total = data.reduce((s: number, d: any) => s + (d.value ?? 0), 0);
             resolve(total > 0 ? Math.round(total) : null);
           }
         );
-      } catch { resolve(null); }
+      } catch (e) { logError('useHealthKit.tdee.basal.threw', e); resolve(null); }
     }),
     new Promise<number | null>((resolve) => {
       try {
         safeGetActiveEnergyBurned(
           { startDate: todayStart.toISOString(), endDate: now.toISOString() },
           (err: any, data: any[]) => {
-            if (err || !data?.length) return resolve(null);
+            if (err) { logError('useHealthKit.tdee.active', err); return resolve(null); }
+            if (!data?.length) {
+              logError('useHealthKit.tdee.active.empty', new Error('no active energy samples today'));
+              return resolve(null);
+            }
             const bySource: Record<string, number> = {};
             data.forEach((s: any) => {
               const src = s.sourceName ?? 'unknown';
@@ -296,7 +323,7 @@ export async function getTodayBurn(): Promise<{ bmr: number | null; active: numb
             resolve(top > 0 ? Math.round(top) : null);
           }
         );
-      } catch { resolve(null); }
+      } catch (e) { logError('useHealthKit.tdee.active.threw', e); resolve(null); }
     }),
   ]);
 
