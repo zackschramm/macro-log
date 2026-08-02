@@ -183,11 +183,18 @@ export function buildRacePlan(input: RacePlanInput): RacePlan {
       `${baseRateGPerH} g/h this duration supports. Gut training closes that gap.`
     );
   }
-  if (needsMixedCarbSource(prescribedRateGPerH)) {
+  // Judge this on the LEG rates, not the prescribed rate. LEG_RATE_FACTOR
+  // scales the bike to 1.05x, so a plan prescribed at exactly the 60 g/h
+  // threshold still puts 63 g/h into the bike leg. Testing the prescribed rate
+  // meant the athlete was told nothing while being handed a rate a
+  // single-source product physically cannot absorb.
+  const legsNeedMixed = legs.some(l => l.mixedSourceRequired);
+  if (legsNeedMixed) {
+    const over = legs.filter(l => l.mixedSourceRequired).map(l => l.leg).join(' and ');
     notes.push(
-      `Above ${MIXED_CARB_THRESHOLD_G_PER_H} g/h you need mixed glucose:fructose ` +
-      `(${GLUCOSE_FRUCTOSE_RATIO}). A single-source product will not absorb fast ` +
-      `enough and will sit in your gut.`
+      `Your ${over} rate is above ${MIXED_CARB_THRESHOLD_G_PER_H} g/h, so you need ` +
+      `mixed glucose:fructose (${GLUCOSE_FRUCTOSE_RATIO}). A single-source product ` +
+      `will not absorb fast enough and will sit in your gut.`
     );
   }
   if (input?.hot) {
@@ -213,7 +220,10 @@ export function buildRacePlan(input: RacePlanInput): RacePlan {
     totalFluidL: r1(legs.reduce((s, l) => s + l.fluidL, 0)),
     totalSodiumMg: legs.reduce((s, l) => s + l.sodiumMg, 0),
     caffeineMg: { min: Math.round(3 * massKg), max: Math.round(6 * massKg) },
-    mixedSourceRequired: needsMixedCarbSource(prescribedRateGPerH),
+    // True when ANY leg is over the threshold — see the note above. A consumer
+    // reading this field is asking "does this athlete need a mixed-carb
+    // product?", and the honest answer depends on what the legs actually get.
+    mixedSourceRequired: legsNeedMixed,
     notes,
   };
 }

@@ -255,5 +255,50 @@ test('longer races load harder', () => {
   assert.ok(carbLoadGPerKg(11) >= carbLoadGPerKg(2.5));
 });
 
+console.log('\nMixed-carb flag reflects the LEGS, not the prescribed rate');
+
+test('a plan prescribed AT the threshold still flags, because the bike exceeds it', () => {
+  // LEG_RATE_FACTOR scales the bike to 1.05x. A plan capped at exactly
+  // 60 g/h therefore puts 63 g/h into the bike leg. Deriving the flag from
+  // the prescribed rate reported `false` here and told the athlete nothing.
+  const plan = buildRacePlan({
+    splits: estimateSplits('half', 6), massKg: 75, trainedToleranceGPerH: 60,
+  });
+  assert.equal(plan.prescribedRateGPerH, 60);
+  const bike = plan.legs.find(l => l.leg === 'bike')!;
+  assert.ok(bike.carbRateGPerH > MIXED_CARB_THRESHOLD_G_PER_H,
+    `bike is ${bike.carbRateGPerH} g/h, expected above the threshold`);
+  assert.equal(plan.mixedSourceRequired, true);
+});
+
+test('the plan flag always agrees with the legs', () => {
+  for (const tol of [20, 40, 55, 60, 65, 90, 120]) {
+    for (const [dist, hrs] of [['sprint', 1.2], ['olympic', 2.5], ['half', 6], ['full', 12]] as const) {
+      const plan = buildRacePlan({
+        splits: estimateSplits(dist, hrs), massKg: 75, trainedToleranceGPerH: tol,
+      });
+      assert.equal(plan.mixedSourceRequired, plan.legs.some(l => l.mixedSourceRequired),
+        `${dist} @ ${tol} g/h: plan flag disagrees with its own legs`);
+    }
+  }
+});
+
+test('the note names which leg is over, not just that something is', () => {
+  const plan = buildRacePlan({
+    splits: estimateSplits('half', 6), massKg: 75, trainedToleranceGPerH: 60,
+  });
+  const note = plan.notes.find(n => n.includes('glucose:fructose'));
+  assert.ok(note, 'expected a mixed-carb note');
+  assert.ok(note!.includes('bike'), `note should name the leg, got: ${note}`);
+});
+
+test('no false positive when every leg is under the threshold', () => {
+  const plan = buildRacePlan({
+    splits: estimateSplits('half', 6), massKg: 75, trainedToleranceGPerH: 40,
+  });
+  assert.equal(plan.mixedSourceRequired, false);
+  assert.equal(plan.notes.some(n => n.includes('glucose:fructose')), false);
+});
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
