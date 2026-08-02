@@ -16,7 +16,6 @@ import VoiceLogModal from './VoiceLogScreen';
 import CalorieBurnModal from '../components/CalorieBurnModal';
 import { MEALS, MC } from '../constants/data';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
-import { maybeRequestReview } from '../utils/storeReview';
 import { updateStreak, getDisplayStreak } from '../utils/streak';
 import { checkAchievements, invalidateAchievementsCache } from '../utils/achievements';
 import { generateWeeklyInsight, getMondayISODate } from '../utils/weeklyInsight';
@@ -505,15 +504,11 @@ export default function LogScreen({
           // activates, so this is the number to watch against signups.
           trackOnce(EVENTS.FIRST_FOOD_LOGGED);
           if (health.isAuthorized) refreshTdee();
-          const weekStart = new Date();
-          weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-          const weekStartStr = toLocalDateString(weekStart);
-          const { count } = await supabase
-            .from('macro_logs')
-            .select('*', { count: 'exact', head: true })
-            .eq('user_id', user.id)
-            .gte('date', weekStartStr);
-          if (count === 3) await maybeRequestReview();
+          // The store-review prompt used to fire here, on the third log of the
+          // week. Logging food is a chore — nobody is delighted at the moment
+          // they finish keying in a chicken breast — so it was buying 1-star
+          // reflexes. It now fires off a race fuel plan instead
+          // (screens/RaceFuelScreen.tsx). The weekly count query went with it.
           await refreshStreak();
           await invalidateAchievementsCache();
           const result = await checkAchievements(user.id, effectiveTargets, { forceRefresh: true });

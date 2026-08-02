@@ -267,4 +267,34 @@ export function summarizeIssues(result: ValidationResult): string {
     result.issues.slice(0, 3).map(i => i.code).join(', ');
 }
 
+/**
+ * Turn the failures into an instruction the model can actually act on.
+ *
+ * The retry used to resend the byte-identical prompt, which made attempt 2 an
+ * independent coin flip rather than a correction — if the model couldn't hit
+ * the targets the first time, nothing about the second request made it more
+ * likely to. The issue messages already name the day and the miss
+ * ("Tuesday: 1800 cal vs target 2400 (25% off)"), so they're directly usable
+ * as feedback.
+ *
+ * Fatal issues only: warnings are tolerable and listing them invites the model
+ * to churn parts of the plan that were fine.
+ */
+export function correctionFor(result: ValidationResult, max = 8): string {
+  const fatal = result.issues.filter(i => i.severity === 'fatal');
+  if (!fatal.length) return '';
+  const lines = fatal.slice(0, max).map(i => `- ${i.message}`);
+  const more = fatal.length - lines.length;
+  return (
+    `\n\nYour previous attempt was REJECTED. Fix exactly these problems and ` +
+    `keep everything else the same:\n${lines.join('\n')}` +
+    (more > 0 ? `\n- ...and ${more} more of the same kind.` : '') +
+    `\n\nEvery day must land within 10% of the daily targets for both calories ` +
+    `and protein. Adjust portion sizes rather than swapping foods.`
+  );
+  // 10% is deliberately tighter than the validator's fatal threshold
+  // (TARGET_FATAL_PCT, 25%) and its warning threshold (12%). Asking for the
+  // limit exactly would put every near-miss back over the line.
+}
+
 export { DAYS };

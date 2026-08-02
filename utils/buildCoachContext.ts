@@ -8,13 +8,53 @@ import { getWeightHistory, toWeighIns } from './weightHistory';
 import { toLocalDateString } from './dateUtils';
 import { logError } from './logError';
 import { buildEnduranceContext } from './enduranceContext';
-import { isEnduranceSport, estimateBmr, leanMassLb } from '../constants/data';
+import { estimateBmr, leanMassLb } from '../constants/data';
+import {
+  archetypeOf, eaProminenceFor, isEnduranceSport, ARCHETYPE_LABEL,
+  type Archetype,
+} from '../constants/sportArchetypes';
+import { energyAvailability } from './energyAvailability';
+import { dailyEnergy, type NeatLevel } from './sessionEnergy';
 import { readTodaySessions } from './sessionMapping';
 
 const GOAL_LABELS: Record<string, string> = {
   lose: 'lose fat',
   gain: 'build muscle',
   maintain: 'maintain',
+};
+
+/**
+ * One sentence per archetype telling the model what actually drives this
+ * athlete's nutrition. Without it the model defaults to generic advice, and for
+ * five of the six archetypes generic advice is the endurance model with the
+ * labels changed.
+ */
+const ARCHETYPE_DRIVER: Record<Archetype, string> = {
+  endurance:
+    'Glycogen depleted per session drives everything, and it swings ~4x between a ' +
+    'rest day and a long day. Carbohydrate is the performance-limiting macro.',
+  strength:
+    'Total energy sufficiency and protein DISTRIBUTION drive everything. There is no ' +
+    'acute fuel crisis to solve — the question is whether they ate enough this month, ' +
+    'not whether they ate enough at hour four. Do not prescribe an in-event ' +
+    'carbohydrate rate; a meet is snacks between attempts, not a g/h problem.',
+  intermittent:
+    'Glycogen, but on a weekly match calendar rather than a session-by-session curve. ' +
+    'The unit of periodization is the match week. In-competition fuelling is about ' +
+    'when they are ALLOWED to eat (half time, changeovers), not absorption rate.',
+  physique:
+    'The rate of body-mass change, and whether lean mass survives it. Frame ' +
+    'everything as fuelling for performance, never restriction for appearance. Never ' +
+    'use the words cutting, shredded, torch or melt. Refer out to a sports dietitian ' +
+    '(RD/RDN with CSSD) for anything clinical.',
+  weightClass:
+    'Making a declared number on a declared date, then performing hours later. Fuelog ' +
+    'plans the weight an athlete can HOLD. Never plan or describe a water cut, sauna ' +
+    'protocol, sweat suit, diuretic or any rapid dehydration strategy, and never ' +
+    'estimate how much can be cut in 24 hours. That needs someone in the room.',
+  lowLoad:
+    'Training energy cost is low and there is no fuel constraint on performance. Do ' +
+    'not invent depth that is not there — general balanced eating is the right answer.',
 };
 
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -297,24 +337,75 @@ export async function buildCoachContext(userId: string): Promise<string>{
     }
   } catch (e) { logError('buildCoachContext.cycleDay', e); }
 
-  // Endurance context. Only for endurance sports — a powerlifter does not need
-  // a carbohydrate periodization briefing. Fails soft: a missing session source
-  // costs detail, never the conversation.
+  // Archetype context, the energy-availability guard, and (for endurance only)
+  // the carbohydrate periodization briefing.
+  //
+  // THE EA GUARD IS NOT GATED ON SPORT. It used to live inside the endurance
+  // branch, which meant the athletes most likely to breach it — physique,
+  // weight-sensitive, and anyone dieting hard on top of real training volume —
+  // could not reach it at all. It is archetype-agnostic maths; only how loudly
+  // it is surfaced varies. Fails soft: a missing session source costs detail,
+  // never the conversation.
   try {
     const sport = (profile as any)?.sport as string | undefined;
-    if (isEnduranceSport(sport)) {
-      const weightLbs = (profile as any)?.weight_lbs ?? null;
-      const bodyFatPct = inbodyResult.status === 'fulfilled'
-        ? (inbodyResult.value.data?.body_fat_pct ?? null) : null;
-      const { bmr } = estimateBmr({
-        weight_lbs: weightLbs,
-        height_in: (profile as any)?.height_in ?? null,
-        age: (profile as any)?.age ?? null,
-        sex: (profile as any)?.sex ?? null,
-        body_fat_pct: bodyFatPct,
+    const weightLbs = (profile as any)?.weight_lbs ?? null;
+    const bodyFatPct = inbodyResult.status === 'fulfilled'
+      ? (inbodyResult.value.data?.body_fat_pct ?? null) : null;
+    const { bmr } = estimateBmr({
+      weight_lbs: weightLbs,
+      height_in: (profile as any)?.height_in ?? null,
+      age: (profile as any)?.age ?? null,
+      sex: (profile as any)?.sex ?? null,
+      body_fat_pct: bodyFatPct,
+    });
+    const lbm = leanMassLb(weightLbs, bodyFatPct);
+    const massKg = weightLbs ? weightLbs * 0.453592 : null;
+    const ffmKg = lbm != null ? lbm * 0.453592 : null;
+    const sessions = await readTodaySessions(toLocalDateString(new Date()));
+
+    const archetype = archetypeOf(sport);
+    lines.push('SPORT CONTEXT:');
+    lines.push(
+      `- Nutrition model: ${ARCHETYPE_LABEL[archetype]}. ${ARCHETYPE_DRIVER[archetype]}`
+    );
+
+    if (massKg && bmr && ffmKg) {
+      const energy = dailyEnergy({
+        bmr,
+        neat: ((profile as any)?.neat_level as NeatLevel) ?? 'sedentary',
+        sessions,
+        massKg,
       });
-      const lbm = leanMassLb(weightLbs, bodyFatPct);
-      const sessions = await readTodaySessions(toLocalDateString(new Date()));
+      const intake = (profile as any)?.calories || energy.target;
+      const ea = energyAvailability(intake, energy.exerciseComponent, ffmKg);
+
+      if (ea.shouldWarn) {
+        lines.push(
+          `- LOW ENERGY AVAILABILITY: ${ea.value} kcal/kg FFM (below the 30 threshold). ` +
+          `Needs ~${ea.deficitToLow} more calories. Raise this before discussing anything ` +
+          `else — it drives fatigue, poor sleep, illness and stress fractures, and no ` +
+          `training adjustment fixes it. State the constraint, never a judgement.`
+        );
+      } else if (ea.value !== null && eaProminenceFor(sport) === 'headline') {
+        // The power-to-weight and physique population. Stated so the model has
+        // the number, with an explicit instruction not to invent an alarm —
+        // 30-45 is where a healthy athlete eating maintenance normally sits,
+        // and a safety feature that cries wolf daily gets ignored.
+        lines.push(
+          `- Energy availability: ${ea.value} kcal/kg FFM — above the 30 threshold and ` +
+          `unremarkable. Do not raise it unprompted. This sport carries a ` +
+          `power-to-weight or body-composition incentive, so frame everything as ` +
+          `fuelling for performance rather than restriction, and never celebrate ` +
+          `the scale going down.`
+        );
+      }
+    }
+    lines.push('');
+
+    // Endurance-specific briefing. A powerlifter does not need a carbohydrate
+    // periodization briefing, and per the archetype rules must never be shown
+    // one archetype's fields inside another's model.
+    if (isEnduranceSport(sport)) {
       const enduranceLines = buildEnduranceContext(
         {
           sport,
@@ -324,15 +415,15 @@ export async function buildCoachContext(userId: string): Promise<string>{
           sweatRateLPerH: (profile as any)?.sweat_rate_l_per_h ?? null,
           neatLevel: (profile as any)?.neat_level ?? null,
           experienceLevel: (profile as any)?.experience_level ?? null,
-          massKg: weightLbs ? weightLbs * 0.453592 : null,
-          ffmKg: lbm != null ? lbm * 0.453592 : null,
+          massKg,
+          ffmKg,
           bmr,
         },
         sessions,
       );
       if (enduranceLines.length) lines.push(...enduranceLines);
     }
-  } catch (e) { logError('buildCoachContext.endurance', e); }
+  } catch (e) { logError('buildCoachContext.archetype', e); }
 
   lines.push('Always reference this data when relevant. Be specific, not generic.');
 

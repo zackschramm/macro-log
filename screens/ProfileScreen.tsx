@@ -17,9 +17,11 @@ import MealPlanScreen from './MealPlanScreen';
 import NotificationsScreen from './NotificationsScreen';
 import MineralsScreen from './MineralsScreen';
 import CoachMemoryScreen from './CoachMemoryScreen';
+import RaceFuelScreen from './RaceFuelScreen';
 import ReferralScreen from './ReferralScreen';
 import { useAuth } from '../hooks/useAuth';
-import { calculateTargets, MC, isEnduranceSport } from '../constants/data';
+import { calculateTargets, MC } from '../constants/data';
+import { capabilitiesFor } from '../constants/sportArchetypes';
 import { daysUntilRace, phaseFromRaceDate, PHASE_LABEL } from '../utils/enduranceFueling';
 import { sportIcon } from '../constants/icons';
 import { useUnits, UnitSystem, KG_PER_LB, CM_PER_IN } from '../constants/units';
@@ -126,7 +128,7 @@ const EXPERIENCE_OPTIONS = [
   { key: 'experienced',  label: 'Experienced',  detail: 'Full detail, fewer guard rails' },
 ];
 
-type SubScreen = 'foods' | 'plan' | 'minerals' | 'notifs' | 'referral' | 'memory';
+type SubScreen = 'foods' | 'plan' | 'minerals' | 'notifs' | 'referral' | 'memory' | 'racefuel';
 
 function SubScreenHeader({ title, onBack }: { title: string; onBack: () => void }) {
   return (
@@ -708,6 +710,12 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
       <CoachMemoryScreen />
     </SafeAreaView>
   );
+  if (subScreen === 'racefuel') return (
+    <SafeAreaView style={s.safe} edges={['top']}>
+      <SubScreenHeader title="Race Fuel Plan" onBack={() => setSubScreen(null)} />
+      <RaceFuelScreen profile={profile} />
+    </SafeAreaView>
+  );
 
   // ── Main profile view ──────────────────────────────────────────────────────────
   return (
@@ -773,6 +781,25 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.accent} />
           </TouchableOpacity>
+          {/* The event-planner row, keyed off the athlete's capability record
+              rather than a sport-name check. Five other event models exist in
+              the taxonomy (meet, match, weigh-in, show, round) and each gets
+              this same row when its planner is built — see EVENT_ROW in
+              constants/sportArchetypes.ts. Only `race` has a destination today,
+              so only `race` renders. Keyed off the live `sport` state so it
+              appears the moment they pick one, not after a save. */}
+          {capabilitiesFor(sport).eventModel === 'race' && (
+            <TouchableOpacity style={[s.linkRow, s.linkRowBorder]} onPress={() => setSubScreen('racefuel')} activeOpacity={0.7}>
+              <View style={[s.linkIcon, { backgroundColor: colors.accentMuted }]}>
+                <Ionicons name="medal-outline" size={18} color={colors.accent} />
+              </View>
+              <View style={s.linkText}>
+                <Text style={[s.linkLabel, { color: colors.accent }]}>Race Fuel Plan</Text>
+                <Text style={s.linkSub}>Carbs, fluid & sodium leg by leg</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.accent} />
+            </TouchableOpacity>
+          )}
           {([
             { key: 'foods',    icon: 'nutrition-outline',       label: 'My Foods',       sub: 'Custom food database' },
             { key: 'plan',     icon: 'calendar-outline',        label: 'Meal Plan',      sub: 'AI-generated meal plans' },
@@ -956,7 +983,11 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
             </>
           )}
 
-          {isEnduranceSport(sport) && (
+          {/* Race date drives the seasonal phase model and the carb-load
+              window, both of which are endurance's. A lifter's block phases and
+              a footballer's match week are derived differently and get their
+              own fields when those models ship. */}
+          {capabilitiesFor(sport).phaseModel === 'seasonal' && (
             <>
               <Text style={[s.inlineLabel, { marginTop: 16 }]}>Race date</Text>
               <Text style={s.helpText}>

@@ -17,6 +17,7 @@ import SocialScreen from './SocialScreen';
 import { useTheme, ThemeColors, weight } from '../constants/theme';
 import { useRestTimer } from '../contexts/RestTimerContext';
 import CancellationSaveModal from '../components/CancellationSaveModal';
+import TrialEndingCard from '../components/TrialEndingCard';
 import StatsBackfillPrompt from '../components/StatsBackfillPrompt';
 
 type Tab = {
@@ -107,6 +108,10 @@ export default function MainTabs({ profile, onProfileUpdate, initialTab, forceTa
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <CancellationSaveModal />
+      {/* Both self-gate and render nothing in the common case. They're mutually
+          exclusive by construction: one needs an expired subscription, the
+          other an active trial. */}
+      <TrialEndingCard profile={profile} />
       <View style={{ flex: 1 }}>
         {activeTab === 'log'        && <LogScreen targets={targets} profile={profile} periodizationSettings={profile.periodization_settings ?? null} pendingSiriFood={pendingSiriFood} onSiriFoodApplied={onSiriFoodApplied} />}
         {activeTab === 'workout'    && <WorkoutScreen profile={profile} />}

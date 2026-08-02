@@ -7,7 +7,7 @@
  * here so callers only need one import.
  */
 
-import type { Session } from './enduranceEnergy';
+import type { Session } from './sessionEnergy';
 import { sessionsForDate } from './workoutMapping';
 import { logError } from './logError';
 import type { RawWorkout } from './workoutMapping';

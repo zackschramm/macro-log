@@ -9,7 +9,7 @@ import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { MC } from '../constants/data';
 import { callAI } from '../constants/ai';
-import { parseMealPlanResponse, validateMealPlan, summarizeIssues } from '../utils/validateMealPlan';
+import { parseMealPlanResponse, validateMealPlan, summarizeIssues, correctionFor } from '../utils/validateMealPlan';
 import { logError } from '../utils/logError';
 import { getSportProfile } from '../constants/sportProfiles';
 import PaywallScreen from './PaywallScreen';
@@ -105,23 +105,19 @@ export default function MealPlanScreen({ targets, profile }: {
 
       const sport = getSportProfile(profile?.sport);
 
-      const today = todayStr();
-      const { data: todayLogs } = await supabase
-        .from('macro_logs').select('calories,protein,carbs,fat')
-        .eq('user_id', user!.id).eq('date', today);
-      const alreadyEaten = (todayLogs ?? []).reduce(
-        (acc: { cal: number; p: number; c: number; f: number }, r: any) => ({
-          cal: acc.cal + (r.calories ?? 0),
-          p: acc.p + (r.protein ?? 0),
-          c: acc.c + (r.carbs ?? 0),
-          f: acc.f + (r.fat ?? 0),
-        }),
-        { cal: 0, p: 0, c: 0, f: 0 }
-      );
-      const remainingNote = alreadyEaten.cal > 0
-        ? `\nNOTE: The user has already logged ${Math.round(alreadyEaten.cal)}cal, ${Math.round(alreadyEaten.p)}g protein today. Account for this — plan meals that fill the remaining gap, do not exceed the daily total.`
-        : '';
-
+      // NOTE: we deliberately do NOT subtract what the user has already eaten
+      // today. This used to append a "you've already logged 1,240cal, plan the
+      // remaining gap" instruction — which directly contradicted the validator,
+      // since validateMealPlan checks EVERY one of the seven days against the
+      // full daily target and treats a >25% miss as fatal. The model obeyed the
+      // instruction, shrank the days, and the plan was then rejected for being
+      // exactly what it was told to be. Both retries failed and the user got
+      // "Could not generate a valid meal plan" (Sentry: MealPlan.invalid,
+      // 7 fatal on build 153).
+      //
+      // A 7-day plan is a template. What you happened to eat this morning
+      // belongs in a "what should I eat for the rest of today" flow, against
+      // today's remaining macros — not smeared across next week.
       const prompt = `Create a 7-day meal plan as a JSON array. Daily targets: ${targets.calories}cal, ${targets.protein}g protein, ${targets.carbs}g carbs, ${targets.fat}g fat.
 
 ATHLETE CONTEXT:
@@ -139,7 +135,7 @@ RULES:
 - Output ONLY a raw JSON array (no markdown). Each day: 4 meals (Breakfast, Lunch, Dinner, Snack). Max 3 items per meal. Short names. Hit macro targets.
 
 Format: [{"day":"Monday","meals":[{"meal":"Breakfast","items":[{"name":"Oats","serving":"1 cup dry","calories":300,"protein":10,"carbs":54,"fat":6}],"totals":{"calories":300,"protein":10,"carbs":54,"fat":6}}],"totals":{"calories":${targets.calories},"protein":${targets.protein},"carbs":${targets.carbs},"fat":${targets.fat}}}]
-Complete all 7 days. Valid JSON only.${remainingNote}`;
+Complete all 7 days. Valid JSON only.`;
 
       // Generate, validate, and retry once. The old code appended a ']' when the
       // response didn't close — silently saving a truncated week — and never
@@ -147,13 +143,19 @@ Complete all 7 days. Valid JSON only.${remainingNote}`;
       // plan that doesn't add up is worse than no plan.
       let parsed: DayPlan[] | null = null;
       let lastSummary = '';
+      // Correction text from the previous attempt's failures. Empty on the
+      // first pass. Resending the identical prompt made every retry an
+      // independent coin flip instead of a second chance — if the model
+      // couldn't hit the targets once, nothing made it likelier the next time.
+      let correction = '';
 
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        const rawText = await callAI([{ role: 'user', content: prompt }]);
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const rawText = await callAI([{ role: 'user', content: prompt + correction }]);
         const candidate = parseMealPlanResponse(rawText);
         if (!candidate) {
           lastSummary = 'unparseable or truncated response';
           logError('MealPlan.parse', new Error(lastSummary), { attempt, len: rawText.length });
+          correction = '';   // nothing usable to correct against
           continue;
         }
 
@@ -169,6 +171,7 @@ Complete all 7 days. Valid JSON only.${remainingNote}`;
           break;
         }
         logError('MealPlan.invalid', new Error(lastSummary), { attempt });
+        correction = correctionFor(result);
       }
 
       if (!parsed) {

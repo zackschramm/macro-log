@@ -19,11 +19,18 @@
  * expo-constants ->react-native and break the test runner on Flow syntax.
  */
 
-import type { Session, Discipline, IntensityZone } from './enduranceEnergy';
+import type { Session, Discipline, IntensityZone } from './sessionEnergy';
 
 /**
  * HealthKit activity type numbers ->our disciplines.
  * See WORKOUT_TYPE_NAMES in hooks/useHealthKit.ts for the full table.
+ *
+ * The court/field/combat/climb/mobility rows landed when the engine
+ * generalised past endurance. Before them every one of these fell through to
+ * `other` at 5.5 METs for a moderate session, which is roughly double the
+ * truth for yoga and well under it for combat. That figure feeds the
+ * energy-availability denominator, so it is a safety number as well as an
+ * accuracy one.
  */
 const HK_TYPE_TO_DISCIPLINE: Record<number, Discipline> = {
   13: 'bike',      // Cycling
@@ -38,9 +45,35 @@ const HK_TYPE_TO_DISCIPLINE: Record<number, Discipline> = {
   35: 'other',     // HIIT
   16: 'other',     // Elliptical
   11: 'other',     // Cross Training
+  6:  'court',     // Basketball
+  48: 'court',     // Tennis
+  4:  'court',     // Badminton
+  54: 'court',     // Racquetball
+  55: 'court',     // Squash
+  1:  'field',     // Football
+  3:  'field',     // Australian Football
+  5:  'field',     // Baseball
+  10: 'field',     // Cricket
+  29: 'field',     // Hockey
+  38: 'field',     // Rugby
+  44: 'field',     // Soccer
+  8:  'combat',    // Boxing
+  33: 'combat',    // Martial Arts
+  57: 'combat',    // Wrestling
+  9:  'climb',     // Climbing
+  34: 'mobility',  // Mind & Body
+  52: 'mobility',  // Yoga
 };
 
-/** Fallback for sources that give a name but a useless type number. */
+/**
+ * Fallback for sources that give a name but a useless type number.
+ *
+ * Deliberately NOT extended to the team-sport disciplines. This list only fires
+ * when the activity type is unrecognised, and team-sport words are far too
+ * ambiguous at that point — "Underwater Hockey" is not field hockey and "Foot
+ * Golf" is not golf. A wrong discipline is worse than `other`, which at least
+ * defers to whatever kcal figure the device reported.
+ */
 const NAME_TO_DISCIPLINE: [RegExp, Discipline][] = [
   [/cycl|bike|spin|peloton|zwift/i, 'bike'],
   [/run|jog|treadmill/i, 'run'],

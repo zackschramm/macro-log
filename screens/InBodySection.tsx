@@ -12,7 +12,6 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import Svg, { Polyline, Circle, Line, Text as SvgText } from 'react-native-svg';
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { hasPro } from '../constants/purchases';
@@ -20,7 +19,6 @@ import { useUnits } from '../constants/units';
 import PaywallScreen from './PaywallScreen';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import ShareCardGenerator from '../components/ShareCardGenerator';
-import { maybeRequestReview } from '../utils/storeReview';
 import InBodyCompareModal from '../components/InBodyCompareModal';
 import { requireAIAccess } from '../utils/proGate';
 
@@ -221,11 +219,10 @@ export default function InBodySection() {
       .from('inbody_logs')
       .upsert({ ...log, user_id: user.id }, { onConflict: 'user_id,measured_at' });
     if (error) { Alert.alert('Save failed', error.message); return; }
-    const firstDone = await AsyncStorage.getItem('fuelog_first_inbody_done');
-    if (!firstDone) {
-      await AsyncStorage.setItem('fuelog_first_inbody_done', '1');
-      await maybeRequestReview();
-    }
+    // The store-review prompt used to fire here, on the first saved scan.
+    // Transcribing an InBody printout is data entry, not a win — it moved to
+    // the race fuel plan (screens/RaceFuelScreen.tsx), which is the point where
+    // the app has actually just given the user something.
     setEditing(null);
     await load();
   };

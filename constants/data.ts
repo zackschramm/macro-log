@@ -113,17 +113,22 @@ export const SPORT_MULTIPLIERS: Record<string, { protein: number; carbs: number;
 
 /**
  * Sports whose daily requirements swing too much for a static multiplier to
- * describe. When the user's sport is in this set and we have session data,
+ * describe. When the user's sport is one of these and we have session data,
  * callers should route through `utils/enduranceFueling.ts` rather than
  * `deriveMacrosFromCalories`.
+ *
+ * This used to be a hardcoded `ENDURANCE_SPORTS` set living right here. It is
+ * now derived from `constants/sportArchetypes.ts`, which assigns all 26 sports
+ * to one of six archetypes and says what each archetype's model supports. Same
+ * answer for endurance, one source of truth, and no second and third set to
+ * grow beside it.
+ *
+ * Re-exported (rather than moved outright) so the existing call sites in
+ * ProfileScreen, TrialEndingCard and buildCoachContext keep working. New code
+ * should import `capabilitiesFor` from sportArchetypes and ask about the
+ * capability it actually cares about.
  */
-export const ENDURANCE_SPORTS = new Set([
-  'triathlon', 'tri_sprint', 'tri_olympic', 'tri_70_3', 'tri_ironman',
-  'running', 'cycling', 'swimming', 'rowing', 'hiking',
-]);
-
-export const isEnduranceSport = (sport?: string | null): boolean =>
-  !!sport && ENDURANCE_SPORTS.has(sport);
+export { isEnduranceSport, archetypeOf, capabilitiesFor } from './sportArchetypes';
 
 /**
  * Calorie adjustment applied to maintenance for each goal.

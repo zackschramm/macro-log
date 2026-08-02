@@ -20,9 +20,22 @@ export async function loginRevenueCat(userId: string) {
   } catch (e) { logError('purchases.loginRevenueCat', e); }
 }
 
-// Call when the user logs out.
+/**
+ * Call when the user logs out.
+ *
+ * Guarded on `isAnonymous` because App.tsx calls this from the `else` branch of
+ * a `useEffect([session])`, and on a cold start `session` is null until Supabase
+ * finishes restoring it. That fired a logOut for a user who had never logged in,
+ * and RevenueCat rejects it: "LogOut was called but the current user is
+ * anonymous." Functionally harmless — RevenueCat refuses and moves on — but it
+ * threw an error into Sentry on every single cold launch, which is exactly the
+ * kind of constant background noise that trains you to ignore the dashboard.
+ *
+ * The guard lives here rather than at the call site so every caller gets it.
+ */
 export async function logoutRevenueCat() {
   try {
+    if (await Purchases.isAnonymous()) return;
     await Purchases.logOut();
   } catch (e) { logError('purchases.logoutRevenueCat', e); }
 }

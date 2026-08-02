@@ -12,10 +12,25 @@
  *      lifter that's right. For a triathlete it is backwards — carbohydrate is
  *      the performance-limiting macro and must be reserved first.
  *
- * Zero runtime imports (see enduranceEnergy.ts for why).
+ *      THAT FLIP IS ENDURANCE-ONLY. It is a statement about which macro limits
+ *      performance in THIS population, not a general improvement. See
+ *      `utils/strengthFueling.ts`, where protein-first is correct and stays.
+ *
+ * The energy-availability guard used to live in this file, which meant only
+ * endurance athletes could reach it. It now lives in `./energyAvailability` and
+ * is shared by every archetype; the symbols are re-exported below so existing
+ * call sites are unaffected.
+ *
+ * Runtime imports are limited to the other zero-import pure modules in this
+ * engine, which is what keeps the test runner able to load the tree without
+ * React Native.
  */
 
-import type { IntensityZone } from './enduranceEnergy';
+import type { IntensityZone } from './sessionEnergy';
+import {
+  energyAvailability, applyEnergyAvailabilityFloor,
+  type EnergyAvailability,
+} from './energyAvailability';
 
 // ── Training phase ──────────────────────────────────────────────────────────
 
@@ -318,99 +333,15 @@ export function allocateEnduranceMacros(input: FuelingInput): FuelingTargets {
 // ── Energy availability (RED-S) ─────────────────────────────────────────────
 
 /**
- * Energy availability is what's left for physiology after training is paid for,
- * normalised to the tissue that actually needs it:
- *
- *     EA = (intake - exercise energy expenditure) / fat-free mass
- *
- * Below 30 kcal/kg FFM/day is the clinical threshold for low energy
- * availability; sustained, it becomes RED-S — a multi-system problem affecting
- * bone density, endocrine function, immunity and performance. 45+ is optimal.
- *
- * This is the single most common serious nutrition problem in age-group
- * endurance sport, and almost no consumer app checks for it. Fuelog already
- * knows fat-free mass from InBody, so the check is nearly free.
- *
- * ── A property of this metric that looks like a bug and is not ──────────────
- *
- * An athlete eating exactly maintenance always has
- *
- *     EA = (maintenance − EEE) / FFM = (BMR × NEAT) / FFM
- *
- * which does not contain a training term at all. With Katch-McArdle
- * (BMR = 370 + 21.6·FFM) and a desk job (NEAT 1.25) that lands near
- *
- *     1.25 × (370/FFM + 21.6)  ≈  33-37 kcal/kg FFM
- *
- * for essentially every body size. So a healthy athlete eating maintenance sits
- * around 35 whether they trained for one hour or six, and CANNOT reach 45
- * without either eating a surplus or having a genuinely active non-training
- * life. Do not "fix" this by inflating the NEAT factors.
- *
- * The consequence for the product: 45 is a well-fuelled/surplus marker, not a
- * daily goal, and 30-45 must NOT produce a warning or the app cries wolf every
- * single day. Only `status === 'low'` is actionable — and it is reachable
- * exactly when it should be, by dieting on top of a heavy training load.
- * Use `shouldWarn` rather than testing the status string at call sites.
+ * Moved to `./energyAvailability` so every archetype can reach it — see that
+ * module's header. Re-exported here because the existing call sites and tests
+ * import these names from this file.
  */
-export const EA_OPTIMAL = 45;
-export const EA_LOW = 30;
-
-export type EaStatus = 'optimal' | 'suboptimal' | 'low' | 'unknown';
-
-export interface EnergyAvailability {
-  value: number | null;
-  status: EaStatus;
-  /**
-   * The only field the UI should gate a warning on. True below the clinical
-   * threshold only — see the note above on why 30-45 is unremarkable.
-   */
-  shouldWarn: boolean;
-  /** Extra kcal/day needed to clear the low-EA threshold. 0 when already clear. */
-  deficitToLow: number;
-  /** Extra kcal/day needed to reach optimal. 0 when already optimal. */
-  deficitToOptimal: number;
-}
-
-export function energyAvailability(
-  intakeKcal: number,
-  exerciseKcal: number,
-  ffmKg: number | null | undefined
-): EnergyAvailability {
-  if (!isPos(ffmKg) || !isPos(intakeKcal)) {
-    return {
-      value: null, status: 'unknown', shouldWarn: false,
-      deficitToLow: 0, deficitToOptimal: 0,
-    };
-  }
-  const ex = Number.isFinite(exerciseKcal) && exerciseKcal > 0 ? exerciseKcal : 0;
-  const ea = (intakeKcal - ex) / ffmKg;
-
-  const status: EaStatus =
-    ea >= EA_OPTIMAL ? 'optimal' : ea >= EA_LOW ? 'suboptimal' : 'low';
-
-  return {
-    value: Math.round(ea * 10) / 10,
-    status,
-    shouldWarn: status === 'low',
-    deficitToLow: ea >= EA_LOW ? 0 : Math.round((EA_LOW - ea) * ffmKg),
-    deficitToOptimal: ea >= EA_OPTIMAL ? 0 : Math.round((EA_OPTIMAL - ea) * ffmKg),
-  };
-}
-
-/**
- * The lowest calorie target that keeps energy availability at or above the
- * clinical floor. Callers should clamp goal-adjusted targets to this — an app
- * should not prescribe a number that is known to be harmful.
- */
-export function minimumSafeCalories(
-  exerciseKcal: number,
-  ffmKg: number | null | undefined
-): number | null {
-  if (!isPos(ffmKg)) return null;
-  const ex = Number.isFinite(exerciseKcal) && exerciseKcal > 0 ? exerciseKcal : 0;
-  return Math.round(EA_LOW * ffmKg + ex);
-}
+export {
+  EA_OPTIMAL, EA_LOW, energyAvailability, minimumSafeCalories,
+  applyEnergyAvailabilityFloor,
+} from './energyAvailability';
+export type { EaStatus, EnergyAvailability } from './energyAvailability';
 
 // ── Convenience: one call, whole day ────────────────────────────────────────
 
@@ -419,6 +350,13 @@ export interface EnduranceDayInput extends FuelingInput {
   ffmKg?: number | null;
   /** Clamp the target up to the low-EA floor. Default true. */
   enforceEnergyAvailability?: boolean;
+  /**
+   * Ignore `enforceEnergyAvailability` and always clamp. Set from
+   * `eaClampFor(sport)`. Endurance's clamp is soft today, so this is normally
+   * left alone — it exists so the one code path is shared with the archetypes
+   * whose clamp is hard.
+   */
+  energyAvailabilityNonOverridable?: boolean;
 }
 
 export interface EnduranceDay extends FuelingTargets {
@@ -430,25 +368,21 @@ export interface EnduranceDay extends FuelingTargets {
 export function enduranceDayTargets(input: EnduranceDayInput): EnduranceDay {
   const exerciseKcal = input?.exerciseKcal ?? 0;
   const ffmKg = input?.ffmKg ?? null;
-  const enforce = input?.enforceEnergyAvailability !== false;
 
-  let calories = isPos(input?.calories) ? input.calories : 0;
-  let caloriesRaisedForSafety = false;
+  const floored = applyEnergyAvailabilityFloor({
+    calories: isPos(input?.calories) ? input.calories : 0,
+    exerciseKcal,
+    ffmKg,
+    enforce: input?.enforceEnergyAvailability,
+    nonOverridable: input?.energyAvailabilityNonOverridable,
+  });
 
-  if (enforce) {
-    const floor = minimumSafeCalories(exerciseKcal, ffmKg);
-    if (floor !== null && calories > 0 && calories < floor) {
-      calories = floor;
-      caloriesRaisedForSafety = true;
-    }
-  }
-
-  const targets = allocateEnduranceMacros({ ...input, calories });
+  const targets = allocateEnduranceMacros({ ...input, calories: floored.calories });
 
   return {
     ...targets,
-    energyAvailability: energyAvailability(calories, exerciseKcal, ffmKg),
-    caloriesRaisedForSafety,
+    energyAvailability: energyAvailability(floored.calories, exerciseKcal, ffmKg),
+    caloriesRaisedForSafety: floored.raised,
   };
 }
 

@@ -37,11 +37,55 @@ interface Props {
  */
 const TRIAL_DAYS = 7;
 
+/**
+ * Render `amount` in the same currency as a real StoreKit price.
+ *
+ * Anything derived (the per-month equivalent of the annual plan, the annual
+ * cost at the monthly rate) starts life as a bare `product.price` number.
+ * Printing "$" in front of it is wrong in every storefront that isn't the US,
+ * and the App Store sells in ~40 currencies — so go through Intl, which knows
+ * the symbol, its placement and the decimal separator.
+ *
+ * The fallback splices the number into the shape of the real `priceString`
+ * ("59,99 €" → "5,00 €") in case the JS engine ships without full-ICU Intl.
+ * Returns null rather than guessing when neither route works, and every caller
+ * degrades to not showing the derived line at all.
+ */
+function formatLikePrice(
+  amount: number,
+  product: { priceString?: string; currencyCode?: string } | undefined
+): string | null {
+  if (!product || !Number.isFinite(amount)) return null;
+
+  if (product.currencyCode) {
+    try {
+      return new Intl.NumberFormat(undefined, {
+        style: 'currency',
+        currency: product.currencyCode,
+      }).format(amount);
+    } catch {
+      /* No Intl, or a currency code it doesn't know — fall through. */
+    }
+  }
+
+  const raw = product.priceString ?? '';
+  const match = raw.match(/\d[\d., \s]*\d|\d/);
+  if (!match) return null;
+  // Mirror whatever decimal separator the storefront already used.
+  const usesComma = /,\d{1,2}$/.test(match[0]);
+  const body = usesComma ? amount.toFixed(2).replace('.', ',') : amount.toFixed(2);
+  return raw.replace(match[0], body);
+}
+
 export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props) {
   const { colors } = useTheme();
   const s = makeStyles(colors);
 
   const [packages, setPackages] = useState<PurchasesPackage[]>([]);
+  // Annual is pre-selected. It is genuinely the better deal at half the
+  // per-month price, and burying it behind a tap meant most people never
+  // compared. Monthly stays a single tap away and is never disabled or hidden —
+  // this is emphasis, not a trap door.
   const [selected, setSelected] = useState<'monthly' | 'yearly'>('yearly');
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
@@ -77,9 +121,30 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
   // than hardcoded. It previously read "~$1.67/mo" — correct for a $19.99 year,
   // wildly wrong for anything else, and exactly the kind of string that rots
   // silently after a price change.
-  const yearlyPerMonth = yearlyPkg?.product.price
-    ? `$${(yearlyPkg.product.price / 12).toFixed(2)}`
-    : '$5.00';
+  //
+  // RevenueCat already computes a localized per-month string for subscription
+  // products; prefer it, and only fall back to dividing by 12 ourselves.
+  const yearlyPerMonth =
+    yearlyPkg?.product.pricePerMonthString ||
+    (yearlyPkg?.product.price
+      ? formatLikePrice(yearlyPkg.product.price / 12, yearlyPkg.product)
+      : null);
+
+  // What twelve months at the monthly rate would actually cost, and the saving
+  // that implies. Both come from the two live prices, so they stay correct
+  // after a price change, in any currency, and simply disappear if either
+  // package failed to load rather than advertising a discount we don't offer.
+  const monthlyAmount = monthlyPkg?.product.price ?? 0;
+  const yearlyAmount = yearlyPkg?.product.price ?? 0;
+  const canCompare = monthlyAmount > 0 && yearlyAmount > 0 && yearlyAmount < monthlyAmount * 12;
+
+  const yearlyAtMonthlyRate = canCompare
+    ? formatLikePrice(monthlyAmount * 12, monthlyPkg?.product)
+    : null;
+  const savingsPct = canCompare
+    ? Math.round((1 - yearlyAmount / (monthlyAmount * 12)) * 100)
+    : null;
+  const showSavings = savingsPct !== null && savingsPct >= 1;
 
   const purchase = async () => {
     const pkg = selected === 'monthly' ? monthlyPkg : yearlyPkg;
@@ -162,15 +227,34 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
               onPress={() => setSelected('yearly')}
               activeOpacity={0.8}
               accessibilityRole="radio"
-              accessibilityLabel="Yearly plan, best value"
+              accessibilityLabel={
+                showSavings
+                  ? `Yearly plan, ${yearlyPerMonth ?? yearlyPrice} per month billed annually, save ${savingsPct} percent`
+                  : 'Yearly plan, best value'
+              }
               accessibilityState={{ selected: selected === 'yearly' }}>
               <View style={s.planCardInner}>
                 <View style={s.bestValueBadge}>
-                  <Text style={s.bestValueText}>BEST VALUE</Text>
+                  <Text style={s.bestValueText}>
+                    {showSavings ? `SAVE ${savingsPct}%` : 'BEST VALUE'}
+                  </Text>
                 </View>
                 <Text style={[s.planName, selected === 'yearly' && s.planNameActive]}>Yearly</Text>
-                <Text style={[s.planPrice, selected === 'yearly' && s.planPriceActive]}>{yearlyPrice}</Text>
-                <Text style={[s.planNote, selected === 'yearly' && s.planNoteActive]}>per year · ~{yearlyPerMonth}/mo</Text>
+                {/* Lead with the per-month figure — it's the number people
+                    actually compare against the monthly plan. The annual total
+                    stays on the line below so nobody is surprised at checkout. */}
+                <Text style={[s.planPrice, selected === 'yearly' && s.planPriceActive]}>
+                  {yearlyPerMonth ?? yearlyPrice}
+                  {yearlyPerMonth ? <Text style={s.planPricePer}>/mo</Text> : null}
+                </Text>
+                <View style={s.planNoteRow}>
+                  {yearlyAtMonthlyRate ? (
+                    <Text style={s.planStrike}>{yearlyAtMonthlyRate}</Text>
+                  ) : null}
+                  <Text style={[s.planNote, { marginTop: 0 }, selected === 'yearly' && s.planNoteActive]}>
+                    {yearlyPerMonth ? `${yearlyPrice}, billed annually` : 'per year'}
+                  </Text>
+                </View>
               </View>
               {selected === 'yearly' && <View style={s.planCheck}><Text style={s.planCheckText}>✓</Text></View>}
             </TouchableOpacity>
@@ -243,6 +327,9 @@ function makeStyles(c: ThemeColors) {
     planNameActive: { color: c.text },
     planPrice: { fontSize: 26, fontWeight: weight.heavy, color: c.textTertiary, letterSpacing: -0.5, marginTop: 2 },
     planPriceActive: { color: c.text },
+    planPricePer: { fontSize: 14, fontWeight: weight.bold, letterSpacing: 0 },
+    planNoteRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 2 },
+    planStrike: { fontSize: 12, color: c.textTertiary, fontWeight: weight.medium, textDecorationLine: 'line-through' },
     planNote: { fontSize: 12, color: c.textTertiary, fontWeight: weight.medium, marginTop: 2 },
     planNoteActive: { color: c.textSecondary },
     planCheck: { backgroundColor: c.accent, width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginLeft: 12 },

@@ -7,7 +7,7 @@
  */
 import assert from 'node:assert/strict';
 import {
-  validateMealPlan, parseMealPlanResponse, summarizeIssues, Macros,
+  validateMealPlan, parseMealPlanResponse, summarizeIssues, correctionFor, Macros,
 } from '../validateMealPlan';
 
 let passed = 0, failed = 0;
@@ -161,6 +161,53 @@ test('a non-array response fails cleanly', () => {
 test('validates without targets (targets optional)', () => {
   const r = validateMealPlan(goodWeek());
   assert.equal(r.ok, true, summarizeIssues(r));
+});
+
+console.log('\nRetry correction — the retry used to resend an identical prompt');
+
+test('a valid plan produces no correction text', () => {
+  assert.equal(correctionFor(validateMealPlan(goodWeek(), TARGETS)), '');
+});
+
+test('warnings alone produce no correction — only fatals are worth a retry', () => {
+  const week = goodWeek();
+  // Nudge one day into the warning band (>12%) but under fatal (25%).
+  week[0].meals[0].items[0].calories += Math.round(TARGETS.calories * 0.15);
+  const r = validateMealPlan(week, TARGETS);
+  assert.ok(r.ok, 'should still be savable');
+  assert.ok(r.issues.some(i => i.severity === 'warning'));
+  assert.equal(correctionFor(r), '');
+});
+
+test('fatal misses become an instruction naming the day and the gap', () => {
+  const week = goodWeek();
+  week[1].meals[0].items[0].calories -= Math.round(TARGETS.calories * 0.4);
+  const r = validateMealPlan(week, TARGETS);
+  assert.equal(r.ok, false);
+  const c = correctionFor(r);
+  assert.ok(c.includes('REJECTED'), 'must tell the model the attempt failed');
+  assert.ok(c.includes('Tuesday'), 'must name the offending day');
+  assert.ok(/\d+% off/.test(c), 'must quantify the miss');
+});
+
+test('the correction asks for a tighter band than the validator enforces', () => {
+  // Asking for exactly the fatal threshold would put every near-miss back
+  // over the line on the retry.
+  const week = goodWeek();
+  week[2].meals[0].items[0].protein -= Math.round(TARGETS.protein * 0.5);
+  const c = correctionFor(validateMealPlan(week, TARGETS));
+  assert.ok(c.includes('10%'));
+});
+
+test('a wholesale failure is truncated rather than dumping every day', () => {
+  const week = goodWeek().map(d => {
+    d.meals[0].items[0].calories -= Math.round(TARGETS.calories * 0.4);
+    return d;
+  });
+  const r = validateMealPlan(week, TARGETS);
+  const c = correctionFor(r, 3);
+  assert.equal((c.match(/^- /gm) ?? []).length, 4, '3 issues + the "and N more" line');
+  assert.ok(c.includes('more of the same kind'));
 });
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

@@ -13,10 +13,10 @@
 
 import {
   carbTargetGPerKg, phaseFromRaceDate, daysUntilRace, isCarbLoadWindow,
-  carbLoadGPerKgFor, energyAvailability, PHASE_LABEL,
+  carbLoadGPerKgFor, PHASE_LABEL,
   type TrainingPhase,
 } from './enduranceFueling';
-import { dailyEnergy, type Session, type NeatLevel } from './enduranceEnergy';
+import { dailyEnergy, type Session, type NeatLevel } from './sessionEnergy';
 import {
   TRI_COURSES, baseCarbRate, planGutTraining, needsMixedCarbSource,
   GLUCOSE_FRUCTOSE_RATIO, type TriDistance,
@@ -35,7 +35,8 @@ export interface EnduranceProfile {
   bmr?: number | null;
 }
 
-const SPORT_TO_DISTANCE: Record<string, TriDistance> = {
+/** `profiles.sport` → the triathlon course it maps to. Empty for non-tri sports. */
+export const SPORT_TO_DISTANCE: Record<string, TriDistance> = {
   tri_sprint: 'sprint',
   tri_olympic: 'olympic',
   tri_70_3: 'half',
@@ -147,18 +148,10 @@ export function buildEnduranceContext(
   );
   lines.push(`- Maintenance today: ~${energy.maintenance} cal (resting ${energy.restingComponent} + training ${energy.exerciseComponent})`);
 
-  // Energy availability — only surfaced when it's actually a problem.
-  if (profile?.ffmKg) {
-    const ea = energyAvailability(energy.target, energy.exerciseComponent, profile.ffmKg);
-    if (ea.shouldWarn) {
-      lines.push(
-        `- LOW ENERGY AVAILABILITY: ${ea.value} kcal/kg FFM (below the 30 threshold). ` +
-        `Needs ~${ea.deficitToLow} more calories. Raise this before discussing anything else — ` +
-        `it drives fatigue, poor sleep, illness and stress fractures, and no training ` +
-        `adjustment fixes it.`
-      );
-    }
-  }
+  // Energy availability is NOT emitted here any more. It is archetype-agnostic
+  // and `buildCoachContext` now emits it for every sport, so that a lifter or a
+  // gymnast reaches the same guard a triathlete does. Duplicating it here would
+  // print the warning twice for endurance athletes.
 
   // Race fuelling and the gut work needed to get there.
   if (course && raceHours) {
