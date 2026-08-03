@@ -14,6 +14,7 @@ import { MC } from '../constants/data';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { saveRecipe, Recipe, RecipeIngredient } from '../utils/recipes';
 import { useAIGate } from '../hooks/useAIGate';
+import { logError } from '../utils/logError';
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE';
 
@@ -131,7 +132,8 @@ export default function RecipeBuilderScreen({ visible, onClose, onSaved }: Props
           source: 'usda' as const,
         })),
       );
-    } catch {
+    } catch (e) {
+      logError('RecipeBuilder.usdaSearch', e);
       Alert.alert('Search failed', 'Could not reach the food database.');
     } finally {
       setSearchingUSDA(false);

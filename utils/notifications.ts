@@ -37,7 +37,10 @@ export async function scheduleOnboardingNotifications(): Promise<void> {
             body: 'Ask it anything about your macros, recovery, or workout plan',
             sound: true,
           },
-          trigger: { date: day3 } as any,
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: day3,
+          },
         });
       }
       await AsyncStorage.setItem('fuelog_day3_notif_scheduled', '1');
@@ -55,7 +58,10 @@ export async function scheduleOnboardingNotifications(): Promise<void> {
             body: 'Check your Progress tab to see your macro trend',
             sound: true,
           },
-          trigger: { date: day7 } as any,
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: day7,
+          },
         });
       }
       await AsyncStorage.setItem('fuelog_day7_notif_scheduled', '1');
@@ -87,7 +93,10 @@ export async function scheduleWeeklyInsightNotification(): Promise<void> {
         body: 'See how last week went and get your focus for this week.',
         sound: true,
       },
-      trigger: { date: nextMonday } as any,
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: nextMonday,
+      },
     });
 
     await AsyncStorage.setItem('fuelog_weekly_insight_notif_id', id);
@@ -122,7 +131,10 @@ export async function maybeScheduleProNotification(): Promise<void> {
             body: 'Ask your AI Coach to review your progress and adjust your targets',
             sound: true,
           },
-          trigger: { date: day30 } as any,
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: day30,
+          },
         });
       }
       await AsyncStorage.setItem('fuelog_day30_notif_scheduled', '1');

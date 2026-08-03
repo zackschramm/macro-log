@@ -21,6 +21,7 @@ import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/the
 import ShareCardGenerator from '../components/ShareCardGenerator';
 import InBodyCompareModal from '../components/InBodyCompareModal';
 import { requireAIAccess } from '../utils/proGate';
+import { logError } from '../utils/logError';
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE';
 
@@ -203,8 +204,8 @@ export default function InBodySection() {
         image_url: `data:${mime};base64,${base64}`,
       };
       setEditing(draft);
-    } catch (e: any) {
-      console.log('inbody scan error:', e);
+    } catch (e) {
+      logError('InBody.scan', e);
       Alert.alert('Scan failed', 'Could not extract InBody data. Try a clearer photo.');
     } finally {
       setScanning(false);

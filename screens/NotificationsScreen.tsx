@@ -104,11 +104,12 @@ export default function NotificationsScreen() {
         body: setting.description,
         sound: true,
       },
+      // DAILY repeats by definition — there is no `repeats` field on this type.
       trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
         hour: setting.hour,
         minute: setting.minute,
-        repeats: true,
-      } as any,
+      },
     });
   };
 
@@ -145,11 +146,22 @@ export default function NotificationsScreen() {
     try {
       await Notifications.scheduleNotificationAsync({
         content: { title: 'Fuelog', body: 'Notifications are working!', sound: true },
-        trigger: { seconds: 2 } as any,
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: 2,
+          repeats: false,
+        },
       });
       Alert.alert('Test Sent', "You'll get a notification in 2 seconds.");
-    } catch (e: any) {
-      Alert.alert('Error', e.message);
+    } catch (e) {
+      // Was Alert.alert('Error', e.message) — which showed users raw exception
+      // text like "The `trigger` object you provided is invalid…" and told us
+      // nothing, because it never reached Sentry.
+      logError('NotificationsScreen.testNotif', e);
+      Alert.alert(
+        "Couldn't send test",
+        'Something went wrong scheduling the notification. Check that notifications are enabled for Fuelog in iOS Settings.',
+      );
     }
   };
 

@@ -13,6 +13,7 @@ import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/the
 import SkeletonBox from '../components/SkeletonBox';
 import FoodAnalysisResults, { AnalysisResult, AnalyzedItem } from '../components/FoodAnalysisResults';
 import { useAIGate } from '../hooks/useAIGate';
+import { logError } from '../utils/logError';
 
 type Phase = 'input' | 'analyzing' | 'results' | 'editing';
 
@@ -87,7 +88,10 @@ export default function VoiceLogScreen({ visible, date, defaultMeal, initialText
       setResult(parsed);
       setEditItems(parsed.items.map(it => ({ ...it })));
       setPhase('results');
-    } catch {
+    } catch (e) {
+      // Bare `catch {}` here meant a dead ai-proxy and a genuinely ambiguous
+      // meal description produced the identical, misleading "could not parse".
+      logError('VoiceLog.parse', e);
       Alert.alert('Could not parse', 'Try describing the meal differently, or enter macros manually.');
       setPhase('input');
     }

@@ -14,6 +14,7 @@ import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/the
 import SkeletonBox from '../components/SkeletonBox';
 import FoodAnalysisResults, { AnalysisResult, AnalyzedItem } from '../components/FoodAnalysisResults';
 import { useAIGate } from '../hooks/useAIGate';
+import { logError } from '../utils/logError';
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE';
 
@@ -141,7 +142,7 @@ export default function FoodPhotoScreen({ visible, date, defaultMeal, onClose, o
       setEditItems(parsed.items.map(it => ({ ...it })));
       setPhase('results');
     } catch (err) {
-      console.log('Photo analysis failed:', err);
+      logError('FoodPhoto.analyze', err);
       Alert.alert('Analysis failed', 'Could not analyze the photo. Try again or enter manually.');
       setPhase('capture');
     }

@@ -39,7 +39,24 @@ async function callCloud(messages: { role: string; content: string }[], system?:
 
   const raw = await response.text();
   console.log('callAI raw response:', raw.slice(0, 300));
-  const data = JSON.parse(raw);
+
+  // Previously this went straight to JSON.parse(raw). Any non-2xx from the
+  // proxy — an expired Anthropic key, a rate limit, a cold-start failure —
+  // came back as either an opaque SyntaxError or an empty string, depending on
+  // whether the error body happened to be JSON. Callers could not tell "the
+  // model returned nothing" from "the request never reached the model", and
+  // neither case named the status code. Fail loudly and say why.
+  if (!response.ok) {
+    throw new Error(`ai-proxy ${response.status}: ${raw.slice(0, 200)}`);
+  }
+
+  let data: any;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    throw new Error(`ai-proxy returned non-JSON (${response.status}): ${raw.slice(0, 200)}`);
+  }
+
   return data.content?.find((b: any) => b.type === 'text')?.text || '';
 }
 

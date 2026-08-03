@@ -194,8 +194,12 @@ Complete all 7 days. Valid JSON only.`;
         .order('week_start', { ascending: false }).limit(10);
       setSavedPlans((allPlans ?? []).filter((p: any) => p.week_start !== weekStart));
     } catch (e) {
+      // This catch used to console.error only. Every failure that wasn't a
+      // validator rejection — a dead AI proxy, a network drop, a Supabase
+      // write error — showed the user this alert and left no trace in Sentry,
+      // so the only symptom reaching us was a one-star review.
+      logError('MealPlan.generate', e);
       Alert.alert('Error', 'Could not generate meal plan. Please try again.');
-      console.error(e);
     } finally {
       setLoading(false);
     }

@@ -10,6 +10,7 @@ import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/the
 import { Ionicons } from '@expo/vector-icons';
 import { FEATURE_ICONS, type IconName } from '../constants/icons';
 import { track, EVENTS } from '../utils/analytics';
+import { logError } from '../utils/logError';
 
 const FEATURES: { icon: IconName; label: string; desc: string }[] = [
   { icon: FEATURE_ICONS.coaching,     label: 'AI Coaching', desc: 'Unlimited AI-powered nutrition & fitness coach' },
@@ -160,7 +161,13 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
         onUnlock();
       }
     } catch (e: any) {
+      // A user backing out is not an error. Anything else is lost revenue we
+      // had no signal for — this path reported nothing anywhere.
       if (!e.userCancelled) {
+        logError('Paywall.purchase', e, { plan: selected });
+        // RevenueCat's messages are written for end users ("payment is
+        // pending", "already subscribed"), so passing them through is more
+        // useful here than a generic string.
         Alert.alert('Purchase Failed', e.message ?? 'Something went wrong. Please try again.');
       }
     } finally {
@@ -177,7 +184,8 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
       } else {
         Alert.alert('Nothing to Restore', 'No active Fuelog Pro subscription found.');
       }
-    } catch {
+    } catch (e) {
+      logError('Paywall.restore', e);
       Alert.alert('Error', 'Could not restore purchases. Please try again.');
     } finally {
       setRestoring(false);

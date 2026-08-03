@@ -13,6 +13,7 @@ import { useAuth } from '../hooks/useAuth';
 import { MC } from '../constants/data';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { useAIGate } from '../hooks/useAIGate';
+import { logError } from '../utils/logError';
 
 interface Food {
   id: number;
@@ -75,7 +76,8 @@ export default function FoodsScreen() {
       });
       const data = await res.json();
       setUsdaResults(data.foods || []);
-    } catch {
+    } catch (e) {
+      logError('Foods.usdaSearch', e);
       Alert.alert('Search failed', 'Could not search food database.');
     } finally {
       setUsdaSearching(false);

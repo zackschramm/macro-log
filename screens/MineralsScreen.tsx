@@ -12,6 +12,7 @@ import PaywallScreen from './PaywallScreen';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { toLocalDateString } from '../utils/dateUtils';
 import { requireAIAccess } from '../utils/proGate';
+import { logError } from '../utils/logError';
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE';
 
@@ -196,8 +197,8 @@ export default function MineralsScreen({ profile }: Props) {
       setBloodworkDate(today);
       Alert.alert('✅ Blood work analyzed!', `Found ${Object.keys(parsed).length} nutrient markers.`);
     } catch (e) {
+      logError('Minerals.bloodwork', e);
       Alert.alert('Error', 'Could not analyze blood work. Please try again.');
-      console.log('Bloodwork error:', e);
     } finally {
       setAnalyzingBloodwork(false);
     }
