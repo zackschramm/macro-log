@@ -7,7 +7,11 @@ import { supabase } from '../constants/supabase'
 // These are public identifiers (not secrets) — safe to embed in the app bundle.
 // Register redirect URI 'fuelog://wearable-callback' in each provider's developer console.
 const WHOOP_CLIENT_ID = '8189d697-cb07-45d2-9a7e-7db61dd605c8'
-const OURA_CLIENT_ID = '<OURA_CLIENT_ID>'
+// Public by design: this travels in the authorize URL, so it is visible to
+// anyone who inspects the OAuth redirect. The client SECRET is the sensitive
+// half and lives only in Supabase, where oura-proxy reads it server-side —
+// it must never appear in this file, which ships inside the app bundle.
+const OURA_CLIENT_ID = '6e6d3be4-0f7d-44b6-af6a-b7c4517f95fd'
 
 const SUPABASE_URL = 'https://zbcxuffgmjuqarapfdwb.supabase.co'
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE'

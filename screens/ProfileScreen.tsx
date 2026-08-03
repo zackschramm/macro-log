@@ -1181,10 +1181,20 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
 
             <Text style={s.sectionLabel}>WEARABLES</Text>
             <View style={s.formCard}>
+              {/* Garmin is deliberately absent. garmin-proxy is written and
+                  ready, but Garmin's Connect Developer Program is not issuing
+                  new credentials — their Health API page currently says only
+                  "stay tuned for more updates on the program", and commercial
+                  use carries a license fee on top of an approval review. A
+                  button that cannot succeed is worse than no button, and a
+                  reviewer tapping it is a Guideline 2.1 rejection.
+
+                  Garmin owners are not cut off: Garmin Connect writes workouts,
+                  heart rate and sleep into Apple Health, and we read HealthKit.
+                  Restore this row the day credentials exist. */}
               {([
                 { key: 'whoop' as Provider, label: 'Whoop' },
                 { key: 'oura' as Provider, label: 'Oura Ring' },
-                { key: 'garmin' as Provider, label: 'Garmin', icon: '⌚' },
               ]).map((w, i) => {
                 const isConnected = connectedWearables.includes(w.key);
                 const isConnecting = wearableConnecting === w.key;
