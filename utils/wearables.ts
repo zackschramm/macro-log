@@ -1,7 +1,8 @@
 import * as WebBrowser from 'expo-web-browser'
-import { Linking } from 'react-native'
+import { AppState, Linking } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { supabase } from '../constants/supabase'
+import { logError } from './logError'
 
 // TODO: Fill in your Oura client ID after registering an OAuth app.
 // These are public identifiers (not secrets) — safe to embed in the app bundle.
@@ -86,7 +87,22 @@ async function callProxy(functionName: string, body: object): Promise<any> {
     },
     body: JSON.stringify(body),
   })
-  return res.json()
+
+  // This used to be a bare `return res.json()`. A 401 or 500 from the edge
+  // function was parsed as if it were data, so callers saw `undefined` fields
+  // and reported "no data" rather than "the request failed" — and if the error
+  // body was not JSON, res.json() threw a SyntaxError naming neither the
+  // function nor the status. That is a large part of why "Whoop won't sync"
+  // was so hard to pin down: every distinct failure looked identical.
+  const raw = await res.text()
+  if (!res.ok) {
+    throw new Error(`${functionName} ${res.status}: ${raw.slice(0, 200)}`)
+  }
+  try {
+    return JSON.parse(raw)
+  } catch {
+    throw new Error(`${functionName} returned non-JSON (${res.status}): ${raw.slice(0, 200)}`)
+  }
 }
 
 export async function getConnectedWearables(userId: string): Promise<Provider[]> {
@@ -154,6 +170,40 @@ export const WEARABLE_CALLBACK_RESULT_KEY = 'fuelog_wearable_callback_result'
 // deep-link path (Linking) rather than back into the in-flight openAuthSessionAsync call —
 // this is what causes the auth flow to appear to "kick back to the main screen" and silently
 // drop the connection. Called from App.tsx's global URL handler.
+/**
+ * Resolve once the app is actually foregrounded.
+ *
+ * THIS IS THE FIX FOR "Whoop connects but never syncs".
+ *
+ * The OAuth redirect wakes the app via the deep link, but iOS has not
+ * foregrounded it yet — AppState is still `background` for a moment. Any fetch
+ * issued in that window is killed by the OS before it leaves the device: the
+ * request reports status 0 with `request_body_size: 0` and rejects as
+ * "Network request failed". It never reaches Supabase, so there is nothing in
+ * the edge function logs or invocations either, which is what made this so hard
+ * to see — every layer downstream looked healthy because it was never asked.
+ *
+ * Whoop's authorize step genuinely succeeded (the member even gets a sign-in
+ * email), so the failure looked like a Whoop problem when it was purely a
+ * lifecycle race we lost every single time.
+ */
+function waitForForeground(timeoutMs = 15000): Promise<void> {
+  if (AppState.currentState === 'active') return Promise.resolve()
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer)
+      sub.remove()
+      resolve()
+    }
+    // Proceed anyway on timeout rather than dropping the code on the floor —
+    // a failed exchange we can see beats a silent no-op.
+    const timer = setTimeout(done, timeoutMs)
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') done()
+    })
+  })
+}
+
 export async function handleWearableRedirect(url: string): Promise<void> {
   const provider = await AsyncStorage.getItem(PENDING_WEARABLE_KEY)
   if (provider !== 'whoop' && provider !== 'oura') return
@@ -163,41 +213,72 @@ export async function handleWearableRedirect(url: string): Promise<void> {
 
   const parsed = new URLSearchParams(url.split('?')[1] ?? '')
   if (parsed.get('error')) {
-    console.log(`${provider} oauth error:`, parsed.get('error'), parsed.get('error_description'))
+    // The provider told us exactly why it refused — invalid_scope, redirect
+    // mismatch, access_denied. This went to console.log, so a user reporting
+    // "connecting does nothing" left us with no way to tell those apart.
+    logError('wearables.oauthCallback', new Error(
+      `${provider}: ${parsed.get('error')} — ${parsed.get('error_description') ?? 'no description'}`,
+    ))
   }
   const code = parsed.get('code')
   if (!code || parsed.get('state') !== expectedState) {
+    // A state mismatch is a dropped or replayed callback, not a user action.
+    logError('wearables.oauthCallback', new Error(
+      `${provider}: ${!code ? 'no code in callback' : 'state mismatch'}`,
+    ))
     await AsyncStorage.setItem(WEARABLE_CALLBACK_RESULT_KEY, JSON.stringify({ provider, success: false }))
     return
   }
 
-  const resp = await callProxy(`${provider}-proxy`, { action: 'exchange_code', code })
-  // A fresh, successful connection clears any stale reauth flag.
-  if (provider === 'whoop' && !resp.error) await setWhoopReauth(false)
-  await AsyncStorage.setItem(WEARABLE_CALLBACK_RESULT_KEY, JSON.stringify({ provider, success: !resp.error }))
+  try {
+    // Do not exchange while backgrounded — see waitForForeground above.
+    await waitForForeground()
+    const resp = await callProxy(`${provider}-proxy`, { action: 'exchange_code', code })
+    if (resp.error) {
+      logError('wearables.exchangeCode', new Error(`${provider}: ${String(resp.error)}`))
+    }
+    // A fresh, successful connection clears any stale reauth flag.
+    if (provider === 'whoop' && !resp.error) await setWhoopReauth(false)
+    await AsyncStorage.setItem(WEARABLE_CALLBACK_RESULT_KEY, JSON.stringify({ provider, success: !resp.error }))
+  } catch (err) {
+    // callProxy now throws on a non-2xx instead of returning a parsed error
+    // body, so this branch is reachable where it previously was not.
+    logError('wearables.exchangeCode', err)
+    await AsyncStorage.setItem(WEARABLE_CALLBACK_RESULT_KEY, JSON.stringify({ provider, success: false }))
+  }
 }
 
+// Not reachable from the UI right now — the Garmin row was removed from the
+// wearables picker because Garmin is not issuing developer credentials. Kept
+// intact so it can be restored, but wrapped: callProxy now throws on a non-2xx,
+// and garmin-proxy has no GARMIN_CONSUMER_KEY, so an unguarded call here would
+// surface as an unhandled rejection rather than a failed connect.
 export async function connectGarmin(): Promise<boolean> {
-  const tokenResp = await callProxy('garmin-proxy', { action: 'request_token' })
-  if (!tokenResp.data?.authUrl) return false
+  try {
+    const tokenResp = await callProxy('garmin-proxy', { action: 'request_token' })
+    if (!tokenResp.data?.authUrl) return false
 
-  const { authUrl, requestToken, requestTokenSecret } = tokenResp.data
-  const result = await WebBrowser.openAuthSessionAsync(authUrl, REDIRECT_URI, {
-    preferEphemeralSession: true,
-  })
-  if (result.type !== 'success') return false
+    const { authUrl, requestToken, requestTokenSecret } = tokenResp.data
+    const result = await WebBrowser.openAuthSessionAsync(authUrl, REDIRECT_URI, {
+      preferEphemeralSession: true,
+    })
+    if (result.type !== 'success') return false
 
-  const parsed = new URLSearchParams(result.url.split('?')[1] ?? '')
-  const verifier = parsed.get('oauth_verifier')
-  if (!verifier) return false
+    const parsed = new URLSearchParams(result.url.split('?')[1] ?? '')
+    const verifier = parsed.get('oauth_verifier')
+    if (!verifier) return false
 
-  const exchangeResp = await callProxy('garmin-proxy', {
-    action: 'exchange_verifier',
-    requestToken,
-    requestTokenSecret,
-    verifier,
-  })
-  return !exchangeResp.error
+    const exchangeResp = await callProxy('garmin-proxy', {
+      action: 'exchange_verifier',
+      requestToken,
+      requestTokenSecret,
+      verifier,
+    })
+    return !exchangeResp.error
+  } catch (err) {
+    logError('wearables.connectGarmin', err)
+    return false
+  }
 }
 
 export async function connectWearableForProvider(provider: Provider): Promise<boolean> {
@@ -245,7 +326,10 @@ async function setWhoopReauth(needed: boolean): Promise<void> {
 export async function getWhoopData(userId: string): Promise<WhoopData | null> {
   try {
     const resp = await fetchWhoopSummary()
-    if (resp.error) console.error('whoop summary fetch failed:', resp.error)
+    // The proxy reports WHY it failed — expired grant, upstream 429, revoked
+    // token. That reason was going to console.error, which nobody reads on a
+    // shipped build, so every cause presented as an empty Recovery tab.
+    if (resp.error) logError('wearables.whoopSummary', new Error(String(resp.error)))
     // The proxy returns 200 + reauthRequired when the grant is unrecoverable.
     await setWhoopReauth(!!resp.reauthRequired)
     const r = resp.data?.recovery
@@ -265,7 +349,7 @@ export async function getWhoopData(userId: string): Promise<WhoopData | null> {
       respiratoryRate: sl?.respiratoryRate ?? null,
     }
   } catch (err) {
-    console.error('getWhoopData failed:', err)
+    logError('wearables.getWhoopData', err)
     return null
   }
 }
@@ -292,7 +376,7 @@ export async function getWhoopTrends(userId: string): Promise<WhoopTrends> {
       .sort((a, b) => a.date.localeCompare(b.date))
     return { hrvTrend, rhrTrend, sleepTrend }
   } catch (err) {
-    console.error('getWhoopTrends failed:', err)
+    logError('wearables.getWhoopTrends', err)
     return { hrvTrend: [], rhrTrend: [], sleepTrend: [] }
   }
 }
@@ -314,7 +398,8 @@ export async function getOuraData(userId: string): Promise<OuraData | null> {
       activityScore: a?.activityScore ?? null,
       contributors: r?.contributors ?? null,
     }
-  } catch {
+  } catch (err) {
+    logError('wearables.getOuraData', err)
     return null
   }
 }
@@ -333,7 +418,8 @@ export async function getGarminData(userId: string): Promise<GarminData | null> 
       stressLevel: d?.stressLevel ?? null,
       steps: d?.steps ?? null,
     }
-  } catch {
+  } catch (err) {
+    logError('wearables.getGarminData', err)
     return null
   }
 }

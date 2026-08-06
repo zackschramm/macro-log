@@ -1202,7 +1202,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
                   <React.Fragment key={w.key}>
                     {i > 0 && <View style={s.fieldDivider} />}
                     <View style={s.sourceRow}>
-                      <Text style={s.fieldLabel}>{w.icon} {w.label}</Text>
+                      <Text style={s.fieldLabel}>{w.label}</Text>
                       {isConnected ? (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                           <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#C8FF3D' }} />
