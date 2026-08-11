@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet,
-  Alert, ActivityIndicator, Image, Platform, Modal, AppState,
+  Alert, ActivityIndicator, Image, Platform, Modal, AppState, Linking,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { File, Paths } from 'expo-file-system';
@@ -150,6 +150,38 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   const restTimer = useRestTimer();
   const [preferredTracker, setPreferredTracker] = useState('auto');
   const [availableTrackers, setAvailableTrackers] = useState<string[]>([]);
+  // Account deletion (App Store 5.1.1(v)). Typed confirmation, not a plain
+  // alert — an accidental double-tap must not be able to destroy an account.
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirm !== 'DELETE' || deleting) return;
+    setDeleting(true);
+    try {
+      // invoke() attaches the session JWT and apikey itself, so the function
+      // can trust the caller's identity from the verified token.
+      const { error } = await supabase.functions.invoke('delete-account', {
+        body: { confirm: 'DELETE' },
+      });
+      if (error) throw error;
+
+      setShowDeleteAccount(false);
+      setDeleteConfirm('');
+      // The auth user no longer exists, so signOut is really just clearing
+      // local session state and returning to the auth screen.
+      await signOut();
+    } catch (e) {
+      logError('Profile.deleteAccount', e);
+      Alert.alert(
+        'Could not delete account',
+        'Something went wrong and your account has NOT been deleted. Please try again, or email support@fuelog.app and we will remove it for you.',
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
   const [hkSources, setHkSources] = useState<Record<string, string>>({});
   const [sourceSyncTimes, setSourceSyncTimes] = useState<Record<string, number>>({});
   const [name, setName] = useState(profile.name || '');
@@ -453,6 +485,18 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
     const next = Math.min(16, Math.max(4, waterGoalCups + delta));
     setWaterGoalCups(next);
     await AsyncStorage.setItem(WATER_GOAL_KEY, String(next));
+  };
+
+  // Apple owns billing for in-app purchases, so there is no in-app screen that
+  // could change or cancel a plan — that only happens in Apple ID settings.
+  // App Review looks for this link, and without it users can't find where to
+  // cancel. Same framing as the account-deletion warning further down.
+  const openManageSubscription = async () => {
+    try {
+      await Linking.openURL('https://apps.apple.com/account/subscriptions');
+    } catch (e) {
+      logError('Profile.manageSubscription', e);
+    }
   };
 
   const exportData = async () => {
@@ -806,8 +850,8 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
             { key: 'minerals', icon: 'flask-outline',           label: 'Nutrients',      sub: 'Vitamins & minerals today' },
             { key: 'memory',   icon: 'sparkles-outline',        label: 'Coach Memory',   sub: 'What Fuelog remembers about you' },
             { key: 'notifs',   icon: 'notifications-outline',   label: 'Notifications',  sub: 'Reminders & alerts' },
-          ] as const).map((item, i, arr) => (
-            <TouchableOpacity key={item.key} style={[s.linkRow, i < arr.length - 1 && s.linkRowBorder]} onPress={() => setSubScreen(item.key)} activeOpacity={0.7}>
+          ] as const).map((item) => (
+            <TouchableOpacity key={item.key} style={[s.linkRow, s.linkRowBorder]} onPress={() => setSubScreen(item.key)} activeOpacity={0.7}>
               <View style={s.linkIcon}>
                 <Ionicons name={item.icon as any} size={18} color="#888" />
               </View>
@@ -818,6 +862,18 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
               <Ionicons name="chevron-forward" size={16} color="#333" />
             </TouchableOpacity>
           ))}
+          {/* Leaves the app — see openManageSubscription for why this can't be
+              an in-app screen. Last row, so no bottom border. */}
+          <TouchableOpacity style={s.linkRow} onPress={openManageSubscription} activeOpacity={0.7}>
+            <View style={s.linkIcon}>
+              <Ionicons name="card-outline" size={18} color="#888" />
+            </View>
+            <View style={s.linkText}>
+              <Text style={s.linkLabel}>Manage Subscription</Text>
+              <Text style={s.linkSub}>Change or cancel in Apple ID settings</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color="#333" />
+          </TouchableOpacity>
         </View>
 
         {/* Personal info */}
@@ -1456,7 +1512,98 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
         <Text style={[s.sectionLabel, { marginTop: 16 }]}>ACHIEVEMENTS</Text>
         <AchievementBadges profile={targets} />
 
+        {/* Account deletion. Required by App Store Guideline 5.1.1(v): an app
+            that lets you make an account has to let you delete it from inside
+            the app. Deliberately placed at the very bottom, below everything
+            else, and gated behind a typed confirmation — it is irreversible. */}
+        <Text style={[s.sectionLabel, { marginTop: 28 }]}>ACCOUNT</Text>
+        <TouchableOpacity
+          style={s.deleteAccountBtn}
+          onPress={() => setShowDeleteAccount(true)}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Delete account permanently"
+        >
+          <Text style={s.deleteAccountText}>Delete Account</Text>
+        </TouchableOpacity>
+        <Text style={s.deleteAccountHint}>
+          Permanently deletes your account and all your data. This cannot be undone.
+        </Text>
+
       </ScrollView>
+
+      {/* Delete Account confirmation */}
+      <Modal
+        visible={showDeleteAccount}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowDeleteAccount(false)}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+          <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ fontSize: 20, fontWeight: '700', color: colors.text }}>Delete Account</Text>
+            <TouchableOpacity onPress={() => { setShowDeleteAccount(false); setDeleteConfirm(''); }} disabled={deleting}>
+              <Text style={{ fontSize: 16, color: colors.textSecondary }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView contentContainerStyle={{ padding: 20 }}>
+            <Text style={{ fontSize: 15, color: colors.text, lineHeight: 22, marginBottom: 16 }}>
+              This permanently deletes your Fuelog account and everything in it:
+            </Text>
+            <Text style={{ fontSize: 15, color: colors.textSecondary, lineHeight: 24, marginBottom: 16 }}>
+              • Every food and workout you have logged{'\n'}
+              • Weight history, measurements and InBody scans{'\n'}
+              • Progress photos and blood work{'\n'}
+              • Meal plans, recipes and saved foods{'\n'}
+              • Connected wearables and your coach history
+            </Text>
+            <Text style={{ fontSize: 15, color: colors.danger, lineHeight: 22, marginBottom: 20, fontWeight: '600' }}>
+              This cannot be undone. There is no way to recover the data afterwards.
+            </Text>
+
+            {/* Subscriptions live with Apple, not with us — deleting the account
+                does not stop billing, and users reliably assume it does. */}
+            <Text style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 21, marginBottom: 22 }}>
+              If you have a Fuelog Pro subscription, deleting your account does not cancel it.
+              Cancel it in your Apple ID subscription settings first, or you will keep being charged.
+            </Text>
+
+            <Text style={{ fontSize: 14, fontWeight: '600', color: colors.text, marginBottom: 8 }}>
+              Type DELETE to confirm
+            </Text>
+            <TextInput
+              value={deleteConfirm}
+              onChangeText={setDeleteConfirm}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              editable={!deleting}
+              placeholder="DELETE"
+              placeholderTextColor={colors.textSecondary}
+              style={{
+                borderWidth: 1, borderColor: colors.border, borderRadius: 10,
+                paddingHorizontal: 14, paddingVertical: 13, fontSize: 16,
+                color: colors.text, backgroundColor: colors.card, marginBottom: 22,
+              }}
+              accessibilityLabel="Type DELETE to confirm account deletion"
+            />
+
+            <TouchableOpacity
+              style={{
+                backgroundColor: deleteConfirm === 'DELETE' ? colors.danger : colors.border,
+                borderRadius: 999, paddingVertical: 16, alignItems: 'center',
+              }}
+              disabled={deleteConfirm !== 'DELETE' || deleting}
+              onPress={handleDeleteAccount}
+              activeOpacity={0.8}
+            >
+              {deleting
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>Delete my account</Text>}
+            </TouchableOpacity>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
 
       {/* Cycle Tracking Setup Modal */}
       <Modal visible={showCycleSetup} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowCycleSetup(false)}>
@@ -1662,4 +1809,16 @@ const s = StyleSheet.create({
   saveBtnText: { color: colors.accentText, fontSize: 15, fontWeight: weight.bold },
   signOutBtn: { alignItems: 'center', paddingVertical: 14 },
   signOutText: { color: colors.danger, fontSize: 15, fontWeight: weight.semibold },
+  // Deliberately understated: an outlined row rather than a filled red button,
+  // so it reads as available but not inviting. The commitment happens in the
+  // typed confirmation, not here.
+  deleteAccountBtn: {
+    alignItems: 'center', paddingVertical: 14, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.danger, marginTop: 4,
+  },
+  deleteAccountText: { color: colors.danger, fontSize: 15, fontWeight: weight.semibold },
+  deleteAccountHint: {
+    color: colors.textSecondary, fontSize: 12.5, lineHeight: 18,
+    textAlign: 'center', marginTop: 10, marginBottom: 8,
+  },
 });

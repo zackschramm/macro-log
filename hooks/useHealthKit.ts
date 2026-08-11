@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Platform } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import { bucketByDayAndSource, SAMPLE_UNITS, type RawSample } from '../utils/healthBuckets';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import AppleHealthKit, {
@@ -48,10 +48,39 @@ const STATISTICS_COLLECTION_UNSAFE =
  * ones that just sum, ones that group by `sourceName` to pick a dominant
  * source, and ones that want per-day values for a chart.
  */
+/**
+ * HealthKit encrypts its store and refuses every query while the device is
+ * locked, failing with `Code=6 "Protected health data is inaccessible"`. This
+ * also covers the window where the app is running but has not been foregrounded
+ * yet — the same lifecycle trap that silently killed the Whoop token exchange.
+ *
+ * Treating that error as "no data" turns a locked phone into zero steps, which
+ * is what a real user saw: the iOS Health app showed a full day of steps while
+ * Fuelog showed 0, and the only trace was thirteen Sentry events nobody had a
+ * reason to look at.
+ */
+function isProtectedDataError(err: any): boolean {
+  const msg = typeof err === 'string' ? err : (err?.message ?? JSON.stringify(err ?? ''));
+  return /Protected health data is inaccessible|Code=6\b/.test(msg);
+}
+
+/** Resolve once the app is foregrounded, so HealthKit will actually answer. */
+function whenActive(timeoutMs = 10000): Promise<void> {
+  if (AppState.currentState === 'active') return Promise.resolve();
+  return new Promise((resolve) => {
+    const finish = () => { clearTimeout(timer); sub.remove(); resolve(); };
+    const timer = setTimeout(finish, timeoutMs);
+    const sub = AppState.addEventListener('change', (s: AppStateStatus) => {
+      if (s === 'active') finish();
+    });
+  });
+}
+
 function samplesFallback(
   type: 'ActiveEnergyBurned' | 'BasalEnergyBurned' | 'StepCount',
   opts: any,
-  cb: (err: any, data: any[]) => void
+  cb: (err: any, data: any[]) => void,
+  isRetry = false,
 ) {
   const { unit, scale } = SAMPLE_UNITS[type] ?? { unit: 'count', scale: 1 };
   try {
@@ -64,6 +93,13 @@ function samplesFallback(
         // treated "no data" as a legitimate answer. Failing soft is still the
         // right behaviour for the UI; being invisible is not.
         if (err) {
+          // Locked device: wait for foreground and ask once more rather than
+          // reporting zero. Not logged on the first attempt — it is an expected
+          // transient state, and logging it drowns out real failures.
+          if (isProtectedDataError(err) && !isRetry) {
+            whenActive().then(() => samplesFallback(type, opts, cb, true));
+            return;
+          }
           logError(`useHealthKit.samplesFallback.${type}`, err);
           return cb(null, []);
         }
@@ -660,7 +696,22 @@ export function useHealthKit() {
             (err: any, data: any[]) => {
               const filtered = filterBySource(data, 'hrv');
               if (!err && filtered?.length > 0) {
-                results.hrv = Math.round(filtered[0].value * 1000); // s → ms
+                // Was filtered[0] — one instantaneous SDNN reading. HRV swings
+                // widely across a day, so a single sample bore little relation
+                // to the daily figure Apple Health shows, and none at all to
+                // the trend below, which took the day's MAX. Headline and chart
+                // were computed differently and could visibly disagree.
+                //
+                // Average the most recent day's samples instead: that is the
+                // daily statistic Health itself reports, and the trend now uses
+                // the same one so the number always sits on its own line.
+                const latestDay = toLocalDateString(new Date(filtered[0].startDate));
+                const sameDay = filtered.filter(
+                  (s: any) => s.startDate && toLocalDateString(new Date(s.startDate)) === latestDay,
+                );
+                const pool = sameDay.length > 0 ? sameDay : [filtered[0]];
+                const mean = pool.reduce((sum: number, s: any) => sum + s.value, 0) / pool.length;
+                results.hrv = Math.round(mean * 1000); // s → ms
                 results.sources['hrv'] = filtered[0].sourceName ?? '';
               }
               res();
@@ -675,53 +726,111 @@ export function useHealthKit() {
             (err: any, data: any[]) => {
               const filtered = filterBySource(data, 'hrv');
               if (!err && filtered?.length > 0) {
-                const byDay: Record<string, number> = {};
+                // Daily MEAN, matching the headline above. This previously took
+                // the day's maximum, which is why the big number could sit
+                // below its own chart line for the same day.
+                const sums: Record<string, { total: number; n: number }> = {};
                 filtered.forEach((s: any) => {
                   const day = s.startDate ? toLocalDateString(new Date(s.startDate)) : '';
                   if (!day) return;
-                  const ms = Math.round(s.value * 1000);
-                  if (!byDay[day] || ms > byDay[day]) byDay[day] = ms;
+                  const bucket = (sums[day] ||= { total: 0, n: 0 });
+                  bucket.total += s.value;
+                  bucket.n += 1;
                 });
-                results.hrvTrend = Object.entries(byDay).map(([date, value]) => ({ date, value }));
+                const byDay: Record<string, number> = {};
+                Object.entries(sums).forEach(([day, { total, n }]) => {
+                  byDay[day] = Math.round((total / n) * 1000);
+                });
+                // Object.entries preserves insertion order, which here is
+                // whatever order HealthKit returned samples in — frequently
+                // newest-first. Unsorted, the chart draws right-to-left and the
+                // axis reads backwards. sleepTrend below already sorts; this
+                // and rhrTrend were missed, so which charts looked wrong varied
+                // by day depending on how the samples happened to arrive.
+                results.hrvTrend = Object.entries(byDay)
+                  .map(([date, value]) => ({ date, value }))
+                  .sort((a, b) => a.date.localeCompare(b.date));
               }
               res();
             }
           );
         }),
 
-        // Resting Heart Rate — use heart rate samples (works with Whoop/Garmin/Apple Watch)
-        // Take the minimum overnight value (10pm–8am) as the resting estimate
+        /**
+         * Resting heart rate.
+         *
+         * This used to query raw getHeartRateSamples, filter to 22:00-08:00 and
+         * take pool.reduce(min) — the single lowest beat across the WHOLE seven
+         * day window, despite the comment claiming "most recent day". A real
+         * user saw 44 here while Whoop said 54 and Apple said 56, because both
+         * of those compute a resting rate from a night's distribution and we
+         * were reporting the lowest single reading of the week. It also drifted
+         * as the window rolled, for no reason the user could perceive.
+         *
+         * HealthKit publishes RestingHeartRate as its own type, already
+         * computed by Apple, and we have always requested permission for it —
+         * it simply was not being read. Use it, and keep the old heuristic only
+         * as a fallback for sources that never write that type.
+         */
         new Promise<void>((res) => {
-          (AppleHealthKit as any).getHeartRateSamples(
+          (AppleHealthKit as any).getRestingHeartRateSamples(
             { startDate: sevenDaysAgo.toISOString(), endDate: now.toISOString(), ascending: false },
             (err: any, data: any[]) => {
               const filtered = filterBySource(data, 'rhr');
               if (!err && filtered?.length > 0) {
-                // Overnight samples only (10pm–8am) for resting estimate
-                const overnight = filtered.filter((s: any) => {
-                  const h = new Date(s.startDate).getHours();
-                  return h >= 22 || h < 8;
-                });
-                const pool = overnight.length > 0 ? overnight : filtered;
-                // Take minimum from most recent day available
-                const latest = pool.reduce((min: any, s: any) =>
-                  (!min || s.value < min.value) ? s : min, null);
-                if (latest) {
-                  results.restingHR = Math.round(latest.value);
-                  results.sources['rhr'] = latest.sourceName ?? '';
-                }
-                // Trend: min per day across all samples
-                const byDay: Record<string, { value: number; source: string }> = {};
+                // ascending: false, so index 0 is the most recent day.
+                results.restingHR = Math.round(filtered[0].value);
+                results.sources['rhr'] = filtered[0].sourceName ?? '';
+
+                // One value per day. These are already daily figures, so the
+                // last one written for a given day is the one to keep.
+                const byDay: Record<string, number> = {};
                 filtered.forEach((s: any) => {
                   const day = s.startDate ? toLocalDateString(new Date(s.startDate)) : '';
-                  if (!day) return;
-                  if (!byDay[day] || s.value < byDay[day].value) {
-                    byDay[day] = { value: Math.round(s.value), source: s.sourceName ?? '' };
-                  }
+                  if (!day || byDay[day] !== undefined) return;
+                  byDay[day] = Math.round(s.value);
                 });
-                results.rhrTrend = Object.entries(byDay).map(([date, d]) => ({ date, value: d.value }));
+                results.rhrTrend = Object.entries(byDay)
+                  .map(([date, value]) => ({ date, value }))
+                  .sort((a, b) => a.date.localeCompare(b.date));
+                res();
+                return;
               }
-              res();
+
+              // Fallback: no RestingHeartRate samples at all. Estimate from
+              // overnight raw beats, but per-day rather than across the window,
+              // and from a low percentile rather than the outright minimum — a
+              // single spurious low beat should not define the number.
+              (AppleHealthKit as any).getHeartRateSamples(
+                { startDate: sevenDaysAgo.toISOString(), endDate: now.toISOString(), ascending: false },
+                (err2: any, raw: any[]) => {
+                  const rawFiltered = filterBySource(raw, 'rhr');
+                  if (!err2 && rawFiltered?.length > 0) {
+                    const byDay: Record<string, number[]> = {};
+                    rawFiltered.forEach((s: any) => {
+                      if (!s.startDate) return;
+                      const d = new Date(s.startDate);
+                      const h = d.getHours();
+                      if (h < 22 && h >= 8) return; // overnight only
+                      const day = toLocalDateString(d);
+                      (byDay[day] ||= []).push(s.value);
+                    });
+                    const perDay = Object.entries(byDay).map(([date, values]) => {
+                      const sorted = [...values].sort((a, b) => a - b);
+                      // 10th percentile: resting, without chasing one outlier.
+                      const idx = Math.floor(sorted.length * 0.1);
+                      return { date, value: Math.round(sorted[idx] ?? sorted[0]) };
+                    }).sort((a, b) => a.date.localeCompare(b.date));
+
+                    if (perDay.length) {
+                      results.rhrTrend = perDay;
+                      results.restingHR = perDay[perDay.length - 1].value;
+                      results.sources['rhr'] = rawFiltered[0].sourceName ?? '';
+                    }
+                  }
+                  res();
+                }
+              );
             }
           );
         }),

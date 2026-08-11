@@ -651,12 +651,17 @@ export default function RecoveryScreen({
       // never fix a dead grant, so telling the user to pull-to-refresh would
       // leave them stuck forever — which is exactly how the missing-`offline`-
       // scope bug stayed invisible.
+      // Three distinct states that used to collapse into one misleading
+      // message. "Sync failed — pull down to retry" was shown to members whose
+      // connection was perfectly healthy and who simply had no scored recovery
+      // yet, sending them to retry a thing that could never succeed.
       if (await isWhoopReauthRequired()) {
         setWearableError('Whoop needs reconnecting — open Profile → Wearables and connect again');
-      } else {
-        const whoopFailed = results[0].status === 'rejected' ||
-          (results[0].status === 'fulfilled' && results[0].value == null && !snapshotRef.current.whoopData);
-        if (whoopFailed) setWearableError('Whoop sync failed — pull down to retry');
+      } else if (results[0].status === 'rejected') {
+        // getWhoopData throws only when the proxy reported a real error.
+        setWearableError('Whoop sync failed — pull down to retry');
+      } else if (results[0].value == null && !snapshotRef.current.whoopData) {
+        setWearableError('No recent Whoop data — wear your strap overnight, then open the Whoop app to sync');
       }
     }
 

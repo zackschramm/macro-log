@@ -329,11 +329,23 @@ export async function getWhoopData(userId: string): Promise<WhoopData | null> {
     // The proxy reports WHY it failed — expired grant, upstream 429, revoked
     // token. That reason was going to console.error, which nobody reads on a
     // shipped build, so every cause presented as an empty Recovery tab.
-    if (resp.error) logError('wearables.whoopSummary', new Error(String(resp.error)))
     // The proxy returns 200 + reauthRequired when the grant is unrecoverable.
     await setWhoopReauth(!!resp.reauthRequired)
+
+    // A reported error is a genuine failure — throw so callers can tell it
+    // apart from "connected fine, Whoop just has nothing for today". Returning
+    // null for both meant a member who simply had not worn their strap was
+    // told "sync failed — pull down to retry", which is both wrong and
+    // impossible to act on.
+    if (resp.error) {
+      const err = new Error(String(resp.error))
+      logError('wearables.whoopSummary', err)
+      throw err
+    }
+
     const r = resp.data?.recovery
     const sl = resp.data?.sleep
+    // No recovery record: the call worked, Whoop has no scored recovery yet.
     if (!r) return null
     return {
       recoveryScore: r.recoveryScore ?? null,
