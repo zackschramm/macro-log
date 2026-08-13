@@ -18,6 +18,7 @@ import NotificationsScreen from './NotificationsScreen';
 import MineralsScreen from './MineralsScreen';
 import CoachMemoryScreen from './CoachMemoryScreen';
 import RaceFuelScreen from './RaceFuelScreen';
+import EventFuelScreen from './EventFuelScreen';
 import ReferralScreen from './ReferralScreen';
 import { useAuth } from '../hooks/useAuth';
 import { calculateTargets, MC } from '../constants/data';
@@ -128,7 +129,7 @@ const EXPERIENCE_OPTIONS = [
   { key: 'experienced',  label: 'Experienced',  detail: 'Full detail, fewer guard rails' },
 ];
 
-type SubScreen = 'foods' | 'plan' | 'minerals' | 'notifs' | 'referral' | 'memory' | 'racefuel';
+type SubScreen = 'foods' | 'plan' | 'minerals' | 'notifs' | 'referral' | 'memory' | 'racefuel' | 'eventfuel';
 
 function SubScreenHeader({ title, onBack }: { title: string; onBack: () => void }) {
   return (
@@ -760,6 +761,12 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
       <RaceFuelScreen profile={profile} />
     </SafeAreaView>
   );
+  if (subScreen === 'eventfuel') return (
+    <SafeAreaView style={s.safe} edges={['top']}>
+      <SubScreenHeader title="Event Fuel Plan" onBack={() => setSubScreen(null)} />
+      <EventFuelScreen profile={profile} />
+    </SafeAreaView>
+  );
 
   // ── Main profile view ──────────────────────────────────────────────────────────
   return (
@@ -840,6 +847,23 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
               <View style={s.linkText}>
                 <Text style={[s.linkLabel, { color: colors.accent }]}>Race Fuel Plan</Text>
                 <Text style={s.linkSub}>Carbs, fluid & sodium leg by leg</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.accent} />
+            </TouchableOpacity>
+          )}
+          {/* Single-discipline sibling of the row above, same gate. `race` is
+              exactly the endurance archetype (golf's `round` is the only other
+              rate-based event and it overrides away from `race`), so ultra
+              runners, cyclists, hikers and triathletes doing one-sport events
+              all see it. Screen: EventFuelScreen; engine: utils/eventFueling. */}
+          {capabilitiesFor(sport).eventModel === 'race' && (
+            <TouchableOpacity style={[s.linkRow, s.linkRowBorder]} onPress={() => setSubScreen('eventfuel')} activeOpacity={0.7}>
+              <View style={[s.linkIcon, { backgroundColor: colors.accentMuted }]}>
+                <Ionicons name="trail-sign-outline" size={18} color={colors.accent} />
+              </View>
+              <View style={s.linkText}>
+                <Text style={[s.linkLabel, { color: colors.accent }]}>Event Fuel Plan</Text>
+                <Text style={s.linkSub}>Ultras, MTB & single-sport races — with altitude</Text>
               </View>
               <Ionicons name="chevron-forward" size={16} color={colors.accent} />
             </TouchableOpacity>

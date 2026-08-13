@@ -43,6 +43,7 @@ export const EVENTS = {
   TRIAL_ENDING_CTA:         'trial_ending_cta',
   RACE_PLAN_GENERATED:      'race_plan_generated',
   RACE_PLAN_SHARED:         'race_plan_shared',
+  EVENT_PLAN_GENERATED:     'event_plan_generated',
   WEIGHT_MILESTONE_SHOWN:   'weight_milestone_shown',
   STATS_BACKFILL_SHOWN:     'stats_backfill_shown',
   STATS_BACKFILL_COMPLETED: 'stats_backfill_completed',
