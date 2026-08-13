@@ -312,52 +312,6 @@ serve(async (req) => {
         const cycleData = await whoopFetch(user.id, '/v2/cycle?limit=1') as any
         const sleepData = await whoopFetch(user.id, '/v2/activity/sleep?limit=25') as any
 
-        // DIAGNOSTIC 2 — whose token is this? All three collections came back
-        // empty on a healthy token, which points at the OAuth login having gone
-        // into a different (empty) Whoop account than the one the strap logs
-        // to. We hold read:profile, so ask the API who it thinks we are; the
-        // email printed here should match the account the Whoop app shows.
-        try {
-          let profile: any
-          try {
-            profile = await whoopFetch(user.id, '/v2/user/profile/basic')
-          } catch {
-            // Older deployments of the user endpoint live under /v1.
-            profile = await whoopFetch(user.id, '/v1/user/profile/basic')
-          }
-          console.error('whoop-proxy token identity', JSON.stringify({
-            whoopUserId: profile?.user_id ?? null,
-            email: profile?.email ?? null,
-            firstName: profile?.first_name ?? null,
-          }))
-        } catch (e) {
-          console.error('whoop-proxy token identity fetch failed', String(e))
-        }
-
-        // DIAGNOSTIC — remove once the empty-recovery cause is known.
-        // Every layer checks out on paper (endpoint, scopes, score_state enum,
-        // redirect URIs, live refresh token) and the screen still reports no
-        // recovery. Log the SHAPE of what Whoop returns so this stops being a
-        // guessing exercise. Counts and enum values only — no health data.
-        console.error('whoop-proxy summary shape', JSON.stringify({
-          recovery: {
-            records: recData?.records?.length ?? null,
-            scoreStates: [...new Set((recData?.records ?? []).map((r: any) => r.score_state))],
-            newestCreatedAt: recData?.records?.[0]?.created_at ?? null,
-            hasScoreObject: !!recData?.records?.[0]?.score,
-            keys: Object.keys(recData ?? {}),
-          },
-          cycle: {
-            records: cycleData?.records?.length ?? null,
-            scoreStates: [...new Set((cycleData?.records ?? []).map((c: any) => c.score_state))],
-          },
-          sleep: {
-            records: sleepData?.records?.length ?? null,
-            naps: (sleepData?.records ?? []).filter((s: any) => s.nap === true).length,
-            scoreStates: [...new Set((sleepData?.records ?? []).map((s: any) => s.score_state))],
-          },
-        }))
-
         const scoredRecs = (recData?.records ?? []).filter((r: any) => r.score_state === 'SCORED')
         const r = scoredRecs[0]
         const recovery = r ? {

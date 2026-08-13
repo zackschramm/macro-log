@@ -224,6 +224,20 @@ serve(async (req) => {
 
   const url = new URL(req.url)
 
+  // RATE LIMIT - the auth gate stops anonymous abuse; this stops a
+  // compromised token or runaway client from burning the Anthropic/USDA
+  // keys. Fixed hourly window per user. Fails OPEN on infrastructure
+  // errors: availability beats strictness, and the failure is logged.
+  const rlBucket = url.pathname.includes('food-search') ? 'usda' : 'ai'
+  const rlLimit = rlBucket === 'usda' ? 300 : 60
+  try {
+    const { data: rlOk, error: rlErr } = await supabaseAdmin.rpc('check_rate_limit', {
+      p_user_id: authedUserId, p_bucket: rlBucket, p_limit: rlLimit, p_window_seconds: 3600,
+    })
+    if (rlErr) console.error('ai-proxy rate-limit check failed (open):', rlErr.message)
+    else if (rlOk === false) return errorResponse(429, 'Too many requests - slow down and try again shortly')
+  } catch (e) { console.error('ai-proxy rate-limit check threw (open):', String(e)) }
+
   // USDA food search
   if (url.pathname.endsWith('/food-search')) {
     const { query } = await req.json()
