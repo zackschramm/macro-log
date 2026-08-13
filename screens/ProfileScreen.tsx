@@ -387,7 +387,13 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
 
   const handleDisconnectWearable = (provider: Provider) => {
     const label = wearableLabel(provider);
-    Alert.alert('Disconnect', `Remove ${label} connection?`, [
+    // Connect buttons are hidden (API integrations back-burnered), so this is
+    // a ONE-WAY door in this build: once disconnected, the row disappears and
+    // there is no in-app way to reconnect. Say so honestly before acting.
+    // (Review-council finding.)
+    Alert.alert(
+      'Disconnect',
+      `Remove ${label} connection? Reconnecting isn't available in this version - your wearable data will continue through Apple Health.`, [
       { text: 'Cancel' },
       {
         text: 'Disconnect', style: 'destructive', onPress: async () => {

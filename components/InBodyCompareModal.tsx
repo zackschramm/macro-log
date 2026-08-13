@@ -156,7 +156,9 @@ export default function InBodyCompareModal({ visible, onClose, logs }: Props) {
   // function runs — invisible — whenever the Stats tab mounts. An empty
   // inbody_logs table therefore crashed the entire Stats tab for any user
   // who never imported a scan. Render a graceful empty state instead.
-  if (!scanA || !scanB) {
+  // One scan: scanA and scanB resolve to the SAME log, so the modal renders a
+  // scan "compared" against itself (all deltas —). A comparison needs two.
+  if (logs.length < 2 || !scanA || !scanB) {
     return (
       <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
         <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
@@ -167,7 +169,7 @@ export default function InBodyCompareModal({ visible, onClose, logs }: Props) {
             </TouchableOpacity>
           </View>
           <Text style={{ color: colors.textTertiary, fontSize: 14, textAlign: 'center', marginTop: 40, paddingHorizontal: 32 }}>
-            Import at least one InBody scan to compare.
+            Import at least two InBody scans to compare.
           </Text>
         </SafeAreaView>
       </Modal>

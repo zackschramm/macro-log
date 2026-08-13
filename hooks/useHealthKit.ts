@@ -660,10 +660,14 @@ export function useHealthKit() {
       // equality silently matched nothing, fell back to ALL sources, and the
       // newest sample won - which is how an Apple Watch spot-check HRV beat
       // the Whoop overnight value the user explicitly asked for.
+      // Match only name-contains-pref: pref "Apple Watch" matches source
+      // "Zack's Apple Watch". The reverse direction (pref-contains-name) let
+      // an empty sourceName pass every pref and let pref "Zack's Apple Watch"
+      // admit any bare "Apple Watch" source. (Review-council finding.)
       const p = pref.toLowerCase();
       const filtered = data.filter((s: any) => {
         const n = String(s.sourceName ?? '').toLowerCase();
-        return n === p || n.includes(p) || p.includes(n);
+        return n !== '' && (n === p || n.includes(p));
       });
       return filtered.length > 0 ? filtered : data;
     };

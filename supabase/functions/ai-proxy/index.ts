@@ -228,7 +228,10 @@ serve(async (req) => {
   // compromised token or runaway client from burning the Anthropic/USDA
   // keys. Fixed hourly window per user. Fails OPEN on infrastructure
   // errors: availability beats strictness, and the failure is logged.
-  const rlBucket = url.pathname.includes('food-search') ? 'usda' : 'ai'
+  // NOTE: must use the SAME predicate as the router below - includes() let
+  // /ai-proxy/food-search/<anything> meter as usda (300/hr) while executing
+  // the Anthropic branch, a ~6x budget bypass. (Review-council finding.)
+  const rlBucket = url.pathname.endsWith('/food-search') ? 'usda' : 'ai'
   const rlLimit = rlBucket === 'usda' ? 300 : 60
   try {
     const { data: rlOk, error: rlErr } = await supabaseAdmin.rpc('check_rate_limit', {
