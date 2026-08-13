@@ -151,6 +151,30 @@ export default function InBodyCompareModal({ visible, onClose, logs }: Props) {
     return delta > 0 ? '↑' : '↓';
   };
 
+  // Zero scans: every `log[m.key]` below dereferences undefined (Hermes:
+  // "Cannot convert undefined value to object"), and this modal's component
+  // function runs — invisible — whenever the Stats tab mounts. An empty
+  // inbody_logs table therefore crashed the entire Stats tab for any user
+  // who never imported a scan. Render a graceful empty state instead.
+  if (!scanA || !scanB) {
+    return (
+      <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+        <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
+          <View style={s.header}>
+            <Text style={s.headerTitle}>Compare Scans</Text>
+            <TouchableOpacity style={s.closeBtn} onPress={onClose}>
+              <Text style={s.closeBtnText}>×</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={{ color: colors.textTertiary, fontSize: 14, textAlign: 'center', marginTop: 40, paddingHorizontal: 32 }}>
+            Import at least one InBody scan to compare.
+          </Text>
+        </SafeAreaView>
+      </Modal>
+    );
+  }
+
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={s.safe} edges={['top', 'bottom']}>

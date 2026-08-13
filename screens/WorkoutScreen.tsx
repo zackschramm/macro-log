@@ -1142,7 +1142,7 @@ Return ONLY a JSON array, nothing else:
             <View style={s.modalHeaderRow}>
               <Text style={s.modalHeaderTitle} numberOfLines={1}>{previewTemplate?.name || 'Template'}</Text>
               <TouchableOpacity style={s.modalCloseBtn} onPress={() => setPreviewTemplate(null)}>
-                <Text style={s.modalCloseBtnText}>Close</Text>
+                <Text style={s.modalCloseBtnText} numberOfLines={1}>Close</Text>
               </TouchableOpacity>
             </View>
             <ScrollView style={s.scroll} contentContainerStyle={s.content}>
@@ -1513,7 +1513,7 @@ Return ONLY a JSON array, nothing else:
           <View style={s.modalHeaderRow}>
             <Text style={s.modalHeaderTitle}>Exercise Coach</Text>
             <TouchableOpacity style={s.modalCloseBtn} onPress={() => setCoachExercise(null)}>
-              <Text style={s.modalCloseBtnText}>Done</Text>
+              <Text style={s.modalCloseBtnText} numberOfLines={1}>Done</Text>
             </TouchableOpacity>
           </View>
           {coachExercise && <CoachScreen initialExercise={coachExercise} />}
@@ -1836,7 +1836,7 @@ function makeStyles(c: ThemeColors) {
     poNewChipText: { color: c.textTertiary, fontSize: 12, fontWeight: weight.medium },
     modalHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.xl, paddingVertical: spacing.lg, borderBottomWidth: 1, borderBottomColor: c.border },
     modalHeaderTitle: { fontSize: 17, fontWeight: weight.heavy, color: c.text },
-    modalCloseBtn: { backgroundColor: c.accent, borderRadius: radius.pill, paddingHorizontal: 16, paddingVertical: 8 },
+    modalCloseBtn: { backgroundColor: c.accent, borderRadius: radius.pill, paddingHorizontal: 16, paddingVertical: 8, flexShrink: 0 },
     modalCloseBtnText: { color: c.accentText, fontSize: 14, fontWeight: weight.heavy },
     // Now-playing bar
     nowPlayingBar: {

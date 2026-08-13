@@ -455,7 +455,7 @@ Requirements:
         <View style={s.header}>
           <Text style={s.headerTitle}>Programs</Text>
           <TouchableOpacity style={s.closeBtn} onPress={onClose}>
-            <Text style={s.closeBtnText}>Done</Text>
+            <Text style={s.closeBtnText} numberOfLines={1}>Done</Text>
           </TouchableOpacity>
         </View>
 
@@ -485,7 +485,7 @@ function makeStyles(c: ThemeColors) {
       borderBottomWidth: 1, borderBottomColor: c.border,
     },
     headerTitle: { fontSize: 20, fontWeight: weight.heavy, color: c.text },
-    closeBtn: { backgroundColor: c.accent, borderRadius: radius.pill, paddingHorizontal: 16, paddingVertical: 8 },
+    closeBtn: { backgroundColor: c.accent, borderRadius: radius.pill, paddingHorizontal: 16, paddingVertical: 8, flexShrink: 0 },
     closeBtnText: { color: c.accentText, fontSize: 14, fontWeight: weight.heavy },
     tabBar: {
       flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: c.border,

@@ -931,12 +931,7 @@ export default function RecoveryScreen({
                 </>
               )}
             </>
-          ) : (
-            <TouchableOpacity style={s.wearablePrompt} activeOpacity={0.75} onPress={onNavigateToProfile}>
-              <Text style={s.wearablePromptText}>Connect a wearable for richer scores</Text>
-              <Text style={{ fontSize: 14, color: colors.textTertiary }}>›</Text>
-            </TouchableOpacity>
-          )}
+          ) : null}
 
           {/* Glucose Card */}
           {dexcomData && (
@@ -1014,11 +1009,6 @@ export default function RecoveryScreen({
             </View>
           </View>
 
-          <Text style={s.sourceNote}>
-            {whoopConnected
-              ? '⌚ Recovery score, HRV, resting HR & sleep from Whoop'
-              : 'From Apple Health · Whoop, Garmin & Apple Watch sync automatically'}
-          </Text>
           {lastSyncMs && (
             <Text style={s.lastSyncText}>Updated {formatLastSync(lastSyncMs)}</Text>
           )}

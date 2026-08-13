@@ -1275,7 +1275,12 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
               {([
                 { key: 'whoop' as Provider, label: 'Whoop' },
                 { key: 'oura' as Provider, label: 'Oura Ring' },
-              ]).map((w, i) => {
+              ])
+                // API connects are OFF (back-burner, see Whoop saga Aug 2026):
+                // rows render only for grants that already exist, so those users
+                // keep a working Disconnect. Apple Health is the wearable path.
+                .filter(w => connectedWearables.includes(w.key))
+                .map((w, i) => {
                 const isConnected = connectedWearables.includes(w.key);
                 const isConnecting = wearableConnecting === w.key;
                 return (
