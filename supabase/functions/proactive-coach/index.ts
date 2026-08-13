@@ -70,11 +70,31 @@ async function buildMemorySection(userId: string): Promise<string> {
 async function refreshWhoopToken(userId: string, refreshToken: string | null): Promise<string | null> {
   if (!refreshToken) return null
   try {
+    // Re-read before refreshing: whoop-proxy may have refreshed moments ago
+    // (Whoop ROTATES refresh tokens, so the one we were handed may already be
+    // dead — spending it again invalidates the whole grant). If the stored
+    // token differs from what we were given, someone else already won; use
+    // their result instead of racing them.
+    const { data: fresh } = await supabaseAdmin
+      .from('wearable_tokens')
+      .select('access_token, refresh_token')
+      .eq('user_id', userId).eq('provider', 'whoop').single()
+    if (fresh?.refresh_token && fresh.refresh_token !== refreshToken) {
+      return fresh.access_token ?? null
+    }
+
     const params = new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: refreshToken,
       client_id: Deno.env.get('WHOOP_CLIENT_ID') || '',
       client_secret: Deno.env.get('WHOOP_CLIENT_SECRET') || '',
+      // REQUIRED on the refresh call too, not just authorize. Without it Whoop
+      // returns a new access token but NO new refresh token while still
+      // rotating the old one away — this function then stored the dead token
+      // and destroyed the user's Whoop connection whenever it happened to be
+      // the one refreshing. whoop-proxy documents and handles this; this
+      // function predated that fix and was quietly undoing it.
+      scope: 'offline',
     })
     const res = await fetch(WHOOP_TOKEN_URL, {
       method: 'POST',
@@ -83,6 +103,9 @@ async function refreshWhoopToken(userId: string, refreshToken: string | null): P
     })
     const tokens = await res.json()
     if (!tokens.access_token) return null
+    if (!tokens.refresh_token) {
+      console.error('proactive-coach: whoop refresh returned no refresh_token — offline scope missing on this grant')
+    }
     await supabaseAdmin.from('wearable_tokens').update({
       access_token: tokens.access_token,
       refresh_token: tokens.refresh_token ?? refreshToken,

@@ -308,6 +308,21 @@ function fetchWhoopSummary(): Promise<any> {
  */
 export const WHOOP_REAUTH_KEY = 'fuelog_whoop_reauth_required'
 
+/**
+ * Set when the connected Whoop account has never recorded any data — the
+ * signature of having signed the OAuth flow into the wrong Whoop account
+ * (found live: the strap lived on one email, the sign-in went to another).
+ */
+export const WHOOP_EMPTY_ACCOUNT_KEY = 'fuelog_whoop_empty_account'
+
+export async function isWhoopEmptyAccount(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(WHOOP_EMPTY_ACCOUNT_KEY)) === '1'
+  } catch {
+    return false
+  }
+}
+
 export async function isWhoopReauthRequired(): Promise<boolean> {
   try {
     return (await AsyncStorage.getItem(WHOOP_REAUTH_KEY)) === '1'
@@ -331,6 +346,9 @@ export async function getWhoopData(userId: string): Promise<WhoopData | null> {
     // shipped build, so every cause presented as an empty Recovery tab.
     // The proxy returns 200 + reauthRequired when the grant is unrecoverable.
     await setWhoopReauth(!!resp.reauthRequired)
+    try {
+      await AsyncStorage.setItem(WHOOP_EMPTY_ACCOUNT_KEY, resp.data?.emptyAccount ? '1' : '0')
+    } catch { /* non-fatal */ }
 
     // A reported error is a genuine failure — throw so callers can tell it
     // apart from "connected fine, Whoop just has nothing for today". Returning
@@ -362,7 +380,13 @@ export async function getWhoopData(userId: string): Promise<WhoopData | null> {
     }
   } catch (err) {
     logError('wearables.getWhoopData', err)
-    return null
+    // RETHROW — do not return null. Review caught that the deliberate throw
+    // above was being swallowed right here by its own catch, which made
+    // RecoveryScreen's rejected-promise branch unreachable: every real failure
+    // (proxy 500, network drop) rendered as "no data — wear your strap", the
+    // exact misdiagnosis the three-state banner exists to prevent. A rejected
+    // promise IS the API for "this failed"; null means only "nothing to show".
+    throw err
   }
 }
 

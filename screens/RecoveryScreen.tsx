@@ -17,7 +17,7 @@ import { supabase } from '../constants/supabase';
 import { toLocalDateString } from '../utils/dateUtils';
 import {
   getConnectedWearables, getWhoopData, getWhoopTrends, getOuraData, getGarminData,
-  isWhoopReauthRequired,
+  isWhoopReauthRequired, isWhoopEmptyAccount,
   type Provider, type WhoopData, type WhoopTrends, type OuraData, type GarminData,
 } from '../utils/wearables';
 import { logError } from '../utils/logError';
@@ -276,17 +276,11 @@ function CustomizeSheet({
   onClose,
   visibleMetrics,
   onToggleMetric,
-  availableSources,
-  sourcePrefs,
-  onSetSource,
 }: {
   visible: boolean;
   onClose: () => void;
   visibleMetrics: string[];
   onToggleMetric: (key: string) => void;
-  availableSources: Record<string, string[]>;
-  sourcePrefs: Record<string, string>;
-  onSetSource: (key: string, source: string) => void;
 }) {
   const { colors } = useTheme();
   const cs = makeCustomizeStyles(colors);
@@ -313,35 +307,19 @@ function CustomizeSheet({
             </View>
           ))}
 
-          {Object.keys(availableSources).some(k => availableSources[k].length > 1) && (
-            <>
-              <Text style={[cs.section, { marginTop: 20 }]}>DATA SOURCES</Text>
-              <Text style={cs.sourcesNote}>Only shown when multiple apps contribute data for a metric.</Text>
-              {ALL_METRICS.filter(({ key }) => (availableSources[key]?.length ?? 0) > 1).map(({ key, label }) => {
-                const sources = availableSources[key] ?? [];
-                return (
-                  <View key={key} style={cs.sourceGroup}>
-                    <Text style={cs.sourceMetricLabel}>{label}</Text>
-                    <View style={cs.sourcePills}>
-                      <TouchableOpacity
-                        style={[cs.pill, !sourcePrefs[key] && cs.pillActive]}
-                        onPress={() => onSetSource(key, '')}>
-                        <Text style={[cs.pillText, !sourcePrefs[key] && cs.pillTextActive]}>Auto</Text>
-                      </TouchableOpacity>
-                      {sources.map(src => (
-                        <TouchableOpacity
-                          key={src}
-                          style={[cs.pill, sourcePrefs[key] === src && cs.pillActive]}
-                          onPress={() => onSetSource(key, src)}>
-                          <Text style={[cs.pillText, sourcePrefs[key] === src && cs.pillTextActive]}>{src}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                );
-              })}
-            </>
-          )}
+          {/* The DATA SOURCES picker that used to live here has been removed.
+              It wrote to its own key ('recovery_source_prefs') which was merged
+              OVER the per-metric sources set in Me, so anything ever tapped
+              here silently overrode the Me settings — and nothing on either
+              screen revealed that a second, winning store existed. A user who
+              set every source to Apple Watch in Me saw values that came from
+              somewhere else entirely.
+
+              Sources now live in Me only, in one store. This sheet keeps the
+              genuinely screen-specific setting: which metrics to show. */}
+          <Text style={cs.sourcesNote}>
+            Choose which app each metric comes from in Me → Health Data Sources.
+          </Text>
           <View style={{ height: 32 }} />
         </ScrollView>
       </View>
@@ -535,12 +513,19 @@ export default function RecoveryScreen({
   const hasCacheRef = useRef(false);
 
   useEffect(() => {
-    AsyncStorage.multiGet([STORAGE_SOURCE_PREFS, STORAGE_VISIBLE_METRICS, STORAGE_PREFERRED_TRACKER]).then(pairs => {
-      const [srcRaw, visRaw, trackerRaw] = pairs;
-      if (srcRaw[1]) setSourcePrefs(JSON.parse(srcRaw[1]));
-      if (visRaw[1]) setVisibleMetrics(JSON.parse(visRaw[1]));
-      if (trackerRaw[1]) setPreferredTracker(trackerRaw[1]);
-    });
+    // Sources come from the Me tab's store (STORAGE_HK_SOURCES) — the single
+    // source of truth. This screen used to read its own 'recovery_source_prefs'
+    // and merge it OVER the Me settings, so the two silently disagreed.
+    AsyncStorage.multiGet([STORAGE_HK_SOURCES, STORAGE_VISIBLE_METRICS, STORAGE_PREFERRED_TRACKER])
+      .then(pairs => {
+        const [srcRaw, visRaw, trackerRaw] = pairs;
+        if (srcRaw[1]) setSourcePrefs(JSON.parse(srcRaw[1]));
+        if (visRaw[1]) setVisibleMetrics(JSON.parse(visRaw[1]));
+        if (trackerRaw[1]) setPreferredTracker(trackerRaw[1]);
+      });
+    // Drop the retired key so a stale value can never override Me again on a
+    // device that used the old picker.
+    AsyncStorage.removeItem(STORAGE_SOURCE_PREFS).catch(() => {});
   }, []);
 
   // Persist the current view so the next open is instant.
@@ -581,8 +566,12 @@ export default function RecoveryScreen({
     const tracker = trackerRaw ?? preferredTracker;
     if (trackerRaw && trackerRaw !== preferredTracker) setPreferredTracker(trackerRaw);
     const hkSources = hkSourcesRaw ? (() => { try { return JSON.parse(hkSourcesRaw); } catch { return {}; } })() : {};
-    // Source priority: RecoveryScreen fine-grained override > ProfileScreen per-metric > global tracker
-    const effectivePrefs = buildSourcePrefs(tracker, { ...hkSources, ...(prefs ?? sourcePrefs) });
+    // One store, read fresh above on every load. This used to be
+    // `{ ...hkSources, ...(prefs ?? sourcePrefs) }`, layering the mount-time
+    // copy over the freshly-read one — so changing a source in Me had no
+    // effect here until the app restarted, on top of the two stores disagreeing
+    // in the first place. hkSources IS the Me setting; nothing to merge.
+    const effectivePrefs = buildSourcePrefs(tracker, hkSources);
     const [result, load_] = await Promise.all([
       health.getRecoveryData(effectivePrefs),
       health.getWeeklyTrainingLoad(effectivePrefs),
@@ -621,13 +610,17 @@ export default function RecoveryScreen({
       // screen forever (unavailable/noData gating waits on this flag).
       setWearablesChecked(true);
     }
+    // Clear the banner BEFORE the no-wearables early-out. It used to sit
+    // after, so disconnecting Whoop left "Whoop needs reconnecting…" on
+    // screen forever — nagging the user to reconnect a device they had just
+    // deliberately removed.
+    setWearableError(null);
     if (connected.length === 0) return;
     // Only show the cards' loading state when we have nothing to show yet —
     // with cached data on screen this is a silent background update.
     if (!snapshotRef.current.whoopData && !snapshotRef.current.ouraData && !snapshotRef.current.garminData) {
       setWearableLoading(true);
     }
-    setWearableError(null);
     // Each provider settles independently and paints as it lands; one failing
     // proxy no longer nulls out the others or dies silently.
     const results = await Promise.allSettled([
@@ -660,6 +653,11 @@ export default function RecoveryScreen({
       } else if (results[0].status === 'rejected') {
         // getWhoopData throws only when the proxy reported a real error.
         setWearableError('Whoop sync failed — pull down to retry');
+      } else if (await isWhoopEmptyAccount()) {
+        // The token is healthy but the account behind it has NEVER recorded
+        // anything — the wrong-Whoop-account signature. Telling this user to
+        // wear their strap sends them to fix the one thing that isn't broken.
+        setWearableError('This Whoop account has no data — you may have signed into a different Whoop account. Disconnect in Profile → Wearables and reconnect with the account your strap uses.');
       } else if (results[0].value == null && !snapshotRef.current.whoopData) {
         setWearableError('No recent Whoop data — wear your strap overnight, then open the Whoop app to sync');
       }
@@ -761,15 +759,6 @@ export default function RecoveryScreen({
       : [...visibleMetrics, key];
     setVisibleMetrics(next);
     await AsyncStorage.setItem(STORAGE_VISIBLE_METRICS, JSON.stringify(next));
-  };
-
-  const handleSetSource = async (key: string, source: string) => {
-    const next = { ...sourcePrefs };
-    if (source) next[key] = source;
-    else delete next[key];
-    setSourcePrefs(next);
-    await AsyncStorage.setItem(STORAGE_SOURCE_PREFS, JSON.stringify(next));
-    load(next);
   };
 
   const isVisible = (key: string) => visibleMetrics.includes(key);
@@ -1215,9 +1204,6 @@ export default function RecoveryScreen({
         onClose={() => setShowCustomize(false)}
         visibleMetrics={visibleMetrics}
         onToggleMetric={handleToggleMetric}
-        availableSources={availableSources}
-        sourcePrefs={sourcePrefs}
-        onSetSource={handleSetSource}
       />
 
       <Modal visible={showBreathwork} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowBreathwork(false)}>
