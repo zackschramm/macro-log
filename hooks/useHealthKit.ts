@@ -655,7 +655,16 @@ export function useHealthKit() {
     const filterBySource = (data: any[], key: string) => {
       const pref = sourcePrefs[key];
       if (!pref || !data?.length) return data ?? [];
-      const filtered = data.filter((s: any) => s.sourceName === pref);
+      // Tolerant match: prefs can be stale or generic ("Whoop" vs the real
+      // sourceName "WHOOP", "Apple Watch" vs "Zack's Apple Watch"). Exact
+      // equality silently matched nothing, fell back to ALL sources, and the
+      // newest sample won - which is how an Apple Watch spot-check HRV beat
+      // the Whoop overnight value the user explicitly asked for.
+      const p = pref.toLowerCase();
+      const filtered = data.filter((s: any) => {
+        const n = String(s.sourceName ?? '').toLowerCase();
+        return n === p || n.includes(p) || p.includes(n);
+      });
       return filtered.length > 0 ? filtered : data;
     };
 
