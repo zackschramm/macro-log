@@ -96,14 +96,16 @@ export async function buildCoachContext(userId: string): Promise<string>{
   const profile = profileResult.status === 'fulfilled' ? profileResult.value.data : null;
   const tdee = tdeeResult.status === 'fulfilled' ? tdeeResult.value : null;
 
-  // Goal: prefer AsyncStorage (set by parallel onboarding session), fall back to profile
+  // Profile FIRST, AsyncStorage only as a mid-onboarding fallback. The old
+  // order ("prefer AsyncStorage") let stale keys nothing writes anymore
+  // permanently override goal/activity changes made in Me — the coach kept
+  // reasoning from an onboarding-era goal forever. Same fix as utils/tdee.ts.
   const rawGoal =
-    (asyncGoal.status === 'fulfilled' && asyncGoal.value) || profile?.goal || null;
+    profile?.goal || (asyncGoal.status === 'fulfilled' && asyncGoal.value) || null;
   const goalLabel = rawGoal ? (GOAL_LABELS[rawGoal] ?? rawGoal) : null;
 
-  // Activity: prefer AsyncStorage, fall back to profile
   const rawActivity =
-    (asyncActivity.status === 'fulfilled' && asyncActivity.value) || profile?.activity || null;
+    profile?.activity || (asyncActivity.status === 'fulfilled' && asyncActivity.value) || null;
   const activityLabel = rawActivity ? (ACTIVITY_LABELS[rawActivity] ?? rawActivity) : null;
 
   // Streak (default 0 if missing)

@@ -205,8 +205,22 @@ async function tryOllama(
   }
 }
 
+// This function has no errorResponse helper of its own (the proxies do);
+// define the same shape so callers get consistent JSON errors.
+function errorResponse(status: number, message: string) {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
+
+  // AUTH GATE for every route in this function — see the comment at the LLM
+  // path below. food-search relays to USDA on our API key and was equally open.
+  const authedUserId = await getUserId(req)
+  if (!authedUserId) return errorResponse(401, 'Unauthorized')
 
   const url = new URL(req.url)
 
@@ -263,6 +277,13 @@ serve(async (req) => {
 
   // AI proxy
   try {
+    // AUTH: gated at the top of serve(). This function relays to Anthropic on
+    // our API key and previously accepted any caller — the platform verify_jwt
+    // check passes for the public anon key, which ships in the app bundle and
+    // appears in the website's static HTML. Every AI feature runs behind
+    // login, so a real user JWT is always available; the gate requires it.
+    const userId = authedUserId
+
     const { messages, system, max_tokens } = await req.json()
     const firstContent = messages?.[0]?.content;
     const imgContent = Array.isArray(firstContent) ? firstContent.find((b: any) => b.type === 'image') : null;
@@ -272,13 +293,9 @@ serve(async (req) => {
     }
 
     let finalSystem = system
-    let userId: string | null = null
     if (!imgContent) {
-      userId = await getUserId(req)
-      if (userId) {
-        const memorySection = await buildMemorySection(userId)
-        if (memorySection) finalSystem = `${system || ''}${memorySection}`
-      }
+      const memorySection = await buildMemorySection(userId)
+      if (memorySection) finalSystem = `${system || ''}${memorySection}`
     }
 
     // Tier 1: local LLM on the 3090 (no-op until OLLAMA_URL secret is set)

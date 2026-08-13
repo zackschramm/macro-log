@@ -48,7 +48,12 @@ const USER_TABLES = [
   'post_likes',
   'post_comments',
   'social_posts',
-  'referrals',
+  // 'referrals' is NOT in this list: it has no user_id column
+  // (referrer_id/referee_id, see migrations/20260704_referrals.sql) and its
+  // FKs to auth.users do not cascade. The generic loop silently skipped it,
+  // and auth.admin.deleteUser then failed with an FK violation — meaning any
+  // user who ever referred or was referred could not delete their account.
+  // Handled explicitly below, by its real columns.
 
   // Workout tree, leaves upward.
   'workout_sets',
@@ -143,6 +148,13 @@ serve(async (req) => {
     // A missing table or missing user_id column is expected for a few of these
     // and must not stop the run. Recorded so a real problem is still visible.
     if (error) problems.push(`${table}:${error.message}`)
+  }
+
+  // referrals keys on referrer_id / referee_id rather than user_id, and its
+  // FKs block auth-user deletion if any row survives.
+  for (const col of ['referrer_id', 'referee_id']) {
+    const { error } = await supabaseAdmin.from('referrals').delete().eq(col, userId)
+    if (error) problems.push(`referrals.${col}:${error.message}`)
   }
 
   // Finally the auth record. Until this succeeds the account still exists, so

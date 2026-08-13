@@ -10,6 +10,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
+import { logError } from '../utils/logError';
 import { MC } from '../constants/data';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 
@@ -161,10 +162,32 @@ export default function SocialScreen({ profile }: { profile: any }) {
     }
     setPosting(true);
 
-    let imageUrl = null;
-    console.log('postImage present:', !!postImage);
+    // Upload the photo to storage and store the PUBLIC URL. This used to put
+    // the device-local value (a data: URI from the picker, or file:// from the
+    // camera path) straight into social_posts.image_url — so photo posts
+    // either bloated the row with megabytes of base64 or rendered only on the
+    // author's own phone while everyone else saw a broken image. The path is
+    // {userId}/... to match the bucket's per-user folder convention, which is
+    // also what delete-account's storage purge walks.
+    let imageUrl: string | null = null;
     if (postImage) {
-      imageUrl = postImage;
+      try {
+        const base64 = postImage.startsWith('data:')
+          ? postImage.slice(postImage.indexOf(',') + 1)
+          : null;
+        if (!base64) throw new Error('unsupported image source (expected base64 data URI)');
+        const path = `${user!.id}/post-${Date.now()}.jpg`;
+        const { error: uploadError } = await supabase.storage
+          .from('avatars')
+          .upload(path, decode(base64), { contentType: 'image/jpeg', upsert: false });
+        if (uploadError) throw uploadError;
+        imageUrl = supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl;
+      } catch (e) {
+        logError('Social.imageUpload', e);
+        setPosting(false);
+        Alert.alert('Photo upload failed', 'Your post was not shared — try again, or post without the photo.');
+        return;
+      }
     }
 
     const { error: postError } = await supabase.from('social_posts').insert({
@@ -173,7 +196,14 @@ export default function SocialScreen({ profile }: { profile: any }) {
       content: { caption: postCaption.trim(), name: profile.name },
       image_url: imageUrl,
     });
-    console.log('Post save:', postError?.message || 'success');
+    // A failed insert used to close the modal, clear the caption and refresh
+    // the feed anyway — the post vanished with full success UX.
+    if (postError) {
+      logError('Social.post', postError);
+      setPosting(false);
+      Alert.alert('Not shared', 'Could not share this post — check your connection and try again.');
+      return;
+    }
 
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setPostModal(false);

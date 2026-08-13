@@ -417,7 +417,16 @@ export default function ProgressScreen({ profile }: { profile: any }) {
     if (form.body_fat) payload.body_fat = parseFloat(form.body_fat);
     MEASUREMENTS.forEach(m => { if ((form as any)[m.key]) payload[m.key] = u.toInch((form as any)[m.key]); });
     const { error: saveError } = await supabase.from('progress_logs').upsert(payload, { onConflict: 'user_id,date' });
-    console.log('Progress save:', saveError?.message || 'success', JSON.stringify(payload));
+    // A failed save must STOP here. This used to console.log the error and
+    // sail on into the success path — an offline weigh-in silently vanished
+    // while the UI behaved as if it saved. For a tracking app, quietly losing
+    // the number the user just typed is the worst failure available.
+    if (saveError) {
+      logError('Progress.save', saveError);
+      setSaving(false);
+      Alert.alert('Not saved', 'Could not save this entry — check your connection and try again.');
+      return;
+    }
     if (form.weight_lbs && health.isAuthorized) await health.saveWeight(u.toLb(form.weight_lbs));
     await fetchLogs();
 

@@ -220,8 +220,15 @@ Complete all 7 days. Valid JSON only.`;
       carbs: Math.round(item.carbs * 10) / 10,
       fat: Math.round(item.fat * 10) / 10,
     }));
-    await supabase.from('macro_logs').insert(entries);
+    // Check the insert. "✓ Logged!" over a failed write meant an offline or
+    // expired-session tap lost the meal with full success UX.
+    const { error: insertError } = await supabase.from('macro_logs').insert(entries);
     setLogging(false);
+    if (insertError) {
+      logError('MealPlan.logMeal', insertError);
+      Alert.alert('Not logged', 'Could not add this meal — check your connection and try again.');
+      return;
+    }
     setLogModal(null);
     Alert.alert('✓ Logged!', `${logModal.meal} added to today's log.`);
   };

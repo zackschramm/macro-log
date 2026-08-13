@@ -1290,7 +1290,14 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
                   </React.Fragment>
                 );
               })}
-              {/* Dexcom CGM row */}
+              {/* Dexcom CGM row. Hidden while DEXCOM_CLIENT_ID is the
+                  placeholder — the connect button could only dead-end at
+                  Dexcom's invalid_client page, which is the same
+                  worse-than-no-button / Guideline 2.1 situation as the removed
+                  Garmin row. Registering real Dexcom credentials and replacing
+                  the constant at the top of this file restores it, still
+                  guarded for anyone connected while it was live. */}
+              {(dexcomConnected || !DEXCOM_CLIENT_ID.startsWith('YOUR_')) && (<>
               <View style={s.fieldDivider} />
               <View style={s.sourceRow}>
                 <Text style={s.fieldLabel}>Dexcom CGM</Text>
@@ -1319,6 +1326,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
                   </TouchableOpacity>
                 )}
               </View>
+              </>)}
             </View>
 
             {/* Cycle Tracking */}

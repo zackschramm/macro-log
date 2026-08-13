@@ -152,8 +152,30 @@ function AppContent() {
         .then(async ({ data, error }) => {
           if (cancelled) return;
           if (error && error.code !== 'PGRST116') {
-            // PGRST116 = "no rows" — expected for brand-new accounts that hit onboarding next.
-            console.log('profile fetch error:', error.message);
+            // PGRST116 = "no rows" — expected for brand-new accounts that hit
+            // onboarding next. Anything ELSE (network drop, Supabase 5xx) must
+            // NOT be treated as "no profile": doing so routed existing users
+            // into Onboarding on a flaky cold start, and completing it
+            // overwrote their real weight/goal/targets. Keep the loading state
+            // and retry instead — wrongly showing a spinner for a few extra
+            // seconds is recoverable; a profile overwrite is not.
+            logError('App.profileFetch', error);
+            setTimeout(() => {
+              if (!cancelled) {
+                supabase.from('profiles').select('*').eq('id', session.user.id).single()
+                  .then(({ data: d2, error: e2 }) => {
+                    if (cancelled) return;
+                    if (e2 && e2.code !== 'PGRST116') {
+                      // Still failing — surface the spinner-forever state to
+                      // Sentry rather than risking the overwrite path.
+                      logError('App.profileFetch.retry', e2);
+                    }
+                    setProfile(d2 ?? null);
+                    setProfileLoading(!!(e2 && e2.code !== 'PGRST116'));
+                  });
+              }
+            }, 2500);
+            return;
           }
           setProfile(data ?? null);
           setProfileLoading(false);

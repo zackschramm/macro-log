@@ -40,7 +40,13 @@ export async function getTodayTDEE(userId: string): Promise<TDEEResult> {
   const profile = profileResult.data
     ? { ...profileResult.data, body_fat_pct: inbodyResult.data?.body_fat_pct ?? null }
     : null;
-  const rawGoal = goalRaw ?? profile?.goal ?? 'maintain';
+  // Profile FIRST. This used to be `goalRaw ?? profile?.goal`, giving a stale
+  // AsyncStorage key ('fuelog_onboarding_goal' — which nothing writes anymore)
+  // permanent precedence over the profile: change your goal in Me and the
+  // calorie adjustment silently kept using the onboarding-era value forever.
+  // The key remains as a last-resort fallback for mid-onboarding, pre-profile
+  // states only.
+  const rawGoal = profile?.goal ?? goalRaw ?? 'maintain';
   const adjustment =
     GOAL_ADJUSTMENTS[rawGoal as keyof typeof GOAL_ADJUSTMENTS] ?? 0;
   const goal: UserGoal =
