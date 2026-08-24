@@ -118,7 +118,20 @@ export default function MealPlanScreen({ targets, profile }: {
       // A 7-day plan is a template. What you happened to eat this morning
       // belongs in a "what should I eat for the rest of today" flow, against
       // today's remaining macros — not smeared across next week.
-      const prompt = `Create a 7-day meal plan as a JSON array. Daily targets: ${targets.calories}cal, ${targets.protein}g protein, ${targets.carbs}g carbs, ${targets.fat}g fat.
+      // Build once, shared by every chunk prompt. Pre-dividing the day into
+      // per-meal calorie budgets is what fixed macro adherence in the Aug 24
+      // harness: without it the model under-filled days by up to 35%.
+      const mealBudgetLines = (() => {
+        const b = Math.round(targets.calories * 0.25);
+        const l = Math.round(targets.calories * 0.30);
+        const d = Math.round(targets.calories * 0.30);
+        const s = targets.calories - b - l - d;
+        return `Meal calorie budgets EVERY day (each meal within 10% of its budget): Breakfast ${b}, Lunch ${l}, Dinner ${d}, Snack ${s}.
+Protein per day: land between ${Math.round(targets.protein * 0.9)}g and ${Math.round(targets.protein * 1.1)}g — never below ${Math.round(targets.protein * 0.9)}g, never above ${Math.round(targets.protein * 1.1)}g; roughly ${Math.round(targets.protein / 4)}g per meal.`;
+      })();
+
+      const chunkPrompt = (days: string[]) => `Create a meal plan for these ${days.length} days ONLY: ${days.join(', ')} — as a JSON array with exactly ${days.length} objects. Daily targets: ${targets.calories}cal, ${targets.protein}g protein, ${targets.carbs}g carbs, ${targets.fat}g fat.
+${mealBudgetLines}
 
 ATHLETE CONTEXT:
 - Sport: ${sport.label}
@@ -132,51 +145,78 @@ RULES:
 - Apply sport-specific nutrition principles: ${sport.nutritionFocus}
 - Time meals appropriately: ${sport.mealTiming}
 - Choose foods that support ${sport.trainingFocus}
-- Output ONLY a raw JSON array (no markdown). Each day: 4 meals (Breakfast, Lunch, Dinner, Snack). Max 3 items per meal. Short names. Hit macro targets.
+- VARIETY: use at least 3 different dinner bases and 2 different breakfast bases across these days, and never repeat the same lunch or dinner main on consecutive days. Daily protein staples (Greek yogurt, whey, eggs, cottage cheese) MAY repeat — hitting the protein floor beats variety.
+- Output ONLY a raw JSON array (no markdown). Each day: EXACTLY 4 meals named Breakfast, Lunch, Dinner, Snack. 1 to 3 items per meal, never more. Short names. Hit macro targets.
 
-Format: [{"day":"Monday","meals":[{"meal":"Breakfast","items":[{"name":"Oats","serving":"1 cup dry","calories":300,"protein":10,"carbs":54,"fat":6}],"totals":{"calories":300,"protein":10,"carbs":54,"fat":6}}],"totals":{"calories":${targets.calories},"protein":${targets.protein},"carbs":${targets.carbs},"fat":${targets.fat}}}]
-Complete all 7 days. Valid JSON only.`;
+Format: [{"day":"${days[0]}","meals":[{"meal":"Breakfast","items":[{"name":"Oats","serving":"1 cup dry","calories":300,"protein":10,"carbs":54,"fat":6}],"totals":{"calories":300,"protein":10,"carbs":54,"fat":6}}],"totals":{"calories":${targets.calories},"protein":${targets.protein},"carbs":${targets.carbs},"fat":${targets.fat}}}]
+Complete all ${days.length} days. Valid JSON only.`;
 
-      // Generate, validate, and retry once. The old code appended a ']' when the
-      // response didn't close — silently saving a truncated week — and never
-      // checked that the macros summed. Macro accuracy is the product, so a
-      // plan that doesn't add up is worse than no plan.
-      let parsed: DayPlan[] | null = null;
-      let lastSummary = '';
-      // Correction text from the previous attempt's failures. Empty on the
-      // first pass. Resending the identical prompt made every retry an
-      // independent coin flip instead of a second chance — if the model
-      // couldn't hit the targets once, nothing made it likelier the next time.
-      let correction = '';
+      // Three parallel chunks instead of one 7-day request. Measured against
+      // the production proxy (Aug 24 night harness, seeded test account): a
+      // single 7-day call ran 30-55s on either model — hard against the iOS
+      // ~60s fetch ceiling, and 3/3 failures in the Aug 20 logs — while 3-way
+      // chunks ran ~16-20s wall with tighter macro adherence. 'smart' (sonnet)
+      // because haiku missed the vegetarian protein floor in 4/4 harness runs
+      // and sonnet chunk latency is within ~2s of haiku's (time-to-first-token
+      // dominates small outputs). Each chunk gets a 35s race and one corrected
+      // retry (25s aborted routine daytime-load chunks: business-hours walls
+      // measured 20-25s from a datacenter, so LTE would trip it), and one slow
+      // chunk (a 98s proxy-side upstream retry was observed once) cannot sink
+      // the whole plan.
+      const CHUNK_DAYS: string[][] = [
+        ['Monday', 'Tuesday', 'Wednesday'],
+        ['Thursday', 'Friday'],
+        ['Saturday', 'Sunday'],
+      ];
 
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        const rawText = await callAI([{ role: 'user', content: prompt + correction }]);
-        const candidate = parseMealPlanResponse(rawText);
-        if (!candidate) {
-          lastSummary = 'unparseable or truncated response';
-          logError('MealPlan.parse', new Error(lastSummary), { attempt, len: rawText.length });
-          correction = '';   // nothing usable to correct against
-          continue;
-        }
-
-        const result = validateMealPlan(candidate, targets);
-        lastSummary = summarizeIssues(result);
-
-        if (result.ok) {
-          // repaired = totals recomputed from the items the user will log
-          parsed = result.repaired as DayPlan[];
-          if (result.issues.length) {
-            logError('MealPlan.warnings', new Error(lastSummary), { attempt });
+      const genChunk = async (days: string[]): Promise<DayPlan[]> => {
+        let correction = '';
+        let summary = '';
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          let rawText: string;
+          try {
+            rawText = await Promise.race([
+              callAI([{ role: 'user', content: chunkPrompt(days) + correction }], undefined, 4096, 'cloud', 'smart'),
+              new Promise<never>((_, rej) => setTimeout(() => rej(new Error('chunk timed out after 35s')), 35_000)),
+            ]);
+          } catch (e) {
+            summary = (e as Error)?.message ?? 'chunk request failed';
+            logError('MealPlan.chunk', e, { days: days.join(','), attempt });
+            correction = '';
+            continue;
           }
-          break;
+          const candidate = parseMealPlanResponse(rawText);
+          if (!candidate) {
+            summary = 'unparseable or truncated response';
+            logError('MealPlan.parse', new Error(summary), { attempt, days: days.join(','), len: rawText.length });
+            correction = '';
+            continue;
+          }
+          const result = validateMealPlan(candidate, targets, { expectedDays: days.length });
+          if (result.ok) {
+            if (result.issues.length) {
+              logError('MealPlan.warnings', new Error(summarizeIssues(result)), { attempt, days: days.join(',') });
+            }
+            return result.repaired as DayPlan[];
+          }
+          summary = summarizeIssues(result);
+          logError('MealPlan.invalid', new Error(summary), { attempt, days: days.join(',') });
+          correction = correctionFor(result);
         }
-        logError('MealPlan.invalid', new Error(lastSummary), { attempt });
-        correction = correctionFor(result);
-      }
+        throw new Error(`${days.join(', ')}: ${summary}`);
+      };
 
-      if (!parsed) {
-        throw new Error(`Could not generate a valid meal plan (${lastSummary})`);
+      // All three in flight together; wall time = slowest chunk, not the sum.
+      const chunkResults = await Promise.all(CHUNK_DAYS.map(genChunk));
+      const combined = ([] as DayPlan[]).concat(...chunkResults);
+
+      // Belt and braces on the stitched week: pure function, costs nothing,
+      // and the saved plan passes the exact same 7-day gate as before.
+      const finalResult = validateMealPlan(combined, targets);
+      if (!finalResult.ok) {
+        throw new Error(`Could not generate a valid meal plan (${summarizeIssues(finalResult)})`);
       }
+      const parsed = finalResult.repaired as DayPlan[];
 
       const { error: saveError } = await supabase.from('meal_plans').upsert({
         user_id: user!.id,

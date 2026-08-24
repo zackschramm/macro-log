@@ -576,6 +576,15 @@ export default function RecoveryScreen({
       health.getRecoveryData(effectivePrefs),
       health.getWeeklyTrainingLoad(effectivePrefs),
     ]);
+    if (result.lockedOut) {
+      // HealthKit refused reads (device locked / backgrounded launch — the
+      // Sentry Code=6 storm from builds 153-158). Whatever is on screen, a
+      // cached snapshot or the empty state, beats overwriting with zeros; and
+      // a locked-out read must never be persisted to the snapshot. The
+      // AppState 'active' listener and the 5-minute interval retry naturally.
+      if (!silent) setLoading(false);
+      return;
+    }
     setData(result);
     setTrainingLoad(load_);
     // Update last-sync display (getRecoveryData writes STORAGE_LAST_SYNC on completion)

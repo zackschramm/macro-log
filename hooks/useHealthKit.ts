@@ -101,7 +101,12 @@ function samplesFallback(
             return;
           }
           logError(`useHealthKit.samplesFallback.${type}`, err);
-          return cb(null, []);
+          // A protected-data failure surfaces to the caller instead of
+          // masquerading as an empty day: getRecoveryData uses it to mark the
+          // read lockedOut so screens keep their last real snapshot instead of
+          // caching zeros. Every call site already guards on err (tdee,
+          // weeklyBurn, probeData, getRecoveryData, getAvailableSources, absorb).
+          return cb(isProtectedDataError(err) ? err : null, []);
         }
         const buckets = bucketByDayAndSource(raw ?? [], scale);
         // An empty result here is itself the symptom worth knowing about: the
@@ -310,6 +315,12 @@ export interface RecoveryData {
   sleepTrend: { date: string; value: number }[];
   stepsTrend: { date: string; value: number }[];
   sources: Record<string, string>; // metric key → sourceName that provided the value
+  /**
+   * True when HealthKit refused reads because the device was locked
+   * (Code=6 "Protected health data is inaccessible") — the values in this
+   * object are UNKNOWN, not zero. Callers must not render or cache them.
+   */
+  lockedOut?: boolean;
 }
 
 // Standalone functions — callable from utility code outside React components.
@@ -694,6 +705,7 @@ export function useHealthKit() {
       const sevenDaysAgo = new Date(todayStart);
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
+      let sawProtectedError = false;
       const results: RecoveryData = {
         hrv: null, restingHR: null, sleepHours: null, sleepDeepHours: null,
         sleepRemHours: null, steps: null, activeCalories: null, basalCalories: null,
@@ -914,6 +926,7 @@ export function useHealthKit() {
           safeGetDailyStepCountSamples(
             { startDate: todayStart.toISOString(), endDate: now.toISOString() },
             (err: any, data: any[]) => {
+              if (err && isProtectedDataError(err)) sawProtectedError = true;
               const filtered = filterBySource(data, 'steps');
               if (!err && filtered?.length > 0) {
                 // Sum all entries for the preferred source (may have multiple segments)
@@ -931,6 +944,7 @@ export function useHealthKit() {
           safeGetDailyStepCountSamples(
             { startDate: sevenDaysAgo.toISOString(), endDate: now.toISOString() },
             (err: any, data: any[]) => {
+              if (err && isProtectedDataError(err)) sawProtectedError = true;
               const filtered = filterBySource(data, 'steps');
               if (!err && filtered?.length > 0) {
                 results.stepsTrend = filtered
@@ -954,6 +968,7 @@ export function useHealthKit() {
           safeGetActiveEnergyBurned(
             { startDate: todayStart.toISOString(), endDate: now.toISOString() },
             (err: any, data: any[]) => {
+              if (err && isProtectedDataError(err)) sawProtectedError = true;
               const filtered = filterBySource(data, 'activeCal');
               if (!err && filtered?.length > 0) {
                 const bySource: Record<string, number> = {};
@@ -1008,6 +1023,7 @@ export function useHealthKit() {
           safeGetBasalEnergyBurned(
             { startDate: todayStart.toISOString(), endDate: now.toISOString() },
             (err: any, data: any[]) => {
+              if (err && isProtectedDataError(err)) sawProtectedError = true;
               const filtered = filterBySource(data, 'basalCal');
               if (!err && filtered?.length > 0) {
                 const bySource: Record<string, number> = {};
@@ -1041,7 +1057,14 @@ export function useHealthKit() {
         }),
       ]);
 
-      AsyncStorage.setItem(STORAGE_LAST_SYNC, Date.now().toString());
+      if (sawProtectedError) {
+        // Device was locked for at least one query: the nulls in this result
+        // mean "couldn't look", not "nothing there". Don't stamp a sync time
+        // for a read that never happened.
+        results.lockedOut = true;
+      } else {
+        AsyncStorage.setItem(STORAGE_LAST_SYNC, Date.now().toString());
+      }
       resolve(results);
     });
   };

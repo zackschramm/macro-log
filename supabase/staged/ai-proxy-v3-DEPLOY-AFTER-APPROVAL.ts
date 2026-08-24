@@ -330,6 +330,45 @@ serve(async (req) => {
     else if (rlOk === false) return errorResponse(429, 'Too many requests - slow down and try again shortly', { 'Retry-After': '600' })
   } catch (e) { console.error('ai-proxy rate-limit check threw (open):', String(e)) }
 
+  // ── ENTITLEMENT GATE ──────────────────────────────────────────────────
+  // GATE_MODE secret: unset/'off' → this block is inert (pre-approval state).
+  //   'shadow'  → compute and log the would-be decision; never blocks.
+  //   'enforce' → non-Pro users draw a coarse server-side budget of 40 gated
+  //               AI calls per rolling year (covers the designed client trial:
+  //               ~10 food + 3 coach + 1 meal plan à 3 chunks + retries), then 402.
+  // Runbook: flip to 'shadow' right after App Review approval, watch logs for a
+  // day of real traffic, then 'enforce'. The client's per-feature trial UX
+  // (consume_ai_trial) is unchanged — that RPC reads auth.uid() so it cannot be
+  // called with the service role; the backstop reuses check_rate_limit, whose
+  // p_user_id signature this function already depends on. Both gates fail OPEN.
+  // Demo/review accounts: manual rows in public.entitlements (is_pro, source
+  // 'manual', no expiry) make has_pro_entitlement() true — no client change.
+  const gateMode = Deno.env.get('GATE_MODE') || 'off'
+  if (gateMode !== 'off' && rlBucket === 'ai') {
+    try {
+      const { data: isPro, error: proErr } = await supabaseAdmin.rpc('has_pro_entitlement', { p_user_id: authedUserId })
+      let allowed = isPro === true
+      let reason = allowed ? 'pro' : 'no-entitlement'
+      if (proErr) { allowed = true; reason = 'pro-rpc-error-open' }
+      if (!allowed) {
+        const { data: budgetOk, error: bErr } = await supabaseAdmin.rpc('check_rate_limit', {
+          p_user_id: authedUserId, p_bucket: 'gate_trial', p_limit: 40, p_window_seconds: 31_536_000,
+        })
+        if (bErr) { allowed = true; reason = 'budget-rpc-error-open' }
+        else if (budgetOk !== false) { allowed = true; reason = 'trial-budget' }
+        else { reason = 'trial-exhausted' }
+      }
+      if (gateMode === 'shadow') {
+        console.log(`gate[shadow]: user=${authedUserId} reason=${reason} wouldBlock=${!allowed}`)
+      } else if (gateMode === 'enforce' && !allowed) {
+        console.log(`gate[enforce]: BLOCK user=${authedUserId} reason=${reason}`)
+        return errorResponse(402, 'Your free AI trial is used up - upgrade to Fuelog Pro to continue')
+      }
+    } catch (e) {
+      console.error('gate: threw (open):', String(e))
+    }
+  }
+
   // USDA food search
   if (url.pathname.endsWith('/food-search')) {
     const { query } = await req.json()
@@ -411,6 +450,10 @@ serve(async (req) => {
       console.log('Image data length:', imgContent?.source?.data?.length);
     }
 
+    // Vision requests never legitimately need long outputs (macro JSON, InBody
+    // parse). Text keeps the 8192 ceiling (7-day meal-plan chunks, coach).
+    const finalMaxTokens = imgContent ? Math.min(cappedMaxTokens, 4096) : cappedMaxTokens
+
     let finalSystem = system
     if (!imgContent) {
       const memorySection = await buildMemorySection(userId)
@@ -418,14 +461,14 @@ serve(async (req) => {
     }
 
     // Tier 1: local LLM on the 3090 (no-op until OLLAMA_URL secret is set)
-    let text = await tryOllama(messages, finalSystem, cappedMaxTokens, !!imgContent) ?? ''
+    let text = await tryOllama(messages, finalSystem, finalMaxTokens, !!imgContent) ?? ''
 
     // Tier 2: Anthropic fallback (or primary while Ollama tier is disabled)
     if (!text) {
       const t0 = Date.now()
       const body = JSON.stringify({
           model,
-          max_tokens: cappedMaxTokens,
+          max_tokens: finalMaxTokens,
           system: finalSystem,
           messages,
         });
@@ -449,7 +492,7 @@ serve(async (req) => {
       }
       text = data.content?.find((b: any) => b.type === 'text')?.text || ''
       if (data.stop_reason === 'max_tokens') {
-        console.log(`WARNING: output truncated at max_tokens=${cappedMaxTokens} (${model})`)
+        console.log(`WARNING: output truncated at max_tokens=${finalMaxTokens} (${model})`)
       }
     }
 

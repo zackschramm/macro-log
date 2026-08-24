@@ -42,13 +42,22 @@ async function canRunLocally(): Promise<boolean> {
   return localAvailable;
 }
 
-async function callCloud(messages: { role: string; content: string }[], system?: string, max_tokens = 8192) {
+async function callCloud(
+  messages: { role: string; content: string }[],
+  system?: string,
+  max_tokens = 8192,
+  modelHint?: 'fast' | 'smart',
+) {
   const response = await fetch(
     'https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy',
     {
       method: 'POST',
       headers: await aiProxyHeaders(),
-      body: JSON.stringify({ messages, system, max_tokens }),
+      // model_hint is resolved against a server-side whitelist (fast=haiku,
+      // smart=sonnet). 'fast' exists because meal-plan generation on sonnet
+      // took 40-55s — over the iOS fetch ceiling. Omitted = smart, the exact
+      // pre-hint behavior.
+      body: JSON.stringify({ messages, system, max_tokens, model_hint: modelHint }),
     }
   );
 
@@ -90,6 +99,7 @@ export async function callAI(
   system?: string,
   max_tokens = 8192,
   tier: AITier = 'cloud',
+  modelHint?: 'fast' | 'smart',
 ) {
   if (tier === 'local' && messages.length === 1 && (await canRunLocally())) {
     try {
@@ -105,5 +115,5 @@ export async function callAI(
       console.log('callAI: local failed, falling back to cloud —', (e as Error)?.message);
     }
   }
-  return callCloud(messages, system, max_tokens);
+  return callCloud(messages, system, max_tokens, modelHint);
 }

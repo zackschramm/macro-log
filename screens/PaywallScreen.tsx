@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ActivityIndicator,
-  ScrollView, Alert,
+  ScrollView, Alert, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Purchases, { PurchasesPackage } from 'react-native-purchases';
@@ -302,6 +302,32 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
             ? <ActivityIndicator color={colors.textTertiary} size="small" />
             : <Text style={s.restoreBtnText}>Restore Purchases</Text>}
         </TouchableOpacity>
+
+        {/* App Review 3.1.2: auto-renewal terms and functional Privacy Policy +
+            Terms of Use links must be IN the binary, on the paywall. Both URLs
+            are live routes on fuelog.app (Next.js app/privacy, app/terms). */}
+        <Text style={s.legalText}>
+          Fuelog Pro is an auto-renewing subscription. After the {TRIAL_DAYS}-day free
+          trial, payment is charged to your Apple ID account and the subscription renews
+          automatically at {selected === 'yearly' ? `${yearlyPrice}/year` : `${monthlyPrice}/month`} unless
+          canceled at least 24 hours before the end of the current period. Manage or
+          cancel anytime in your App Store account settings.
+        </Text>
+        <View style={s.legalLinks}>
+          <TouchableOpacity
+            onPress={() => Linking.openURL('https://fuelog.app/privacy')}
+            accessibilityRole="link"
+            accessibilityLabel="Privacy Policy">
+            <Text style={s.legalLink}>Privacy Policy</Text>
+          </TouchableOpacity>
+          <Text style={s.legalDot}>·</Text>
+          <TouchableOpacity
+            onPress={() => Linking.openURL('https://fuelog.app/terms')}
+            accessibilityRole="link"
+            accessibilityLabel="Terms of Use">
+            <Text style={s.legalLink}>Terms of Use</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -347,5 +373,9 @@ function makeStyles(c: ThemeColors) {
     trialNote: { fontSize: 12, color: c.textTertiary, fontWeight: weight.medium, textAlign: 'center', marginBottom: 20 },
     restoreBtn: { paddingVertical: 8 },
     restoreBtnText: { color: c.textTertiary, fontSize: 13, fontWeight: weight.semibold },
+    legalText: { fontSize: 11, color: c.textTertiary, fontWeight: weight.medium, textAlign: 'center', marginTop: 16, lineHeight: 16 },
+    legalLinks: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 8 },
+    legalLink: { fontSize: 12, color: c.textSecondary, fontWeight: weight.semibold, textDecorationLine: 'underline' },
+    legalDot: { fontSize: 12, color: c.textTertiary },
   });
 }
