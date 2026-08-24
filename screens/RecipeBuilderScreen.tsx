@@ -9,6 +9,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../constants/supabase';
+import { aiProxyHeaders } from '../constants/ai';
 import { useAuth } from '../hooks/useAuth';
 import { MC } from '../constants/data';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
@@ -111,11 +112,7 @@ export default function RecipeBuilderScreen({ visible, onClose, onSaved }: Props
         'https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy/food-search',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: ANON_KEY,
-            Authorization: `Bearer ${ANON_KEY}`,
-          },
+          headers: await aiProxyHeaders(),
           body: JSON.stringify({ query: ingredientSearch.trim() }),
         },
       );

@@ -1265,6 +1265,12 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
               </>
             )}
 
+            {/* Hidden entirely when there is nothing to show: with API
+                connects back-burnered, an empty card under a WEARABLES header
+                rendered as a bare strip in the Me tab (device-test finding).
+                Rows exist only for already-connected grants; Apple Health is
+                the wearable path for everyone else. */}
+            {(connectedWearables.length > 0 || dexcomConnected || !DEXCOM_CLIENT_ID.startsWith('YOUR_')) && (<>
             <Text style={s.sectionLabel}>WEARABLES</Text>
             <View style={s.formCard}>
               {/* Garmin is deliberately absent. garmin-proxy is written and
@@ -1363,6 +1369,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
               </View>
               </>)}
             </View>
+            </>)}
 
             {/* Cycle Tracking */}
             <Text style={s.sectionLabel}>CYCLE TRACKING</Text>

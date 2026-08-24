@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../constants/supabase';
+import { aiProxyHeaders } from '../constants/ai';
 import { useAuth } from '../hooks/useAuth';
 import { MEALS, MC } from '../constants/data';
 import BarcodeScanner from './BarcodeScanner';
@@ -154,11 +155,10 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
         'https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy/food-search',
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: ANON_KEY,
-            Authorization: `Bearer ${ANON_KEY}`,
-          },
+          // ai-proxy's auth gate resolves the bearer via auth.getUser(); the
+          // anon key cannot resolve to a user, so it 401s every request
+          // (build-161 food-search outage). Session token required.
+          headers: await aiProxyHeaders(),
           body: JSON.stringify({ query: search.trim() }),
         },
       );
@@ -320,16 +320,26 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
       if (error) { onLogFailed(tempId, error.message); return; }
 
       if (picked.source !== 'my') {
-        await supabase.from('user_foods').insert({
-          user_id: user.id,
-          name: picked.name,
-          serving_size: picked.serving_size || '',
-          calories: picked.calories,
-          protein: picked.protein,
-          carbs: picked.carbs,
-          fat: picked.fat,
-          fiber: picked.fiber_g ?? null,
-        }).then(() => {}, () => {});
+        // Guard against pantry duplicates: logging the same USDA/barcode food
+        // daily used to insert a fresh user_foods row every time ("Banana,
+        // Banana, Banana" — backend-audit finding). The already-loaded list is
+        // the cheapest existence check; the unique-index migration + backfill
+        // dedupe land server-side during review week.
+        const alreadySaved = myFoods.some(
+          f => f.name.trim().toLowerCase() === picked.name.trim().toLowerCase(),
+        );
+        if (!alreadySaved) {
+          await supabase.from('user_foods').insert({
+            user_id: user.id,
+            name: picked.name,
+            serving_size: picked.serving_size || '',
+            calories: picked.calories,
+            protein: picked.protein,
+            carbs: picked.carbs,
+            fat: picked.fat,
+            fiber: picked.fiber_g ?? null,
+          }).then(() => {}, () => {});
+        }
       }
 
       const dedupe = recentFoods.filter(r => r.name !== picked.name);
@@ -798,11 +808,19 @@ function SwipeableRow({
 
   return (
     <View style={{ overflow: 'hidden', marginBottom: 6, borderRadius: 12 }}>
-      <View
+      {/* Delete underlay stays invisible until the row is actually swiped.
+          At rest its red corners peeked out past the card's rounded corners —
+          the "red border on every food card" bug from device testing. */}
+      <Animated.View
         style={{
           position: 'absolute', right: 0, top: 0, bottom: 0,
           width: SWIPE_WIDTH, backgroundColor: '#FF3B30',
           alignItems: 'center', justifyContent: 'center', borderRadius: 12,
+          opacity: translateX.interpolate({
+            inputRange: [-SWIPE_WIDTH, -6, 0],
+            outputRange: [1, 1, 0],
+            extrapolate: 'clamp',
+          }),
         }}
       >
         <TouchableOpacity
@@ -811,7 +829,7 @@ function SwipeableRow({
         >
           <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>Delete</Text>
         </TouchableOpacity>
-      </View>
+      </Animated.View>
       <Animated.View {...panResponder.panHandlers} style={{ transform: [{ translateX }] }}>
         {children}
       </Animated.View>

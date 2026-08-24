@@ -92,9 +92,15 @@ export default function ReferralScreen({ onBack, profile }: Props) {
   const shareLink = async () => {
     if (!code) return;
     try {
+      // URL: the site has no /invite route (static export) — the old link was
+      // a guaranteed 404 on the app's only viral loop. ?ref= lands on the
+      // homepage and still carries the code. Copy: no "1 month of Pro free"
+      // until the reward is actually wired to RevenueCat — promising an
+      // unwired reward next to a live paywall is the kind of bait athletes
+      // torch publicly.
       await Share.share({
-        message: `Join me on Fuelog — the best fitness & nutrition tracker.\n\nUse my code ${code} or this link to get 1 month of Pro free:\nhttps://fuelog.app/invite/${code}`,
-        url: `https://fuelog.app/invite/${code}`,
+        message: `Join me on Fuelog — race fueling and nutrition built for endurance athletes.\n\nUse my code ${code} when you sign up:\nhttps://fuelog.app/?ref=${code}`,
+        url: `https://fuelog.app/?ref=${code}`,
       });
     } catch (e) { logError('ReferralScreen.shareLink', e); }
   };
@@ -126,8 +132,11 @@ export default function ReferralScreen({ onBack, profile }: Props) {
         {/* Hero */}
         <View style={s.heroCard}>
           <Ionicons name="gift-outline" size={44} color={colors.textTertiary} />
-          <Text style={s.heroTitle}>Give a friend 1 month free</Text>
-          <Text style={s.heroSub}>When they upgrade to Pro, you get 1 month free too.</Text>
+          {/* No reward promise until the grant is actually wired to RevenueCat —
+              status can never leave 'pending' today, so promising "1 month
+              free" next to a live paywall is bait we can't honor yet. */}
+          <Text style={s.heroTitle}>Invite your training partners</Text>
+          <Text style={s.heroSub}>Share your code with athletes you train with. Referral rewards are coming soon.</Text>
         </View>
 
         {/* Code display */}
@@ -169,11 +178,6 @@ export default function ReferralScreen({ onBack, profile }: Props) {
                 <Text style={s.statVal}>{convertedCount}</Text>
                 <Text style={s.statLabel}>went Pro</Text>
               </View>
-              <View style={s.statDivider} />
-              <View style={s.statCol}>
-                <Text style={[s.statVal, { color: colors.accent }]}>{convertedCount}</Text>
-                <Text style={s.statLabel}>free months</Text>
-              </View>
             </View>
           </View>
         )}
@@ -184,7 +188,7 @@ export default function ReferralScreen({ onBack, profile }: Props) {
           {[
             { step: '1', icon: 'share-outline', text: 'Share your code with a friend' },
             { step: '2', icon: 'person-add-outline', text: 'They sign up and enter your code' },
-            { step: '3', icon: 'trophy-outline', text: 'When they go Pro, you both get 1 month free' },
+            { step: '3', icon: 'trophy-outline', text: 'Rewards for both of you are coming soon' },
           ].map(({ step, icon, text }) => (
             <View key={step} style={s.howRow}>
               <View style={s.howStep}>
@@ -205,7 +209,7 @@ export default function ReferralScreen({ onBack, profile }: Props) {
                 {r.status === 'converted' ? (
                   <>
                     <Ionicons name="ribbon-outline" size={22} color={colors.textTertiary} />
-                    <Text style={s.rewardText}>A friend went Pro — +1 month earned!</Text>
+                    <Text style={s.rewardText}>A friend went Pro!</Text>
                   </>
                 ) : (
                   <>

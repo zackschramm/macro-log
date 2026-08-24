@@ -34,7 +34,11 @@ const TABS: Tab[] = [
   { key: 'coach',      label: 'Coach',   icon: 'chatbubble-outline',  iconActive: 'chatbubble'   },
   { key: 'recovery',   label: 'Recover', icon: 'heart-outline',       iconActive: 'heart'        },
   { key: 'calculator', label: 'Plates',  icon: 'calculator-outline',  iconActive: 'calculator'   },
-  { key: 'social',     label: 'Social',  icon: 'people-outline',      iconActive: 'people'       },
+  // v1: Social tab is hidden. User-generated content pulls App Store Guideline 1.2
+  // duties - content filtering, in-app reporting, user blocking and 24h takedown -
+  // which a solo founder cannot staff. SocialScreen and its render branch below are
+  // left intact: restore this one line to re-enable the tab.
+  // { key: 'social',     label: 'Social',  icon: 'people-outline',      iconActive: 'people'       },
   { key: 'profile',    label: 'Me',      icon: 'person-outline',      iconActive: 'person'       },
 ];
 

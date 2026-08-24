@@ -9,6 +9,26 @@ const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsI
  */
 export const LOCAL_AI_ENABLED = true;
 
+/**
+ * Auth headers for ANY direct fetch to the ai-proxy edge function.
+ *
+ * The proxy's auth gate resolves the bearer via auth.getUser(), which cannot
+ * resolve the anon key — so a hardcoded `Bearer ANON_KEY` gets a 401 on every
+ * request. That is exactly what happened to food search in build 161: six
+ * screens had copy-pasted anon-key headers and the feature was 100% down the
+ * moment the gate deployed. Every direct call site must use this helper; the
+ * anon-key fallback below only applies signed out, where the gate's 401 is the
+ * correct outcome anyway.
+ */
+export async function aiProxyHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession();
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${session?.access_token || ANON_KEY}`,
+    apikey: ANON_KEY,
+  };
+}
+
 /** 'local' = try the on-device model first (silent cloud fallback). 'cloud' = ai-proxy only. */
 export type AITier = 'local' | 'cloud';
 
@@ -23,16 +43,11 @@ async function canRunLocally(): Promise<boolean> {
 }
 
 async function callCloud(messages: { role: string; content: string }[], system?: string, max_tokens = 8192) {
-  const { data: { session } } = await supabase.auth.getSession();
   const response = await fetch(
     'https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy',
     {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session?.access_token || ANON_KEY}`,
-        'apikey': ANON_KEY,
-      },
+      headers: await aiProxyHeaders(),
       body: JSON.stringify({ messages, system, max_tokens }),
     }
   );

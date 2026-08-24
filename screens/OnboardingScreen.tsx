@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
+import { useHealth } from '../hooks/useHealth';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { LB_PER_KG, CM_PER_IN } from '../constants/units';
 import { deriveMacrosFromCalories, calculateTargets } from '../constants/data';
@@ -75,6 +76,7 @@ export default function OnboardingScreen({
   const { colors } = useTheme();
   const s = makeStyles(colors);
   const { user } = useAuth();
+  const health = useHealth();
 
   // 0=goal 1=activity 2=weight 3=body stats (height+age+sex) 4=source 5=summary
   const QUESTION_COUNT = 5;
@@ -146,6 +148,18 @@ export default function OnboardingScreen({
       };
       const { error } = await supabase.from('profiles').upsert(profile);
       if (error) { Alert.alert('Error', error.message); return; }
+
+      // Fire the Health permission prompt HERE, while we have the user's
+      // attention, instead of leaving it to whichever tab happens to ask
+      // first. A fresh device that never visits Stats/Recover otherwise shows
+      // zeros everywhere with no prompt ever fired (device-test finding).
+      // iOS prompts once per device; this is a no-op when already decided.
+      // Notifications are requested by App.tsx right after onboarding, so
+      // Health is the only prompt that needs a home here.
+      try {
+        if (!health.isAuthorized) await health.requestPermissions();
+      } catch { /* denied or unavailable is fine — screens degrade gracefully */ }
+
       await AsyncStorage.setItem('fuelog_onboarding_complete', Date.now().toString());
       await AsyncStorage.setItem('fuelog_weight_unit', isKg ? 'kg' : 'lbs');
       // New users answered height/age/sex here, so they never need the

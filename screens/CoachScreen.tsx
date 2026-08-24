@@ -266,8 +266,14 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
       const systemPrompt = coachContext
         ? `${coachContext}\n\n---\n\n${buildSystemPrompt(profile)}`
         : buildSystemPrompt(profile);
+      // Send only the recent window. Previously the ENTIRE conversation went
+      // up on every message — at 50 turns that is 5-8k redundant input tokens
+      // per send, ~87% of coach spend (backend-audit finding). Durable context
+      // reaches the model through coachContext + memories, not ancient turns;
+      // the UI still shows and saves the full history.
+      const SENT_TURNS = 15;
       const { text: reply, source } = await callCoachAI(
-        newMessages.map(m => ({ role: m.role, content: m.content })),
+        newMessages.slice(-SENT_TURNS).map(m => ({ role: m.role, content: m.content })),
         systemPrompt,
         1000
       );

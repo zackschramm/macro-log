@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '../constants/supabase';
+import { aiProxyHeaders } from '../constants/ai';
 import BarcodeScanner from '../components/BarcodeScanner';
 import { useAuth } from '../hooks/useAuth';
 import { MC } from '../constants/data';
@@ -67,11 +68,10 @@ export default function FoodsScreen() {
     try {
       const res = await fetch('https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy/food-search', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE',
-          'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE',
-        },
+        // ai-proxy's auth gate resolves the bearer via auth.getUser(); the anon
+        // key cannot resolve to a user, so it 401s every request (build-161
+        // food-search outage). Session token required.
+        headers: await aiProxyHeaders(),
         body: JSON.stringify({ query: usdaQuery }),
       });
       const data = await res.json();

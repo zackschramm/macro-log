@@ -13,6 +13,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import Svg, { Polyline, Circle, Line, Text as SvgText } from 'react-native-svg';
 
 import { supabase } from '../constants/supabase';
+import { aiProxyHeaders } from '../constants/ai';
 import { useAuth } from '../hooks/useAuth';
 import { hasPro } from '../constants/purchases';
 import { useUnits } from '../constants/units';
@@ -159,7 +160,7 @@ export default function InBodySection() {
 
       const res = await fetch('https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY, 'Authorization': `Bearer ${ANON_KEY}` },
+        headers: await aiProxyHeaders(),
         body: JSON.stringify({
           system: 'You are an extraction tool for InBody body-composition result sheets. Return only valid JSON, no prose, no markdown.',
           messages: [{ role: 'user', content: [

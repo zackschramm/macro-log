@@ -6,6 +6,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../constants/supabase';
+import { aiProxyHeaders } from '../constants/ai';
 import { useAuth } from '../hooks/useAuth';
 import { useUnits } from '../constants/units';
 import PaywallScreen from './PaywallScreen';
@@ -177,7 +178,7 @@ export default function MineralsScreen({ profile }: Props) {
       const base64 = jpeg.base64!;
       const res = await fetch('https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY, 'Authorization': `Bearer ${ANON_KEY}` },
+        headers: await aiProxyHeaders(),
         body: JSON.stringify({
           system: 'You are a medical lab results interpreter. Return only valid JSON, no explanation.',
           messages: [{ role: 'user', content: [

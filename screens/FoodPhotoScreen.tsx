@@ -9,6 +9,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '../constants/supabase';
+import { aiProxyHeaders } from '../constants/ai';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import SkeletonBox from '../components/SkeletonBox';
@@ -117,7 +118,10 @@ export default function FoodPhotoScreen({ visible, date, defaultMeal, onClose, o
       const base64 = jpeg.base64!;
       const res = await fetch('https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'apikey': ANON_KEY, 'Authorization': `Bearer ${ANON_KEY}` },
+        // ai-proxy's auth gate resolves the bearer via auth.getUser(); the
+        // anon key cannot resolve to a user, so it 401s every request
+        // (build-161 outage class). Session token required.
+        headers: await aiProxyHeaders(),
         body: JSON.stringify({
           system: 'You are a nutrition analysis tool. Return only valid JSON, no markdown.',
           messages: [{ role: 'user', content: [

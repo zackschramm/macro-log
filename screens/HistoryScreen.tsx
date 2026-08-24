@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, FlatList, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -11,17 +11,37 @@ const todayStr = () => toLocalDateString();
 const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 const pct = (v: number, t: number) => Math.min(100, Math.round((v / (t || 1)) * 100));
 
+/**
+ * How far back the History tab reaches. Bounded on purpose: the old query
+ * fetched EVERY macro_logs row the account had ever written, which grew with
+ * account age until it hit PostgREST's silent 1,000-row cap (~4 months of
+ * daily logging) — at which point the oldest visible day showed understated
+ * totals because the cut landed mid-day. 90 days stays far under the cap
+ * (~720-900 rows), keeps the transfer small, and is honest about what renders.
+ * Older history stays in the database; a paginated/aggregated view is the
+ * post-launch upgrade.
+ */
+const HISTORY_DAYS = 90;
+
+type DayTotals = { date: string; calories: number; protein: number; carbs: number; fat: number };
+
 export default function HistoryScreen({ targets }: { targets: { calories: number; protein: number; carbs: number; fat: number } }) {
   const { colors } = useTheme();
   const s = makeStyles(colors);
   const { user } = useAuth();
-  const [history, setHistory] = useState<{ date: string; calories: number; protein: number; carbs: number; fat: number }[]>([]);
+  const [history, setHistory] = useState<DayTotals[]>([]);
 
   const fetchHistory = useCallback(async () => {
     if (!user) return;
-    const { data } = await supabase.from('macro_logs').select('date,calories,protein,carbs,fat').eq('user_id', user.id).order('date', { ascending: false });
+    const cutoff = toLocalDateString(new Date(Date.now() - HISTORY_DAYS * 86400000));
+    const { data } = await supabase
+      .from('macro_logs')
+      .select('date,calories,protein,carbs,fat')
+      .eq('user_id', user.id)
+      .gte('date', cutoff)
+      .order('date', { ascending: false });
     if (!data) return;
-    const byDate: Record<string, any> = {};
+    const byDate: Record<string, DayTotals> = {};
     data.forEach((row: any) => {
       if (!byDate[row.date]) byDate[row.date] = { date: row.date, calories: 0, protein: 0, carbs: 0, fat: 0 };
       byDate[row.date].calories += row.calories;
@@ -34,41 +54,54 @@ export default function HistoryScreen({ targets }: { targets: { calories: number
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
+  // FlatList instead of ScrollView+map: a season of logging is ~90 day-cards
+  // x ~20 nested views each — mounting all of them in one pass was a
+  // multi-second jank on older phones. Virtualization mounts only what's
+  // on screen.
+  const renderDay = ({ item: day }: { item: DayTotals }) => {
+    const over = day.calories > targets.calories;
+    return (
+      <View style={s.card}>
+        <View style={s.cardTop}>
+          <Text style={s.cardDate}>{day.date === todayStr() ? 'Today' : fmtDate(day.date)}</Text>
+          <Text style={[s.cardCal, over && s.cardCalOver]}>{Math.round(day.calories)}<Text style={s.cardCalUnit}>kcal</Text></Text>
+        </View>
+        <View style={s.macroRows}>
+          {([
+            { key: 'protein', label: 'Protein', val: day.protein, target: targets.protein },
+            { key: 'carbs', label: 'Carbs', val: day.carbs, target: targets.carbs },
+            { key: 'fat', label: 'Fat', val: day.fat, target: targets.fat },
+          ] as const).map(({ key, label, val, target }) => (
+            <View key={key}>
+              <View style={s.macroRowTop}>
+                <Text style={[s.macroLabel, { color: MC[key].color }]}>{label}</Text>
+                <Text style={s.macroVal}>{Math.round(val)}g</Text>
+              </View>
+              <View style={s.barBg}>
+                <View style={[s.barFill, { width: `${pct(val, target)}%` as any, backgroundColor: MC[key].color }]} />
+              </View>
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={s.safe} edges={['top']}>
       <View style={s.header}><Text style={s.title}>History</Text></View>
-      <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-        <Text style={s.sectionTitle}>PAST LOGS</Text>
-        {history.length === 0 && <Text style={s.empty}>No history yet.{'\n'}Start logging today!</Text>}
-        {history.map(day => {
-          const over = day.calories > targets.calories;
-          return (
-            <View key={day.date} style={s.card}>
-              <View style={s.cardTop}>
-                <Text style={s.cardDate}>{day.date === todayStr() ? 'Today' : fmtDate(day.date)}</Text>
-                <Text style={[s.cardCal, over && s.cardCalOver]}>{Math.round(day.calories)}<Text style={s.cardCalUnit}>kcal</Text></Text>
-              </View>
-              <View style={s.macroRows}>
-                {([
-                  { key: 'protein', label: 'Protein', val: day.protein, target: targets.protein },
-                  { key: 'carbs', label: 'Carbs', val: day.carbs, target: targets.carbs },
-                  { key: 'fat', label: 'Fat', val: day.fat, target: targets.fat },
-                ] as const).map(({ key, label, val, target }) => (
-                  <View key={key}>
-                    <View style={s.macroRowTop}>
-                      <Text style={[s.macroLabel, { color: MC[key].color }]}>{label}</Text>
-                      <Text style={s.macroVal}>{Math.round(val)}g</Text>
-                    </View>
-                    <View style={s.barBg}>
-                      <View style={[s.barFill, { width: `${pct(val, target)}%` as any, backgroundColor: MC[key].color }]} />
-                    </View>
-                  </View>
-                ))}
-              </View>
-            </View>
-          );
-        })}
-      </ScrollView>
+      <FlatList
+        style={s.scroll}
+        contentContainerStyle={s.content}
+        showsVerticalScrollIndicator={false}
+        data={history}
+        keyExtractor={d => d.date}
+        renderItem={renderDay}
+        ListHeaderComponent={<Text style={s.sectionTitle}>PAST {HISTORY_DAYS} DAYS</Text>}
+        ListEmptyComponent={<Text style={s.empty}>No history yet.{'\n'}Start logging today!</Text>}
+        initialNumToRender={10}
+        windowSize={7}
+      />
     </SafeAreaView>
   );
 }
