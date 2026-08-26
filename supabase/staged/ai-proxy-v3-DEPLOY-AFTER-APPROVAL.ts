@@ -333,9 +333,9 @@ serve(async (req) => {
   // ── ENTITLEMENT GATE ──────────────────────────────────────────────────
   // GATE_MODE secret: unset/'off' → this block is inert (pre-approval state).
   //   'shadow'  → compute and log the would-be decision; never blocks.
-  //   'enforce' → non-Pro users draw a coarse server-side budget of 40 gated
-  //               AI calls per rolling year (covers the designed client trial:
-  //               ~10 food + 3 coach + 1 meal plan à 3 chunks + retries), then 402.
+  //   'enforce' → non-Pro users draw a coarse server-side budget of 120 gated
+  //               AI calls per rolling year (chunking makes a meal plan cost
+  //               3-4 calls; covers the designed client trial with margin), then 402.
   // Runbook: flip to 'shadow' right after App Review approval, watch logs for a
   // day of real traffic, then 'enforce'. The client's per-feature trial UX
   // (consume_ai_trial) is unchanged — that RPC reads auth.uid() so it cannot be
@@ -352,7 +352,7 @@ serve(async (req) => {
       if (proErr) { allowed = true; reason = 'pro-rpc-error-open' }
       if (!allowed) {
         const { data: budgetOk, error: bErr } = await supabaseAdmin.rpc('check_rate_limit', {
-          p_user_id: authedUserId, p_bucket: 'gate_trial', p_limit: 40, p_window_seconds: 31_536_000,
+          p_user_id: authedUserId, p_bucket: 'gate_trial', p_limit: 120, p_window_seconds: 31_536_000,
         })
         if (bErr) { allowed = true; reason = 'budget-rpc-error-open' }
         else if (budgetOk !== false) { allowed = true; reason = 'trial-budget' }
