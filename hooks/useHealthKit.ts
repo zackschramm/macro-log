@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
-import { bucketByDayAndSource, SAMPLE_UNITS, type RawSample } from '../utils/healthBuckets';
+import { bucketByDayAndSource, classifySleepSample, SAMPLE_UNITS, type RawSample } from '../utils/healthBuckets';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import AppleHealthKit, {
   HealthKitPermissions,
@@ -872,10 +872,12 @@ export function useHealthKit() {
                   const start = new Date(s.startDate).getTime();
                   const end = new Date(s.endDate).getTime();
                   const dur = end - start;
-                  // value: 0=InBed, 1=Asleep, 2=Awake, 3=Core, 4=Deep, 5=REM
-                  if (s.value === 1 || s.value === 3) totalMs += dur;
-                  if (s.value === 4) { totalMs += dur; deepMs += dur; }
-                  if (s.value === 5) { totalMs += dur; remMs += dur; }
+                  // The bridge returns STRINGS here ("ASLEEP"/"CORE"/"DEEP"/"REM"),
+                  // not the raw enum — see classifySleepSample.
+                  const kind = classifySleepSample(s.value);
+                  if (kind.asleep) totalMs += dur;
+                  if (kind.deep) deepMs += dur;
+                  if (kind.rem) remMs += dur;
                 });
                 if (totalMs > 0) {
                   results.sleepHours = Math.round(totalMs / 36000) / 100;
@@ -904,7 +906,7 @@ export function useHealthKit() {
                   const end = new Date(s.endDate).getTime();
                   const dur = end - start;
                   if (!isFinite(dur)) return;
-                  if (s.value === 1 || s.value === 3 || s.value === 4 || s.value === 5) {
+                  if (classifySleepSample(s.value).asleep) {
                     byDay[day] = (byDay[day] ?? 0) + dur;
                   }
                 });
@@ -926,7 +928,11 @@ export function useHealthKit() {
           safeGetDailyStepCountSamples(
             { startDate: todayStart.toISOString(), endDate: now.toISOString() },
             (err: any, data: any[]) => {
-              if (err && isProtectedDataError(err)) sawProtectedError = true;
+              // Latch only when the refusal ALSO cost us the data. HealthKit can
+              // return Code=6 for one query while others resolve fine; treating
+              // any single refusal as "the whole read failed" is what made this
+              // flag throw away good HRV and sleep (see RecoveryScreen).
+              if (err && isProtectedDataError(err) && !(data?.length)) sawProtectedError = true;
               const filtered = filterBySource(data, 'steps');
               if (!err && filtered?.length > 0) {
                 // Sum all entries for the preferred source (may have multiple segments)
@@ -944,7 +950,11 @@ export function useHealthKit() {
           safeGetDailyStepCountSamples(
             { startDate: sevenDaysAgo.toISOString(), endDate: now.toISOString() },
             (err: any, data: any[]) => {
-              if (err && isProtectedDataError(err)) sawProtectedError = true;
+              // Latch only when the refusal ALSO cost us the data. HealthKit can
+              // return Code=6 for one query while others resolve fine; treating
+              // any single refusal as "the whole read failed" is what made this
+              // flag throw away good HRV and sleep (see RecoveryScreen).
+              if (err && isProtectedDataError(err) && !(data?.length)) sawProtectedError = true;
               const filtered = filterBySource(data, 'steps');
               if (!err && filtered?.length > 0) {
                 results.stepsTrend = filtered
@@ -968,7 +978,11 @@ export function useHealthKit() {
           safeGetActiveEnergyBurned(
             { startDate: todayStart.toISOString(), endDate: now.toISOString() },
             (err: any, data: any[]) => {
-              if (err && isProtectedDataError(err)) sawProtectedError = true;
+              // Latch only when the refusal ALSO cost us the data. HealthKit can
+              // return Code=6 for one query while others resolve fine; treating
+              // any single refusal as "the whole read failed" is what made this
+              // flag throw away good HRV and sleep (see RecoveryScreen).
+              if (err && isProtectedDataError(err) && !(data?.length)) sawProtectedError = true;
               const filtered = filterBySource(data, 'activeCal');
               if (!err && filtered?.length > 0) {
                 const bySource: Record<string, number> = {};
@@ -1023,7 +1037,11 @@ export function useHealthKit() {
           safeGetBasalEnergyBurned(
             { startDate: todayStart.toISOString(), endDate: now.toISOString() },
             (err: any, data: any[]) => {
-              if (err && isProtectedDataError(err)) sawProtectedError = true;
+              // Latch only when the refusal ALSO cost us the data. HealthKit can
+              // return Code=6 for one query while others resolve fine; treating
+              // any single refusal as "the whole read failed" is what made this
+              // flag throw away good HRV and sleep (see RecoveryScreen).
+              if (err && isProtectedDataError(err) && !(data?.length)) sawProtectedError = true;
               const filtered = filterBySource(data, 'basalCal');
               if (!err && filtered?.length > 0) {
                 const bySource: Record<string, number> = {};

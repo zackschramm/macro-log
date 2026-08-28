@@ -18,8 +18,9 @@ import { loadRecipes, deleteRecipe as deleteRecipeUtil, Recipe } from '../utils/
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { useAIGate } from '../hooks/useAIGate';
 
-const RECENT_KEY    = 'fuelog_recent_foods';
-const FAVORITES_KEY = 'fuelog_favorite_foods';
+// Per-user: what the previous account ate is both wrong and revealing.
+const recentKeyFor    = (uid: string) => `fuelog_recent_foods_${uid}`;
+const favoritesKeyFor = (uid: string) => `fuelog_favorite_foods_${uid}`;
 const SWIPE_WIDTH   = 80;
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiY3h1ZmZnbWp1cWFyYXBmZHdiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4MjQ4NjIsImV4cCI6MjA4NzQwMDg2Mn0.lUng1tY_aAuee_t8-E5MSUHdm2PF3HzsE41L-kzBmJE';
@@ -71,6 +72,9 @@ function suggestMealForNow(): string {
 export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOptimisticAdd, onLogged, onLogFailed }: Props) {
   const { requestAccess, paywall } = useAIGate();
   const { user } = useAuth();
+  // Bound once so the scoped-storage helpers below read the same identity the
+  // Supabase queries in this component already use.
+  const uid = user?.id ?? '';
   const { colors } = useTheme();
   const s = makeStyles(colors);
 
@@ -97,8 +101,8 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
 
   const loadQuickAdd = useCallback(async () => {
     const [recentRaw, favRaw] = await Promise.all([
-      AsyncStorage.getItem(RECENT_KEY),
-      AsyncStorage.getItem(FAVORITES_KEY),
+      AsyncStorage.getItem(recentKeyFor(uid)),
+      AsyncStorage.getItem(favoritesKeyFor(uid)),
     ]);
     setRecentFoods(recentRaw ? JSON.parse(recentRaw) : []);
     setFavoriteFoods(favRaw ? JSON.parse(favRaw) : []);
@@ -231,7 +235,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
       ? favoriteFoods.filter(f => f.name !== food.name)
       : [food, ...favoriteFoods];
     setFavoriteFoods(updated);
-    await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(updated));
+    await AsyncStorage.setItem(favoritesKeyFor(uid), JSON.stringify(updated));
   };
 
   const deleteMyFood = useCallback((food: Food, close: () => void) => {
@@ -252,7 +256,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
             const updatedFavs = favoriteFoods.filter(f => f.id !== food.id);
             if (updatedFavs.length !== favoriteFoods.length) {
               setFavoriteFoods(updatedFavs);
-              await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(updatedFavs));
+              await AsyncStorage.setItem(favoritesKeyFor(uid), JSON.stringify(updatedFavs));
             }
           },
         },
@@ -345,7 +349,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
       const dedupe = recentFoods.filter(r => r.name !== picked.name);
       const updatedRecent: RecentFood[] = [{ ...picked, lastQty: q }, ...dedupe].slice(0, 10);
       setRecentFoods(updatedRecent);
-      await AsyncStorage.setItem(RECENT_KEY, JSON.stringify(updatedRecent));
+      await AsyncStorage.setItem(recentKeyFor(uid), JSON.stringify(updatedRecent));
 
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onLogged(tempId, data);

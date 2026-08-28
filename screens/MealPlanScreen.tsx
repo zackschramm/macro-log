@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
@@ -68,6 +68,18 @@ export default function MealPlanScreen({ targets, profile }: {
   const [showSavedPlans, setShowSavedPlans] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
   const [showGrocery, setShowGrocery] = useState(false);
+  // A generation can run ~35s per chunk plus one corrected retry. Until now the
+  // only exit from that spinner was force-quitting the app — the single highest
+  // -probability churn moment on a trial user's first plan, and a clean
+  // Guideline 2.1 finding if a reviewer hits it on bad hotel wifi.
+  //
+  // A run TOKEN, not a boolean: the council confirmed that a shared
+  // cancelled flag reset at the top of each run resurrects a cancelled run's
+  // continuations — cancel, tap Generate again, and the OLD run's chunks (still
+  // in flight, never aborted) pass the guards, overwrite the new run's plan,
+  // and dismiss its spinner. Each run captures its own token; Cancel and every
+  // new run bump the counter, so a stale run can never pass a guard again.
+  const genRunRef = useRef(0);
   const weekStart = getMonday();
 
   const fetchExisting = useCallback(async () => {
@@ -94,6 +106,8 @@ export default function MealPlanScreen({ targets, profile }: {
     const gate = await requireAIAccess('meal_plan');
     if (!gate.allowed) { setShowPaywall(true); return; }
 
+    const myRun = ++genRunRef.current;
+    const isStale = () => genRunRef.current !== myRun;
     setLoading(true);
     try {
       const { data: pantryFoods } = await supabase
@@ -218,6 +232,11 @@ Complete all ${days.length} days. Valid JSON only.`;
       }
       const parsed = finalResult.repaired as DayPlan[];
 
+      // Cancelled or superseded mid-flight: the chunks still resolved, but this
+      // run is no longer the one on screen. Don't save, don't render, don't
+      // alert — just stand down.
+      if (isStale()) return;
+
       const { error: saveError } = await supabase.from('meal_plans').upsert({
         user_id: user!.id,
         week_start: weekStart,
@@ -238,10 +257,13 @@ Complete all ${days.length} days. Valid JSON only.`;
       // validator rejection — a dead AI proxy, a network drop, a Supabase
       // write error — showed the user this alert and left no trace in Sentry,
       // so the only symptom reaching us was a one-star review.
+      if (isStale()) return;
       logError('MealPlan.generate', e);
       Alert.alert('Error', 'Could not generate meal plan. Please try again.');
     } finally {
-      setLoading(false);
+      // Only the run that owns the spinner may dismiss it — a cancelled run
+      // settling late must not kill a newer run's loading state.
+      if (!isStale()) setLoading(false);
     }
   };
 
@@ -325,7 +347,14 @@ Complete all ${days.length} days. Valid JSON only.`;
       {loading && (
         <View style={s.center}>
           <ActivityIndicator color={colors.accent} size="large" />
-          <Text style={s.loadingText}>Building your 7-day plan…{'\n'}This takes about 15 seconds.</Text>
+          <Text style={s.loadingText}>Building your 7-day plan…{'\n'}This usually takes about 20 seconds.</Text>
+          <TouchableOpacity
+            style={s.cancelGenBtn}
+            onPress={() => { genRunRef.current++; setLoading(false); }}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel meal plan generation">
+            <Text style={s.cancelGenText}>Cancel</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -459,7 +488,7 @@ Complete all ${days.length} days. Valid JSON only.`;
           </ScrollView>
           <View style={{ padding: 20 }}>
             <TouchableOpacity style={s.confirmBtn} onPress={logMeal} disabled={logging}>
-              {logging ? <ActivityIndicator color={colors.accentText} /> : <Text style={s.confirmBtnText}>Log to Today's Diary</Text>}
+              {logging ? <ActivityIndicator color={colors.accentText} /> : <Text style={s.confirmBtnText}>Log to Today</Text>}
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -484,6 +513,8 @@ function makeStyles(c: ThemeColors) {
     emptySub: { fontSize: 14, color: c.textTertiary, textAlign: 'center', lineHeight: 22, fontWeight: weight.medium },
     genBtnLarge: { backgroundColor: c.accent, borderRadius: radius.card, paddingHorizontal: 24, paddingVertical: 16, marginTop: 12 },
     genBtnLargeText: { color: c.accentText, fontSize: 16, fontWeight: weight.heavy },
+    cancelGenBtn: { marginTop: 20, paddingVertical: 10, paddingHorizontal: 24 },
+    cancelGenText: { color: c.textSecondary, fontSize: 15, fontWeight: '600' },
     loadingText: { color: c.textTertiary, fontSize: 14, textAlign: 'center', lineHeight: 24, fontWeight: weight.medium, marginTop: 12 },
     dayPicker: { maxHeight: 52, borderBottomWidth: 1, borderBottomColor: c.border },
     dayPickerContent: { paddingHorizontal: spacing.lg, paddingVertical: 10, gap: 8 },

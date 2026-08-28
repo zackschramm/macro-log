@@ -27,13 +27,14 @@
         "NSCameraUsageDescription": "Fuelog uses your camera to scan food barcodes and take photos of meals.",
         "NSPhotoLibraryUsageDescription": "Fuelog uses your photo library to attach progress photos and food images.",
         "NSUserNotificationsUsageDescription": "Fuelog sends daily reminders to log your meals, water, and workouts.",
-        "NSHealthShareUsageDescription": "Fuelog reads your health data \u2014 including HRV, sleep, steps, heart rate, and workouts \u2014 to personalize your daily fueling targets and race plans.",
+        "NSHealthShareUsageDescription": "Fuelog reads your health data — including HRV, sleep, steps, heart rate, and workouts — to personalize your daily fueling targets and race plans.",
         "NSHealthUpdateUsageDescription": "Fuelog writes your weight, nutrition, and workouts to Apple Health.",
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
-      }
+      },
+      "usesAppleSignIn": true
     },
     "android": {
       "package": "com.zackschramm.macrolog",
@@ -107,7 +108,8 @@
             "targetSdkVersion": 35
           }
         }
-      ]
+      ],
+      "expo-apple-authentication"
     ],
     "extra": {
       "sentryDsn": "",

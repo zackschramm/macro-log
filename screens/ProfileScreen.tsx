@@ -1229,8 +1229,8 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
               </View>
               <Text style={s.healthNote}>
                 {availableTrackers.length === 0
-                  ? 'Open the Recovery tab once to connect Apple Health and detect your devices (Whoop, Apple Watch, etc.).'
-                  : 'Global default for all metrics. Override individual metrics below. You can also override per-metric in Recovery → Customize.'}
+                  ? 'Open the Recover tab once to connect Apple Health and detect your devices (Whoop, Apple Watch, etc.).'
+                  : 'Global default for all metrics. Override individual metrics below. You can also override per-metric in Recover → Customize.'}
               </Text>
               <Text style={s.healthNote}>
                 Numbers may differ slightly from a tracker's own app — each device calculates calories, sleep stages, etc. with its own algorithm.

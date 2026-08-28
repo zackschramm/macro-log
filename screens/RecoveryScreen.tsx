@@ -14,6 +14,7 @@ import Svg, { Circle, Polyline, Line, Text as SvgText } from 'react-native-svg';
 import { useHealth, RecoveryData, WeeklyTrainingLoad, STORAGE_PREFERRED_TRACKER, STORAGE_HK_SOURCES, STORAGE_LAST_SYNC, buildSourcePrefs } from '../hooks/useHealth';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { supabase } from '../constants/supabase';
+import { useAuth } from '../hooks/useAuth';
 import { toLocalDateString } from '../utils/dateUtils';
 import {
   getConnectedWearables, getWhoopData, getWhoopTrends, getOuraData, getGarminData,
@@ -31,7 +32,10 @@ const STORAGE_VISIBLE_METRICS = 'recovery_visible_metrics';
 // Last-known snapshot of everything this screen shows. Hydrated on mount so
 // the tab renders instantly with real numbers instead of a full-screen
 // spinner; background refresh then updates in place.
-const STORAGE_SNAPSHOT = 'recovery_snapshot_v1';
+// Per-user. This snapshot holds HRV, resting heart rate, sleep and training
+// load, and it is hydrated on mount to paint instantly — so an un-scoped key
+// showed the previous account's recovery data to whoever signed in next.
+const snapshotKeyFor = (uid: string) => `recovery_snapshot_v1_${uid}`;
 
 type RecoverySnapshot = {
   ts: number;
@@ -476,6 +480,8 @@ export default function RecoveryScreen({
   const { colors } = useTheme();
   const s = makeStyles(colors);
   const sc = makeStatCardStyles(colors);
+  const { user } = useAuth();
+  const uid = user?.id ?? '';
   const health = useHealth();
   const [data, setData] = useState<RecoveryData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -533,8 +539,9 @@ export default function RecoveryScreen({
   const saveSnapshot = useCallback((patch: Partial<RecoverySnapshot>) => {
     snapshotRef.current = { ...snapshotRef.current, ...patch, ts: Date.now() };
     hasCacheRef.current = true;
-    AsyncStorage.setItem(STORAGE_SNAPSHOT, JSON.stringify(snapshotRef.current)).catch(() => {});
-  }, []);
+    if (!uid) return;
+    AsyncStorage.setItem(snapshotKeyFor(uid), JSON.stringify(snapshotRef.current)).catch(() => {});
+  }, [uid]);
 
   const loadRef = useRef<((prefs?: Record<string, string>, silent?: boolean) => Promise<void>) | null>(null);
 
@@ -576,12 +583,17 @@ export default function RecoveryScreen({
       health.getRecoveryData(effectivePrefs),
       health.getWeeklyTrainingLoad(effectivePrefs),
     ]);
-    if (result.lockedOut) {
+    if (result.lockedOut && !hasCacheRef.current) {
       // HealthKit refused reads (device locked / backgrounded launch — the
-      // Sentry Code=6 storm from builds 153-158). Whatever is on screen, a
-      // cached snapshot or the empty state, beats overwriting with zeros; and
-      // a locked-out read must never be persisted to the snapshot. The
+      // Sentry Code=6 storm from builds 153-158) and we have nothing painted
+      // yet. Showing the empty state beats overwriting with zeros. The
       // AppState 'active' listener and the 5-minute interval retry naturally.
+      //
+      // The earlier version returned here UNCONDITIONALLY, which was a worse
+      // bug than the one it fixed: a single Code=6 on steps threw away HRV,
+      // resting heart rate and sleep that had all resolved correctly, and
+      // suppressed the snapshot write too. Render what we did get; only the
+      // cache write is withheld, below, so a partial read is never persisted.
       if (!silent) setLoading(false);
       return;
     }
@@ -601,7 +613,10 @@ export default function RecoveryScreen({
       setNoData(false);
     }
     if (!silent) setLoading(false);
-    saveSnapshot({ data: result, trainingLoad: load_ });
+    // Never persist a partial read: the snapshot is hydrated on next launch and
+    // painted as if it were real, so caching a half-refused read would make the
+    // gaps look permanent. Rendering it once is fine; remembering it is not.
+    if (!result.lockedOut) saveSnapshot({ data: result, trainingLoad: load_ });
     health.getAvailableSources().then(setAvailableSources);
   }, [health.isAuthorized, sourcePrefs, preferredTracker, saveSnapshot]);
 
@@ -711,8 +726,26 @@ export default function RecoveryScreen({
   // refresh everything in the background.
   useEffect(() => {
     (async () => {
+      // Account switch: clear the previous user's snapshot from memory and
+      // from state BEFORE anything else runs. The council confirmed that
+      // without this, a new account with no snapshot kept the old account's
+      // HRV/Whoop/CGM data on screen — and the next saveSnapshot's
+      // {...snapshotRef.current, ...patch} merge wrote it under the NEW
+      // user's key, making the contamination durable.
+      snapshotRef.current = {};
+      hasCacheRef.current = false;
+      setData(null);
+      setTrainingLoad(null);
+      setConnectedWearables([]);
+      setWhoopData(null);
+      setWhoopTrends(null);
+      setOuraData(null);
+      setGarminData(null);
+      setDexcomData(null);
+      setCyclePhase(null);
+      setLastSyncMs(null);
       try {
-        const raw = await AsyncStorage.getItem(STORAGE_SNAPSHOT);
+        const raw = uid ? await AsyncStorage.getItem(snapshotKeyFor(uid)) : null;
         if (raw) {
           const snap: RecoverySnapshot = JSON.parse(raw);
           snapshotRef.current = snap;
@@ -736,7 +769,9 @@ export default function RecoveryScreen({
       load(undefined, hasCacheRef.current);
       loadWearableData();
     })();
-  }, []);
+    // Re-hydrate on account switch: otherwise the in-memory snapshotRef still
+    // holds the previous user's numbers for the life of the app session.
+  }, [uid]);
 
   // Pull-to-refresh: one gesture refreshes HealthKit + every wearable.
   const onRefresh = useCallback(async () => {

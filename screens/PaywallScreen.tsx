@@ -115,8 +115,14 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
   // them in sync with App Store Connect so a load failure can't advertise a
   // price you don't charge. They previously read $2.99/$19.99, which is what
   // ended up in the App Review screenshot.
-  const monthlyPrice = monthlyPkg?.product.priceString ?? '$9.99';
-  const yearlyPrice = yearlyPkg?.product.priceString ?? '$59.99';
+  // A paywall that shows a price for a product StoreKit never returned is worse
+  // than one that admits it: the button is inert, and the fallback price is what
+  // hid a store-side misconfiguration (subscriptions stuck in Prepare for
+  // Submission) through an entire build cycle. Prices now come from the live
+  // package or not at all, and `plansUnavailable` drives an honest empty state.
+  const plansUnavailable = !loading && !monthlyPkg && !yearlyPkg;
+  const monthlyPrice = monthlyPkg?.product.priceString ?? '--';
+  const yearlyPrice = yearlyPkg?.product.priceString ?? '--';
 
   // Per-month equivalent of the annual plan, DERIVED from the live price rather
   // than hardcoded. It previously read "~$1.67/mo" — correct for a $19.99 year,
@@ -159,6 +165,20 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
       if (customerInfo.entitlements.active[ENTITLEMENT_ID]) {
         track(EVENTS.PAYWALL_CONVERTED, { plan: selected });
         onUnlock();
+      } else {
+        // StoreKit accepted the purchase but the entitlement did not come back.
+        // This path used to do NOTHING — no unlock, no message, no log — so the
+        // user tapped, paid, and sat on an unchanged paywall. Almost always a
+        // RevenueCat wiring problem (product not attached to the entitlement),
+        // which is invisible in the client, so it has to be reported.
+        logError('Paywall.purchaseNoEntitlement', new Error('purchase resolved without entitlement'), {
+          plan: selected,
+          entitlement: ENTITLEMENT_ID,
+        });
+        Alert.alert(
+          'Almost There',
+          "Your purchase went through, but we couldn't unlock Pro on this device. Tap Restore Purchases, or contact support@fuelog.app and we'll sort it out.",
+        );
       }
     } catch (e: any) {
       // A user backing out is not an error. Anything else is lost revenue we
@@ -285,17 +305,23 @@ export default function PaywallScreen({ onClose, onUnlock, trialMessage }: Props
         )}
 
         <TouchableOpacity
-          style={s.ctaBtn}
+          style={[s.ctaBtn, plansUnavailable && s.ctaBtnDisabled]}
           onPress={purchase}
-          disabled={purchasing || loading}
+          disabled={purchasing || loading || plansUnavailable}
           accessibilityRole="button"
-          accessibilityLabel={purchasing ? 'Starting your free trial' : 'Start free trial'}
-          accessibilityState={{ disabled: purchasing || loading, busy: purchasing }}>
+          accessibilityLabel={purchasing ? 'Starting your free trial' : plansUnavailable ? 'Subscription plans unavailable' : 'Start free trial'}
+          accessibilityState={{ disabled: purchasing || loading || plansUnavailable, busy: purchasing }}>
           {purchasing
             ? <ActivityIndicator color={colors.accentText} />
-            : <Text style={s.ctaBtnText}>Start Free Trial</Text>}
+            : <Text style={s.ctaBtnText}>{plansUnavailable ? 'Plans Unavailable' : 'Start Free Trial'}</Text>}
         </TouchableOpacity>
-        <Text style={s.trialNote}>{TRIAL_DAYS} days free, then {selected === 'yearly' ? yearlyPrice + '/year' : monthlyPrice + '/month'}. Cancel anytime.</Text>
+        {plansUnavailable ? (
+          <Text style={s.trialNote}>
+            We couldn't load subscription plans right now. Check your connection and reopen this screen — nothing has been charged.
+          </Text>
+        ) : (
+          <Text style={s.trialNote}>{TRIAL_DAYS} days free, then {selected === 'yearly' ? yearlyPrice + '/year' : monthlyPrice + '/month'}. Cancel anytime.</Text>
+        )}
 
         <TouchableOpacity style={s.restoreBtn} onPress={restore} disabled={restoring}>
           {restoring
@@ -369,6 +395,7 @@ function makeStyles(c: ThemeColors) {
     planCheck: { backgroundColor: c.accent, width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginLeft: 12 },
     planCheckText: { color: c.accentText, fontSize: 13, fontWeight: weight.heavy },
     ctaBtn: { backgroundColor: c.accent, borderRadius: radius.card, paddingVertical: 18, width: '100%', alignItems: 'center', marginBottom: 12 },
+    ctaBtnDisabled: { opacity: 0.45 },
     ctaBtnText: { color: c.accentText, fontSize: 17, fontWeight: weight.heavy },
     trialNote: { fontSize: 12, color: c.textTertiary, fontWeight: weight.medium, textAlign: 'center', marginBottom: 20 },
     restoreBtn: { paddingVertical: 8 },

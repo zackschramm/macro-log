@@ -82,6 +82,7 @@ const USER_TABLES = [
   // Integrations and assistant state.
   'wearable_tokens',
   'coach_memories',
+  'coach_messages',
   'proactive_notifications',
 
   // Profile last — other rows may reference it.
@@ -155,6 +156,38 @@ serve(async (req) => {
   for (const col of ['referrer_id', 'referee_id']) {
     const { error } = await supabaseAdmin.from('referrals').delete().eq(col, userId)
     if (error) problems.push(`referrals.${col}:${error.message}`)
+  }
+
+  // App Review Guideline 5.1.1(v): an app offering Sign in with Apple must
+  // revoke the user's Apple tokens when the account is deleted. The refresh
+  // token was banked at sign-in by apple-token-exchange; users who only ever
+  // used email/password have no row here and skip this entirely. Best-effort:
+  // a revocation failure is recorded but never blocks the deletion the user
+  // asked for — Apple's grant dying later is better than the account living on.
+  try {
+    const { data: appleRow } = await supabaseAdmin
+      .from('apple_refresh_tokens')
+      .select('refresh_token')
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (appleRow?.refresh_token) {
+      const { makeClientSecret } = await import('../_shared/appleSecret.ts')
+      const clientSecret = await makeClientSecret()
+      const resp = await fetch('https://appleid.apple.com/auth/revoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: Deno.env.get('APPLE_CLIENT_ID')!,
+          client_secret: clientSecret,
+          token: appleRow.refresh_token,
+          token_type_hint: 'refresh_token',
+        }),
+      })
+      if (!resp.ok) problems.push(`apple-revoke:${resp.status}`)
+      // The row itself dies with the auth user via ON DELETE CASCADE.
+    }
+  } catch (e) {
+    problems.push(`apple-revoke:${(e as Error).message}`)
   }
 
   // Finally the auth record. Until this succeeds the account still exists, so

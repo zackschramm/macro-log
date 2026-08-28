@@ -15,10 +15,14 @@ import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/the
 import { useUnits } from '../constants/units';
 import { useHealthKit } from '../hooks/useHealthKit';
 import { logError } from '../utils/logError';
+import { useAuth } from '../hooks/useAuth';
 
-const PHOTOS_KEY = 'fuelog_progress_photos';
+// Per-user. Physique photos are the most personal thing in the app, and the
+// index was keyed globally — the next account signed in on this device saw
+// them. The image files live under a per-user subfolder for the same reason.
+const photosKeyFor = (uid: string) => `fuelog_progress_photos_${uid}`;
 const MAX_PHOTOS = 50;
-const PHOTO_DIR = FileSystem.documentDirectory + 'progress_photos/';
+const photoDirFor = (uid: string) => `${FileSystem.documentDirectory}progress_photos/${uid}/`;
 
 const { width } = Dimensions.get('window');
 const THUMB = (width - spacing.lg * 2 - spacing.sm) / 2;
@@ -32,20 +36,23 @@ export interface ProgressPhoto {
   note?: string;
 }
 
-async function ensureDir() {
-  const info = await FileSystem.getInfoAsync(PHOTO_DIR);
-  if (!info.exists) await FileSystem.makeDirectoryAsync(PHOTO_DIR, { intermediates: true });
+async function ensureDir(uid: string) {
+  const dir = photoDirFor(uid);
+  const info = await FileSystem.getInfoAsync(dir);
+  if (!info.exists) await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
 }
 
-async function loadPhotos(): Promise<ProgressPhoto[]> {
+async function loadPhotos(uid: string): Promise<ProgressPhoto[]> {
+  if (!uid) return [];
   try {
-    const raw = await AsyncStorage.getItem(PHOTOS_KEY);
+    const raw = await AsyncStorage.getItem(photosKeyFor(uid));
     return raw ? JSON.parse(raw) : [];
   } catch { return []; }
 }
 
-async function savePhotos(photos: ProgressPhoto[]) {
-  await AsyncStorage.setItem(PHOTOS_KEY, JSON.stringify(photos));
+async function savePhotos(uid: string, photos: ProgressPhoto[]) {
+  if (!uid) return;
+  await AsyncStorage.setItem(photosKeyFor(uid), JSON.stringify(photos));
 }
 
 const fmtDate = (iso: string) =>
@@ -62,6 +69,8 @@ export default function ProgressPhotosScreen({ visible, onClose }: Props) {
   const { colors } = useTheme();
   const s = makeStyles(colors);
   const u = useUnits();
+  const { user } = useAuth();
+  const uid = user?.id ?? '';
   const health = useHealthKit();
 
   const [photos, setPhotos] = useState<ProgressPhoto[]>([]);
@@ -80,12 +89,18 @@ export default function ProgressPhotosScreen({ visible, onClose }: Props) {
   const compareRef = useRef<View>(null);
 
   const refresh = useCallback(async () => {
-    setPhotos(await loadPhotos());
-  }, []);
+    // Depends on uid: with [] deps this closed over the mount-time user forever,
+    // so an in-session account switch kept showing — and then saving — the
+    // previous account's physique photos (council finding).
+    setPhotos(await loadPhotos(uid));
+  }, [uid]);
 
   useEffect(() => {
+    // Account switch: drop the previous user's photos from state immediately,
+    // even while the modal is closed, so a stale frame can never flash.
+    setPhotos([]);
     if (visible) refresh();
-  }, [visible, refresh]);
+  }, [visible, refresh, uid]);
 
   const pickPhoto = async () => {
     if (photos.length >= MAX_PHOTOS) {
@@ -127,9 +142,9 @@ export default function ProgressPhotosScreen({ visible, onClose }: Props) {
   const handlePicked = async (sourceUri: string) => {
     setAddingPhoto(true);
     try {
-      await ensureDir();
+      await ensureDir(uid);
       const id = Date.now().toString();
-      const destUri = PHOTO_DIR + id + '.jpg';
+      const destUri = photoDirFor(uid) + id + '.jpg';
       await FileSystem.copyAsync({ from: sourceUri, to: destUri });
       setPendingUri(destUri);
 
@@ -161,7 +176,7 @@ export default function ProgressPhotosScreen({ visible, onClose }: Props) {
       note: noteInput.trim() || undefined,
     };
     const updated = [photo, ...photos];
-    await savePhotos(updated);
+    await savePhotos(uid, updated);
     setPhotos(updated);
     setWeightPromptVisible(false);
     setPendingUri(null);
@@ -184,7 +199,7 @@ export default function ProgressPhotosScreen({ visible, onClose }: Props) {
         text: 'Delete', style: 'destructive', onPress: async () => {
           try { await FileSystem.deleteAsync(photo.uri, { idempotent: true }); } catch (e) { logError('ProgressPhotosScreen.deletePhoto', e); }
           const updated = photos.filter(p => p.id !== photo.id);
-          await savePhotos(updated);
+          await savePhotos(uid, updated);
           setPhotos(updated);
           setViewPhoto(null);
         },

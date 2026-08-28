@@ -55,7 +55,7 @@ export async function scheduleOnboardingNotifications(): Promise<void> {
           identifier: 'fuelog_day7_notif',
           content: {
             title: "You've been using Fuelog for a week!",
-            body: 'Check your Progress tab to see your macro trend',
+            body: 'Check your Stats tab to see your macro trend',
             sound: true,
           },
           trigger: {

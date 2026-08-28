@@ -1,8 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../constants/supabase';
 
-const EARNED_KEY = 'fuelog_earned_badges';
-const CACHE_KEY = 'fuelog_achievements_cache';
+// Per-user: badges are an achievement record, and inheriting another account's
+// earned list means a brand-new user opens the app already decorated.
+const earnedKeyFor = (uid: string) => `fuelog_earned_badges_${uid}`;
+const cacheKeyFor  = (uid: string) => `fuelog_achievements_cache_${uid}`;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
 export interface BadgeDef {
@@ -145,8 +147,9 @@ interface CachedResult {
   timestamp: number;
 }
 
-export async function invalidateAchievementsCache(): Promise<void>{
-  await AsyncStorage.removeItem(CACHE_KEY);
+export async function invalidateAchievementsCache(userId: string): Promise<void>{
+  if (!userId) return;
+  await AsyncStorage.removeItem(cacheKeyFor(userId));
 }
 
 export async function checkAchievements(
@@ -155,7 +158,7 @@ export async function checkAchievements(
   { forceRefresh = false } = {},
 ): Promise<CheckResult>{
   if (!forceRefresh) {
-    const cacheRaw = await AsyncStorage.getItem(CACHE_KEY);
+    const cacheRaw = await AsyncStorage.getItem(cacheKeyFor(userId));
     if (cacheRaw) {
       const cached: CachedResult = JSON.parse(cacheRaw);
       if (Date.now() - cached.timestamp < CACHE_TTL_MS) {
@@ -164,7 +167,7 @@ export async function checkAchievements(
     }
   }
 
-  const prevEarnedRaw = await AsyncStorage.getItem(EARNED_KEY);
+  const prevEarnedRaw = await AsyncStorage.getItem(earnedKeyFor(userId));
   const prevEarned: EarnedBadge[] = prevEarnedRaw ? JSON.parse(prevEarnedRaw) : [];
   const prevEarnedIds = new Set(prevEarned.map(e => e.id));
 
@@ -192,10 +195,10 @@ export async function checkAchievements(
   });
 
   if (newlyEarned.length > 0) {
-    await AsyncStorage.setItem(EARNED_KEY, JSON.stringify(updatedEarned));
+    await AsyncStorage.setItem(earnedKeyFor(userId), JSON.stringify(updatedEarned));
   }
 
-  await AsyncStorage.setItem(CACHE_KEY, JSON.stringify({ statuses, timestamp: Date.now() }));
+  await AsyncStorage.setItem(cacheKeyFor(userId), JSON.stringify({ statuses, timestamp: Date.now() }));
 
   return { statuses, newlyEarned };
 }

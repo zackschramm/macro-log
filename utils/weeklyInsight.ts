@@ -3,8 +3,10 @@ import { supabase } from '../constants/supabase';
 import { callAI } from '../constants/ai';
 import { toLocalDateString } from './dateUtils';
 
-const INSIGHT_DATE_KEY = 'fuelog_weekly_insight_date';
-const INSIGHT_CACHE_KEY = 'fuelog_weekly_insight_cache';
+// Per-user: this cache holds AI prose about someone's calories, weight and
+// training for the week — the last thing another account should read.
+const insightDateKeyFor  = (uid: string) => `fuelog_weekly_insight_date_${uid}`;
+const insightCacheKeyFor = (uid: string) => `fuelog_weekly_insight_cache_${uid}`;
 
 export function getMondayISODate(from = new Date()): string {
   const d = new Date(from);
@@ -41,9 +43,9 @@ export async function generateWeeklyInsight(
 ): Promise<string | null> {
   const thisMonday = getMondayISODate();
 
-  const cachedDate = await AsyncStorage.getItem(INSIGHT_DATE_KEY);
+  const cachedDate = await AsyncStorage.getItem(insightDateKeyFor(userId));
   if (cachedDate === thisMonday) {
-    const cached = await AsyncStorage.getItem(INSIGHT_CACHE_KEY);
+    const cached = await AsyncStorage.getItem(insightCacheKeyFor(userId));
     if (cached) return cached;
   }
 
@@ -108,7 +110,7 @@ export async function generateWeeklyInsight(
       : '',
   ].filter(Boolean);
 
-  const system = `You are a concise, encouraging fitness coach. Write a 3–4 sentence weekly summary: acknowledge what went well, then give one specific actionable focus for the coming week. No bullet points, no headers. Keep it warm and direct.`;
+  const system = `You are a concise, encouraging fitness coach. Write a 3–4 sentence weekly summary: acknowledge what went well, then give one specific actionable focus for the coming week. No bullet points, no headers. Keep it warm and direct. Never name a tab, screen, or button — describe the action, not where to tap.`;
 
   const insight = await callAI(
     [{ role: 'user', content: `My week (${start} to ${end}): ${parts.join(', ')}.` }],
@@ -117,8 +119,8 @@ export async function generateWeeklyInsight(
   );
 
   if (insight) {
-    await AsyncStorage.setItem(INSIGHT_DATE_KEY, thisMonday);
-    await AsyncStorage.setItem(INSIGHT_CACHE_KEY, insight);
+    await AsyncStorage.setItem(insightDateKeyFor(userId), thisMonday);
+    await AsyncStorage.setItem(insightCacheKeyFor(userId), insight);
   }
 
   return insight || null;

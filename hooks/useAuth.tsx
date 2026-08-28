@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../constants/supabase';
+import { clearWidgetData } from '../utils/widgetSync';
 import { Session, User } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -29,6 +30,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
+    // The widget renders on the home screen with no notion of who is signed in,
+    // so its payload has to be blanked here. Everything else device-local is
+    // namespaced per user id (see utils/userScopedStorage) rather than cleared,
+    // so switching back to your own account restores your own data.
+    await clearWidgetData().catch(() => {});
     await supabase.auth.signOut();
   };
 

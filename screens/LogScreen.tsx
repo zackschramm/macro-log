@@ -510,7 +510,7 @@ export default function LogScreen({
           // reflexes. It now fires off a race fuel plan instead
           // (screens/RaceFuelScreen.tsx). The weekly count query went with it.
           await refreshStreak();
-          await invalidateAchievementsCache();
+          await invalidateAchievementsCache(user.id);
           const result = await checkAchievements(user.id, effectiveTargets, { forceRefresh: true });
           if (result.newlyEarned.length > 0) showAchievementToast(result.newlyEarned[0].name);
         }}
@@ -525,7 +525,7 @@ export default function LogScreen({
           if (!user) return;
           if (health.isAuthorized) refreshTdee();
           await refreshStreak();
-          await invalidateAchievementsCache();
+          await invalidateAchievementsCache(user.id);
           const result = await checkAchievements(user.id, effectiveTargets, { forceRefresh: true });
           if (result.newlyEarned.length > 0) showAchievementToast(result.newlyEarned[0].name);
         }}
@@ -541,7 +541,7 @@ export default function LogScreen({
           if (!user) return;
           if (health.isAuthorized) refreshTdee();
           await refreshStreak();
-          await invalidateAchievementsCache();
+          await invalidateAchievementsCache(user.id);
           const result = await checkAchievements(user.id, effectiveTargets, { forceRefresh: true });
           if (result.newlyEarned.length > 0) showAchievementToast(result.newlyEarned[0].name);
         }}

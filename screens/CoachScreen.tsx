@@ -24,6 +24,7 @@ import { toLocalDateString } from '../utils/dateUtils';
 // no session history yet; the endurance briefing degrades to everything
 // except today's training until Health Connect grows a workouts reader.
 import { useHealthKit, STORAGE_PREFERRED_TRACKER, buildSourcePrefs } from '../hooks/useHealthKit';
+import { loadCachedTranscript, fetchTranscript, appendMessages, cacheTranscript, clearTranscript } from '../utils/coachTranscript';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -36,8 +37,10 @@ interface YoutubeLink {
   url: string;
 }
 
-const HISTORY_KEY = 'fuelog_coach_history';
-const MAX_HISTORY = 50;
+// The transcript now lives on the ACCOUNT (public.coach_messages) with a
+// per-user device cache for instant paint and offline reading. Both live in
+// utils/coachTranscript so the storage rules sit in one place.
+import { MAX_HISTORY } from '../utils/coachTranscript';
 
 const CHIP_SUGGESTIONS = [
   "How's my protein intake?",
@@ -82,6 +85,16 @@ You help users with:
 When explaining exercises, always cover: setup/starting position, execution, common mistakes, and key cues.
 
 When relevant, include YouTube links to reputable coaches in markdown format like [Video Title](youtube_url). Use channels like Alan Thrall, Jeff Nippard, Renaissance Periodization, Athlean-X, or Starting Strength for reference videos. Only include real, well-known videos you're confident exist.
+
+APP LAYOUT — Fuelog has exactly seven tabs along the bottom. Never name any other tab, screen, or button:
+- Home — food logging (manual, barcode, photo, voice), daily macros, meal plans
+- Train — workouts, programs, exercise logging
+- Stats — weight trend, progress charts, measurements, body composition
+- Coach — this conversation
+- Recover — sleep, HRV, readiness, wearables
+- Plates — barbell plate calculator
+- Me — profile, goals, targets, settings, subscription
+There is no Nutrition tab, no Diary, and no Log tab. Food goes in Home; weight and progress go in Stats. If you are not certain where something lives, describe the action ("log it") rather than naming a location.
 
 Keep responses concise but thorough. Use short paragraphs. Be encouraging and practical. Always tailor advice to the user's sport and goals.`;
 }
@@ -172,12 +185,29 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
       } catch (e) { logError('CoachScreen.CoachScreen', e); }
 
       try {
-        const historyStr = await AsyncStorage.getItem(HISTORY_KEY);
-
         let restored = 0;
-        if (historyStr) {
-          const parsed: Message[] = JSON.parse(historyStr);
-          if (parsed.length > 0) { setMessages(parsed); restored = parsed.length; }
+        // Council finding: without an unconditional reset here, switching to an
+        // account with an EMPTY transcript left the previous account's
+        // conversation on screen, fed it to the AI as context on the next send,
+        // and cached it under the new user's key — recreating the exact leak
+        // this batch exists to fix. Reset first, always; restore only what THIS
+        // user actually owns.
+        setMessages([defaultGreeting]);
+        setShowChips(false);
+        if (user?.id) {
+          // Cache first so the thread paints immediately...
+          const cached = await loadCachedTranscript(user.id);
+          if (cached.length > 0) { setMessages(cached); restored = cached.length; }
+
+          // ...then the account, which is the source of truth and wins WHENEVER
+          // it answers — an empty answer means the thread was cleared on
+          // another device, and an emptied screen is the correct rendering of
+          // that. Offline it returns null and the cache stands.
+          const remote = await fetchTranscript(user.id);
+          if (remote) {
+            setMessages(remote.length > 0 ? remote : [defaultGreeting]);
+            restored = remote.length;
+          }
         }
 
         // Suggestion chips are for first-time users. This used to key off the
@@ -189,7 +219,10 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
       } catch (e) { logError('CoachScreen.CoachScreen', e); }
       setHistoryLoading(false);
     })();
-  }, []);
+    // Depends on the user: a namespaced key alone still would not reload when
+    // the account switches inside one app session, which is exactly what
+    // happens when the reviewer signs out of a dev account and into the demo.
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -227,15 +260,19 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
     })();
   }, [user?.id]);
 
+  // Mirror the visible thread into the offline cache. The durable write is
+  // appendMessages() at the send site — this only keeps the cache honest.
   const saveHistory = (msgs: Message[]) => {
-    const trimmed = msgs.slice(-MAX_HISTORY);
-    AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed)).catch(() => {});
+    if (!user?.id) return;
+    cacheTranscript(user.id, msgs);
   };
 
   const clearHistory = () => {
     setMessages([defaultGreeting]);
     setShowChips(false);
-    AsyncStorage.removeItem(HISTORY_KEY).catch(() => {});
+    // Clears the account copy as well — a transcript the user deleted must not
+    // reappear on their next device.
+    if (user?.id) clearTranscript(user.id);
   };
 
   const sendMessage = async (text?: string) => {
@@ -255,6 +292,9 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
     }
 
     setShowChips(false);
+    // Stable across retries of this one exchange, so the idempotent upsert in
+    // appendMessages can recognise a repeat.
+    const exchangeId = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const userMsg: Message = { role: 'user', content: messageText };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
@@ -277,13 +317,20 @@ export default function CoachScreen({ initialExercise, profile }: { initialExerc
         systemPrompt,
         1000
       );
-      const finalMessages = [...newMessages, { role: 'assistant' as const, content: reply || 'Sorry, I could not get a response.', source }];
+      const assistantMsg = { role: 'assistant' as const, content: reply || 'Sorry, I could not get a response.', source };
+      const finalMessages = [...newMessages, assistantMsg];
       setMessages(finalMessages);
       saveHistory(finalMessages);
+      // Durable write, keyed so a retry cannot double-post the question.
+      if (user?.id) appendMessages(user.id, [userMsg, assistantMsg], exchangeId);
     } catch {
       const errMessages = [...newMessages, { role: 'assistant' as const, content: 'Connection error — please try again.' }];
       setMessages(errMessages);
       saveHistory(errMessages);
+      // Persist the question but not the error bubble: the user's message is
+      // real conversation, "Connection error" is UI noise that should not
+      // follow them to another device.
+      if (user?.id) appendMessages(user.id, [userMsg], exchangeId);
     } finally {
       setLoading(false);
       setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);

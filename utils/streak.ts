@@ -2,9 +2,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../constants/supabase';
 import { toLocalDateString } from './dateUtils';
 
-const STREAK_COUNT_KEY = 'fuelog_streak_count';
-const STREAK_LAST_DATE_KEY = 'fuelog_streak_last_date';
-const STREAK_MILESTONES_KEY = 'fuelog_streak_milestones_shown';
+// Per-user. A shared streak key meant a second account on the same device
+// inherited the first account's streak and its already-shown milestones — a
+// brand-new user could open the app to "You're on a 41 day streak!".
+const streakCountKey = (uid: string) => `fuelog_streak_count_${uid}`;
+const streakLastDateKey = (uid: string) => `fuelog_streak_last_date_${uid}`;
+const streakMilestonesKey = (uid: string) => `fuelog_streak_milestones_shown_${uid}`;
 
 const MILESTONES = [7, 30, 100];
 
@@ -26,9 +29,9 @@ export async function updateStreak(userId: string): Promise<StreakResult> {
   const yesterday = yesterdayStr();
 
   const [countRaw, lastDate, milestonesRaw] = await Promise.all([
-    AsyncStorage.getItem(STREAK_COUNT_KEY),
-    AsyncStorage.getItem(STREAK_LAST_DATE_KEY),
-    AsyncStorage.getItem(STREAK_MILESTONES_KEY),
+    AsyncStorage.getItem(streakCountKey(userId)),
+    AsyncStorage.getItem(streakLastDateKey(userId)),
+    AsyncStorage.getItem(streakMilestonesKey(userId)),
   ]);
 
   let count = parseInt(countRaw ?? '0', 10) || 0;
@@ -64,8 +67,8 @@ export async function updateStreak(userId: string): Promise<StreakResult> {
   }
 
   await AsyncStorage.multiSet([
-    [STREAK_COUNT_KEY, String(count)],
-    [STREAK_LAST_DATE_KEY, newLastDate],
+    [streakCountKey(userId), String(count)],
+    [streakLastDateKey(userId), newLastDate],
   ]);
 
   let milestoneToShow: number | null = null;
@@ -73,7 +76,7 @@ export async function updateStreak(userId: string): Promise<StreakResult> {
     const hit = MILESTONES.find(m => m === count && !milestonesShown.includes(m));
     if (hit != null) {
       milestonesShown.push(hit);
-      await AsyncStorage.setItem(STREAK_MILESTONES_KEY, JSON.stringify(milestonesShown));
+      await AsyncStorage.setItem(streakMilestonesKey(userId), JSON.stringify(milestonesShown));
       milestoneToShow = hit;
     }
   }
@@ -87,10 +90,10 @@ export function getDisplayStreak(count: number, lastDate: string): number {
   return (lastDate === today || lastDate === yesterday) ? count : 0;
 }
 
-export async function loadStreak(): Promise<{ count: number; lastDate: string }> {
+export async function loadStreak(userId: string): Promise<{ count: number; lastDate: string }> {
   const [countRaw, lastDate] = await Promise.all([
-    AsyncStorage.getItem(STREAK_COUNT_KEY),
-    AsyncStorage.getItem(STREAK_LAST_DATE_KEY),
+    AsyncStorage.getItem(streakCountKey(userId)),
+    AsyncStorage.getItem(streakLastDateKey(userId)),
   ]);
   return {
     count: parseInt(countRaw ?? '0', 10) || 0,
