@@ -91,6 +91,41 @@ function calcRDA(n: typeof NUTRIENTS[0], weightKg: number, age: number, sex: str
   return Math.round(base * 10) / 10;
 }
 
+
+/** Prefer unit-suffixed macro_logs columns; fall back to legacy bare keys. */
+function nutrientFromRow(row: Record<string, any>, key: string): number {
+  switch (key) {
+    case 'fiber':
+      return Number(row.fiber_g ?? row.fiber ?? 0) || 0;
+    case 'calcium':
+      return Number(row.calcium_mg ?? row.calcium ?? 0) || 0;
+    case 'iron':
+      return Number(row.iron_mg ?? row.iron ?? 0) || 0;
+    case 'magnesium':
+      return Number(row.magnesium_mg ?? row.magnesium ?? 0) || 0;
+    case 'zinc':
+      return Number(row.zinc_mg ?? row.zinc ?? 0) || 0;
+    case 'potassium':
+      return Number(row.potassium_mg ?? row.potassium ?? 0) || 0;
+    case 'sodium':
+      return Number(row.sodium_mg ?? row.sodium ?? 0) || 0;
+    case 'vitamin_d':
+      return Number(row.vitamin_d_mcg ?? row.vitamin_d ?? 0) || 0;
+    case 'vitamin_b12':
+      return Number(row.vitamin_b12_mcg ?? row.vitamin_b12 ?? 0) || 0;
+    case 'vitamin_c':
+      return Number(row.vitamin_c_mg ?? row.vitamin_c ?? 0) || 0;
+    case 'omega3':
+      // Canonical omega3_g is grams; this screen displays mg.
+      if (row.omega3_g != null && row.omega3_g !== '') {
+        return Number(row.omega3_g) * 1000 || 0;
+      }
+      return Number(row.omega3 ?? 0) || 0;
+    default:
+      return Number(row[key] ?? 0) || 0;
+  }
+}
+
 function ProgressBar({ value, target, color }: { value: number; target: number; color: string }) {
   const { colors } = useTheme();
   const pb = makeProgressBarStyles(colors);
@@ -142,7 +177,7 @@ export default function MineralsScreen({ profile }: Props) {
     if (!data?.length) return;
     const totals: Record<string, number> = {};
     NUTRIENTS.forEach(n => {
-      totals[n.key] = data.reduce((sum, row) => sum + (row[n.key] || 0), 0);
+      totals[n.key] = data.reduce((sum, row) => sum + nutrientFromRow(row, n.key), 0);
     });
     setTodayIntake(totals);
   }, [user]);
@@ -273,8 +308,7 @@ export default function MineralsScreen({ profile }: Props) {
                 const rda = calcRDA(n, weightKg, age, sex);
                 const intake = todayIntake[n.key] || 0;
                 const bloodVal = bloodworkResults[n.key];
-                const effectiveIntake = bloodVal != null ? Math.max(intake, bloodVal) : intake;
-                const pct = rda > 0 ? Math.min(100, Math.round((effectiveIntake / rda) * 100)) : 0;
+                const pct = rda > 0 ? Math.min(100, Math.round((intake / rda) * 100)) : 0;
                 const pctColor = pct >= 100 ? colors.accent : pct >= 50 ? CAT_COLORS[category] : colors.textTertiary;
                 return (
                   <View key={n.key} style={s.row}>
@@ -285,10 +319,10 @@ export default function MineralsScreen({ profile }: Props) {
                         <Text style={[s.pct, { color: pctColor }]}>{pct}%</Text>
                       </View>
                       <Text style={s.notes}>{n.notes}</Text>
-                      <ProgressBar value={effectiveIntake} target={rda} color={CAT_COLORS[category]} />
+                      <ProgressBar value={intake} target={rda} color={CAT_COLORS[category]} />
                       <View style={s.intakeRow}>
                         <Text style={s.intakeText}>
-                          {effectiveIntake > 0 ? `${Math.round(effectiveIntake * 10) / 10} / ` : ''}{rda} {n.unit}
+                          {intake > 0 ? `${Math.round(intake * 10) / 10} / ` : ''}{rda} {n.unit}
                           {bloodVal != null ? ' •' : ''}
                         </Text>
                       </View>

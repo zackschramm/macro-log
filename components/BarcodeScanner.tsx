@@ -79,20 +79,77 @@ export default function BarcodeScanner({ visible, onClose, onResult }: Props) {
       const p = json.product;
       const n = p.nutriments || {};
 
-      // OFF returns both _serving and _100g variants; prefer _serving when available
+      // Parse household serving grams from OFF serving_size / serving_quantity.
+      const parseServingGrams = (size?: string, quantity?: unknown): number | null => {
+        if (typeof quantity === 'number' && quantity > 0) return quantity;
+        if (typeof quantity === 'string') {
+          const q = parseFloat(quantity);
+          if (Number.isFinite(q) && q > 0) return q;
+        }
+        if (!size) return null;
+        const m = String(size).match(/([\d.]+)\s*g\b/i);
+        if (m) {
+          const g = parseFloat(m[1]);
+          if (Number.isFinite(g) && g > 0) return g;
+        }
+        return null;
+      };
+
+      const servingGrams = parseServingGrams(p.serving_size, p.serving_quantity);
+      const hasServingMacro =
+        n['energy-kcal_serving'] != null ||
+        n.proteins_serving != null ||
+        n.carbohydrates_serving != null ||
+        n.fat_serving != null;
+      const has100gMacro =
+        n['energy-kcal_100g'] != null ||
+        n.proteins_100g != null ||
+        n.carbohydrates_100g != null ||
+        n.fat_100g != null;
+
+      // When falling back to *_100g, either scale to household serving grams
+      // or relabel serving_size as 100g so values and label stay consistent.
+      let serving_size = p.serving_size || '100g';
+      let scale100 = 1;
+      if (!hasServingMacro && has100gMacro) {
+        if (servingGrams != null) {
+          scale100 = servingGrams / 100;
+        } else {
+          serving_size = '100g';
+        }
+      }
+
+      // OFF returns both _serving and _100g variants; prefer _serving when available.
+      // If only *_100g exists, apply scale100 (1 when labeled as 100g).
       const srv = (servKey: string, per100Key: string) => {
-        const v = n[servKey] != null ? n[servKey] : n[per100Key];
-        return v != null && v > 0 ? Math.round(v * 100) / 100 : null;
+        if (n[servKey] != null && n[servKey] > 0) {
+          return Math.round(n[servKey] * 100) / 100;
+        }
+        if (n[per100Key] != null && n[per100Key] > 0) {
+          // Per-nutrient 100g fallback: scale when serving grams known even if
+          // some other nutrients had _serving values.
+          const factor = n[servKey] == null && servingGrams != null && hasServingMacro
+            ? servingGrams / 100
+            : scale100;
+          return Math.round(n[per100Key] * factor * 100) / 100;
+        }
+        return null;
+      };
+
+      const macro = (servKey: string, per100Key: string) => {
+        if (n[servKey] != null) return Number(n[servKey]) || 0;
+        if (n[per100Key] != null) return (Number(n[per100Key]) || 0) * scale100;
+        return 0;
       };
 
       const result: NutritionResult = {
         name: p.product_name || p.generic_name || 'Unknown Food',
         brand: p.brands || '',
-        serving_size: p.serving_size || '100g',
-        calories:     Math.round(n['energy-kcal_serving'] || n['energy-kcal_100g'] || 0),
-        protein:      Math.round((n.proteins_serving || n.proteins_100g || 0) * 10) / 10,
-        carbs:        Math.round((n.carbohydrates_serving || n.carbohydrates_100g || 0) * 10) / 10,
-        fat:          Math.round((n.fat_serving || n.fat_100g || 0) * 10) / 10,
+        serving_size,
+        calories:     Math.round(macro('energy-kcal_serving', 'energy-kcal_100g')),
+        protein:      Math.round(macro('proteins_serving', 'proteins_100g') * 10) / 10,
+        carbs:        Math.round(macro('carbohydrates_serving', 'carbohydrates_100g') * 10) / 10,
+        fat:          Math.round(macro('fat_serving', 'fat_100g') * 10) / 10,
         fiber_g:         srv('fiber_serving', 'fiber_100g'),
         calcium_mg:      srv('calcium_serving', 'calcium_100g'),
         iron_mg:         srv('iron_serving', 'iron_100g'),
