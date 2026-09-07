@@ -354,6 +354,7 @@ serve(async (req) => {
         protein: getNutrient(n, 'protein'),
         carbs: getNutrient(n, 'carbohydrate'),
         fat: getNutrient(n, 'total lipid'),
+        fiber: getNutrient(n, 'fiber', 'fiber, total'),
         vitamin_a: getNutrient(n, 'vitamin a'),
         vitamin_c: getNutrient(n, 'vitamin c'),
         vitamin_d: getNutrient(n, 'vitamin d'),

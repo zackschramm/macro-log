@@ -42,43 +42,71 @@ async function canRunLocally(): Promise<boolean> {
   return localAvailable;
 }
 
+function sleep(ms: number) {
+  return new Promise<void>(resolve => setTimeout(resolve, ms));
+}
+
+/** Honor Retry-After (seconds or HTTP-date); cap ~8s so the UI stays responsive. */
+function retryAfterMs(header: string | null): number {
+  if (!header) return 1000;
+  const asInt = Number(header);
+  if (Number.isFinite(asInt) && asInt >= 0) {
+    return Math.min(Math.max(asInt * 1000, 250), 8000);
+  }
+  const when = Date.parse(header);
+  if (Number.isFinite(when)) {
+    return Math.min(Math.max(when - Date.now(), 250), 8000);
+  }
+  return 1000;
+}
+
 async function callCloud(
   messages: { role: string; content: string }[],
   system?: string,
   max_tokens = 8192,
   modelHint?: 'fast' | 'smart',
 ) {
-  const response = await fetch(
-    'https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy',
-    {
-      method: 'POST',
-      headers: await aiProxyHeaders(),
-      // model_hint is resolved against a server-side whitelist (fast=haiku,
-      // smart=sonnet). 'fast' exists because meal-plan generation on sonnet
-      // took 40-55s — over the iOS fetch ceiling. Omitted = smart, the exact
-      // pre-hint behavior.
-      body: JSON.stringify({ messages, system, max_tokens, model_hint: modelHint }),
+  const body = JSON.stringify({ messages, system, max_tokens, model_hint: modelHint });
+  // Two retries on 429/529 (3 attempts total). Proxy already retries Anthropic
+  // once; this covers client-visible rate limits / overload without hammering.
+  const maxAttempts = 3;
+  let response: Response | null = null;
+  let raw = '';
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    response = await fetch(
+      'https://zbcxuffgmjuqarapfdwb.supabase.co/functions/v1/ai-proxy',
+      {
+        method: 'POST',
+        headers: await aiProxyHeaders(),
+        // model_hint is resolved against a server-side whitelist (fast=haiku,
+        // smart=sonnet). 'fast' exists because meal-plan generation on sonnet
+        // took 40-55s — over the iOS fetch ceiling. Omitted = smart, the exact
+        // pre-hint behavior.
+        body,
+      }
+    );
+
+    raw = await response.text();
+    console.log('callAI raw response:', raw.slice(0, 300));
+
+    if (response.ok) break;
+
+    const retryable = response.status === 429 || response.status === 529;
+    if (!retryable || attempt === maxAttempts) {
+      throw new Error(`ai-proxy ${response.status}: ${raw.slice(0, 200)}`);
     }
-  );
 
-  const raw = await response.text();
-  console.log('callAI raw response:', raw.slice(0, 300));
-
-  // Previously this went straight to JSON.parse(raw). Any non-2xx from the
-  // proxy — an expired Anthropic key, a rate limit, a cold-start failure —
-  // came back as either an opaque SyntaxError or an empty string, depending on
-  // whether the error body happened to be JSON. Callers could not tell "the
-  // model returned nothing" from "the request never reached the model", and
-  // neither case named the status code. Fail loudly and say why.
-  if (!response.ok) {
-    throw new Error(`ai-proxy ${response.status}: ${raw.slice(0, 200)}`);
+    const wait = retryAfterMs(response.headers.get('Retry-After'));
+    console.log(`callAI: ${response.status}, retry ${attempt}/${maxAttempts - 1} after ${wait}ms`);
+    await sleep(wait);
   }
 
   let data: any;
   try {
     data = JSON.parse(raw);
   } catch {
-    throw new Error(`ai-proxy returned non-JSON (${response.status}): ${raw.slice(0, 200)}`);
+    throw new Error(`ai-proxy returned non-JSON (${response!.status}): ${raw.slice(0, 200)}`);
   }
 
   return data.content?.find((b: any) => b.type === 'text')?.text || '';
