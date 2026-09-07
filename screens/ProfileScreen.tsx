@@ -286,8 +286,27 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
         'l_citrulline','bcaa','coq10','ashwagandha','turmeric','probiotics','collagen',
         'melatonin','electrolytes','protein',
       ];
+      const fromRow = (row: any, f: string): number => {
+        switch (f) {
+          case 'fiber': return Number(row.fiber_g ?? row.fiber ?? 0) || 0;
+          case 'calcium': return Number(row.calcium_mg ?? row.calcium ?? 0) || 0;
+          case 'iron': return Number(row.iron_mg ?? row.iron ?? 0) || 0;
+          case 'magnesium': return Number(row.magnesium_mg ?? row.magnesium ?? 0) || 0;
+          case 'zinc': return Number(row.zinc_mg ?? row.zinc ?? 0) || 0;
+          case 'potassium': return Number(row.potassium_mg ?? row.potassium ?? 0) || 0;
+          case 'sodium': return Number(row.sodium_mg ?? row.sodium ?? 0) || 0;
+          case 'vitamin_d': return Number(row.vitamin_d_mcg ?? row.vitamin_d ?? 0) || 0;
+          case 'vitamin_b12': return Number(row.vitamin_b12_mcg ?? row.vitamin_b12 ?? 0) || 0;
+          case 'vitamin_c': return Number(row.vitamin_c_mg ?? row.vitamin_c ?? 0) || 0;
+          case 'omega3':
+            // Canonical omega3_g is grams; MineralsScreen displays mg.
+            if (row.omega3_g != null && row.omega3_g !== '') return Number(row.omega3_g) * 1000 || 0;
+            return Number(row.omega3 ?? 0) || 0;
+          default: return Number(row[f] ?? 0) || 0;
+        }
+      };
       data.forEach((row: any) => {
-        fields.forEach(f => { totals[f] = (totals[f] || 0) + (row[f] || 0); });
+        fields.forEach(f => { totals[f] = (totals[f] || 0) + fromRow(row, f); });
         totals['vitamin a'] = totals['vitamin_a'] || 0;
         totals['vitamin c'] = totals['vitamin_c'] || 0;
         totals['vitamin d'] = totals['vitamin_d'] || 0;

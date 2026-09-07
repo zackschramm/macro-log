@@ -74,6 +74,7 @@ export default function FoodsScreen() {
         headers: await aiProxyHeaders(),
         body: JSON.stringify({ query: usdaQuery }),
       });
+      if (!res.ok) throw new Error(`USDA search failed: ${res.status}`);
       const data = await res.json();
       setUsdaResults(data.foods || []);
     } catch (e) {

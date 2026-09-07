@@ -26,6 +26,7 @@ const NUTRIENTS: NutrientDef[] = [
   { key: 'calcium_mg',      label: 'Calcium',     unit: 'mg',  defaultTarget: 1000 },
   { key: 'iron_mg',         label: 'Iron',        unit: 'mg',  defaultTarget: 18 },
   { key: 'vitamin_d_mcg',   label: 'Vitamin D',   unit: 'mcg', defaultTarget: 15 },
+  { key: 'vitamin_c_mg',    label: 'Vitamin C',   unit: 'mg',  defaultTarget: 90 },
   { key: 'vitamin_b12_mcg', label: 'Vitamin B12', unit: 'mcg', defaultTarget: 2.4 },
   { key: 'magnesium_mg',    label: 'Magnesium',   unit: 'mg',  defaultTarget: 320 },
   { key: 'zinc_mg',         label: 'Zinc',        unit: 'mg',  defaultTarget: 8 },

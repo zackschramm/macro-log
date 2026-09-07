@@ -45,6 +45,7 @@ type Food = {
   magnesium_mg?: number | null;
   zinc_mg?: number | null;
   potassium_mg?: number | null;
+  sodium_mg?: number | null;
   omega3_g?: number | null;
 };
 
@@ -100,13 +101,14 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
   const [recipeServings, setRecipeServings] = useState('1');
 
   const loadQuickAdd = useCallback(async () => {
+    if (!uid) return;
     const [recentRaw, favRaw] = await Promise.all([
       AsyncStorage.getItem(recentKeyFor(uid)),
       AsyncStorage.getItem(favoritesKeyFor(uid)),
     ]);
     setRecentFoods(recentRaw ? JSON.parse(recentRaw) : []);
     setFavoriteFoods(favRaw ? JSON.parse(favRaw) : []);
-  }, []);
+  }, [uid]);
 
   const loadMyFoods = useCallback(async () => {
     if (!user) return;
@@ -117,7 +119,12 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
       .eq('user_id', user.id)
       .order('name');
     if (error) console.log('user_foods error:', error.message);
-    setMyFoods(((data ?? []) as any[]).map(f => ({ ...f, source: 'my' as const })));
+    setMyFoods(((data ?? []) as any[]).map(f => ({
+      ...f,
+      source: 'my' as const,
+      // user_foods schema uses `fiber` (not fiber_g); normalize onto Food.
+      fiber_g: f.fiber_g ?? f.fiber ?? null,
+    })));
     setLoadingMine(false);
   }, [user]);
 
@@ -186,6 +193,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
         magnesium_mg:    f.magnesium > 0 ? f.magnesium : null,
         zinc_mg:         f.zinc     > 0 ? f.zinc     : null,
         potassium_mg:    f.potassium > 0 ? f.potassium : null,
+        sodium_mg:       f.sodium   > 0 ? f.sodium   : null,
         omega3_g:        f.omega3   > 0 ? f.omega3   : null,
       }));
       setUsdaResults(foods);
@@ -222,7 +230,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
     fiber_g?: number | null; calcium_mg?: number | null; iron_mg?: number | null;
     vitamin_d_mcg?: number | null; vitamin_c_mg?: number | null;
     vitamin_b12_mcg?: number | null; magnesium_mg?: number | null;
-    zinc_mg?: number | null; potassium_mg?: number | null; omega3_g?: number | null;
+    zinc_mg?: number | null; potassium_mg?: number | null; sodium_mg?: number | null; omega3_g?: number | null;
   }) => {
     setScannerOpen(false);
     setPicked({ ...r, source: 'barcode' });
@@ -314,6 +322,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
         magnesium_mg:    scaleMicro(picked.magnesium_mg),
         zinc_mg:         scaleMicro(picked.zinc_mg),
         potassium_mg:    scaleMicro(picked.potassium_mg),
+        sodium_mg:       scaleMicro(picked.sodium_mg),
         omega3_g:        scaleMicro(picked.omega3_g),
       };
 
@@ -336,11 +345,13 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
           await supabase.from('user_foods').insert({
             user_id: user.id,
             name: picked.name,
+            brand: picked.brand || null,
             serving_size: picked.serving_size || '',
             calories: picked.calories,
             protein: picked.protein,
             carbs: picked.carbs,
             fat: picked.fat,
+            // user_foods has `fiber` (not fiber_g) — map from Food.fiber_g
             fiber: picked.fiber_g ?? null,
           }).then(() => {}, () => {});
         }

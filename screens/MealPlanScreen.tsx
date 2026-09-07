@@ -259,7 +259,13 @@ Complete all ${days.length} days. Valid JSON only.`;
       // so the only symptom reaching us was a one-star review.
       if (isStale()) return;
       logError('MealPlan.generate', e);
-      Alert.alert('Error', 'Could not generate meal plan. Please try again.');
+      const detail = (e as Error)?.message?.trim();
+      Alert.alert(
+        'Error',
+        detail
+          ? `Could not generate meal plan.\n\n${detail}`
+          : 'Could not generate meal plan. Please try again.',
+      );
     } finally {
       // Only the run that owns the spinner may dismiss it — a cancelled run
       // settling late must not kill a newer run's loading state.

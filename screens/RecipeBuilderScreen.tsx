@@ -116,6 +116,7 @@ export default function RecipeBuilderScreen({ visible, onClose, onSaved }: Props
           body: JSON.stringify({ query: ingredientSearch.trim() }),
         },
       );
+      if (!res.ok) throw new Error(`USDA search failed: ${res.status}`);
       const data = await res.json();
       setUsdaResults(
         (data.foods || []).map((f: any) => ({
