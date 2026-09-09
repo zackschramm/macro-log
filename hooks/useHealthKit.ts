@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
-import { bucketByDayAndSource, classifySleepSample, SAMPLE_UNITS, type RawSample } from '../utils/healthBuckets';
+import { bucketByDayAndSource, sleepTrendByDay, summarizeLastNight, SAMPLE_UNITS, type RawSample } from '../utils/healthBuckets';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import AppleHealthKit, {
   HealthKitPermissions,
@@ -697,13 +697,29 @@ export function useHealthKit() {
       const todayStart = new Date(now);
       todayStart.setHours(0, 0, 0, 0);
 
-      // 36 hours ago for sleep — catches Whoop/Garmin delayed syncs
+      // 36 hours ago for the "latest sample" reads (HRV, SpO2, respiratory
+      // rate) — catches Whoop/Garmin delayed syncs without surfacing stale
+      // values as current.
       const yesterday = new Date(now);
       yesterday.setHours(yesterday.getHours() - 36);
+      // Sleep gets its own, wider window: 60h keeps the night before last
+      // whole at any hour of the day (it is the fallback when last night has
+      // not synced or the tracker was off). summarizeLastNight always picks
+      // the newest night, drops one cut by the window edge, and the caller
+      // discards anything that ended more than 48h ago.
+      const sleepWindowStart = new Date(now);
+      sleepWindowStart.setHours(sleepWindowStart.getHours() - 60);
 
       // 7 days ago for trend data
       const sevenDaysAgo = new Date(todayStart);
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      // Sleep is keyed by sleep day from whole sessions (see sleepTrendByDay),
+      // so the sleep query starts 12h earlier than the other trends or the
+      // oldest day's night arrives truncated at the window edge.
+      const sleepTrendStart = new Date(sevenDaysAgo.getTime() - 12 * 60 * 60 * 1000);
+      // Set by the headline read below; the trend read follows the same choice
+      // so the chart and the number can never come from different trackers.
+      let sleepUsedPreference = true;
 
       let sawProtectedError = false;
       const results: RecoveryData = {
@@ -860,30 +876,60 @@ export function useHealthKit() {
           );
         }),
 
-        // Sleep — last night
+        // Sleep — last night.
+        // Never summed across trackers: WHOOP and the Apple Watch both write
+        // stage samples for the same night, and adding every sample in the
+        // window reported ~2× for anyone wearing both. summarizeLastNight
+        // groups sessions by sleep day and reports the newest day's NIGHT
+        // sleep from the single tracker that recorded the most; naps are
+        // kept out of the number (so a nap can't move the recovery score or
+        // pose as last night) and the window can't merge two nights. (The
+        // bridge returns STRINGS for stages — see classifySleepSample.)
         new Promise<void>((res) => {
           AppleHealthKit.getSleepSamples(
-            { startDate: yesterday.toISOString(), endDate: now.toISOString() },
+            { startDate: sleepWindowStart.toISOString(), endDate: now.toISOString() },
             (err: any, data: any[]) => {
-              const filtered = filterBySource(data, 'sleep');
-              if (!err && filtered?.length > 0) {
-                let totalMs = 0, deepMs = 0, remMs = 0;
-                filtered.forEach((s: any) => {
-                  const start = new Date(s.startDate).getTime();
-                  const end = new Date(s.endDate).getTime();
-                  const dur = end - start;
-                  // The bridge returns STRINGS here ("ASLEEP"/"CORE"/"DEEP"/"REM"),
-                  // not the raw enum — see classifySleepSample.
-                  const kind = classifySleepSample(s.value);
-                  if (kind.asleep) totalMs += dur;
-                  if (kind.deep) deepMs += dur;
-                  if (kind.rem) remMs += dur;
-                });
-                if (totalMs > 0) {
-                  results.sleepHours = Math.round(totalMs / 36000) / 100;
-                  results.sleepDeepHours = Math.round(deepMs / 36000) / 100;
-                  results.sleepRemHours = Math.round(remMs / 36000) / 100;
-                  results.sources['sleep'] = filtered[0].sourceName ?? '';
+              if (!err && data?.length > 0) {
+                // Two nights with no data (tracker off, no sync) → show the
+                // empty state rather than a night old enough to mislead.
+                const usable = (n: ReturnType<typeof summarizeLastNight>) =>
+                  n != null && n.asleepHours > 0 && n.end >= now.getTime() - 48 * 60 * 60 * 1000;
+                const read = (rows: any[]) =>
+                  summarizeLastNight(rows, undefined, { windowStart: sleepWindowStart.getTime() });
+                // `filterBySource` falls back to ALL sources only when the
+                // preferred tracker has NO sample in the response — a test on
+                // PRESENCE, not on recency. Widening this query to 60 hours
+                // therefore changed who wins: a band that died thirty hours ago
+                // still has its last night inside the window, so the fallback
+                // stopped firing and the freshness cut blanked the card for most
+                // of the day while another tracker's completed night sat unused
+                // (council pass 6). Comparing only against the 48h cut then left
+                // a second hole: a preferred tracker ONE NIGHT BEHIND is still
+                // "usable", so a stale night was honoured while a newer complete
+                // one was ignored (council pass 7). So decide by sleep DAY: keep
+                // the preference unless the unfiltered read has a newer night.
+                const preferredRows = filterBySource(data, 'sleep');
+                const preferred = read(preferredRows);
+                const anyTracker = read(data);
+                const night =
+                  usable(preferred) && (!usable(anyTracker) || preferred!.date >= anyTracker!.date)
+                    ? preferred
+                    : anyTracker;
+                // The trend must be read through the same choice, or the chart
+                // contradicts the number above it. Note `preferredRows.length
+                // !== data.length`: when the preferred tracker has nothing in
+                // THIS window, filterBySource has already fallen back to every
+                // source, so the preference did not actually decide anything
+                // here — and applying it to the trend's much wider window would
+                // resurrect a tracker this window had ruled out, collapsing the
+                // 7-day chart to that tracker's one stale day.
+                sleepUsedPreference =
+                  usable(preferred) && night === preferred && preferredRows.length !== data.length;
+                if (usable(night)) {
+                  results.sleepHours = night!.asleepHours;
+                  results.sleepDeepHours = night!.deepHours;
+                  results.sleepRemHours = night!.remHours;
+                  results.sources['sleep'] = night!.source;
                 }
               }
               res();
@@ -891,28 +937,23 @@ export function useHealthKit() {
           );
         }),
 
-        // Sleep trend — last 7 days
+        // Sleep trend — night sleep per sleep day for the last 7 days (whole
+        // sessions, so a night isn't split at midnight; naps excluded to match
+        // the headline). Per day the single tracker with the most night sleep
+        // wins, so two trackers don't double a day.
+        // The query starts 12h early so the oldest day's night is whole;
+        // fromDate drops the partial day that widening can create.
         new Promise<void>((res) => {
           AppleHealthKit.getSleepSamples(
-            { startDate: sevenDaysAgo.toISOString(), endDate: now.toISOString() },
+            { startDate: sleepTrendStart.toISOString(), endDate: now.toISOString() },
             (err: any, data: any[]) => {
-              const filtered = filterBySource(data, 'sleep');
-              if (!err && filtered?.length > 0) {
-                const byDay: Record<string, number> = {};
-                filtered.forEach((s: any) => {
-                  const day = s.startDate ? toLocalDateString(new Date(s.startDate)) : '';
-                  if (!day) return;
-                  const start = new Date(s.startDate).getTime();
-                  const end = new Date(s.endDate).getTime();
-                  const dur = end - start;
-                  if (!isFinite(dur)) return;
-                  if (classifySleepSample(s.value).asleep) {
-                    byDay[day] = (byDay[day] ?? 0) + dur;
-                  }
-                });
-                results.sleepTrend = Object.entries(byDay)
-                  .map(([date, ms]) => ({ date, value: Math.round(ms / 36000) / 100 }))
-                  .sort((a, b) => a.date.localeCompare(b.date));
+              // Read through whatever the headline decided: if the preferred
+              // tracker lost there (dead band, stale night), it must lose here
+              // too, or the 7-day chart shows one tracker while the number
+              // above it shows another. (Council pass 7, confirmed.)
+              const rows = sleepUsedPreference ? filterBySource(data, 'sleep') : data;
+              if (!err && rows?.length > 0) {
+                results.sleepTrend = sleepTrendByDay(rows, undefined, toLocalDateString(sevenDaysAgo));
               }
               res();
             }

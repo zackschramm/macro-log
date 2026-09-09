@@ -493,7 +493,15 @@ export default function ProgressScreen({ profile }: { profile: any }) {
       </View>
 
       {loading ? (
-        <ScrollView style={s.scroll} contentContainerStyle={s.content} scrollEnabled={false} showsVerticalScrollIndicator={false}>
+        // The skeleton is a plain View, deliberately NOT a ScrollView. It used
+        // to be `<ScrollView scrollEnabled={false}>` in the same tree slot as
+        // the real list below, so React reconciled both into ONE native
+        // UIScrollView: created disabled for the skeleton, then handed the real
+        // content with the prop merely removed. That was the only scroll view
+        // in the app with scrollEnabled ever set, and Stats was the only tab
+        // that would not scroll. Distinct element types (and the keys) force a
+        // fresh native scroll view once data lands.
+        <View key="stats-skeleton" style={[s.scroll, s.content]}>
           <View style={[s.card, { marginBottom: 12 }]}>
             <SkeletonBox width={70} height={11} borderRadius={4} style={{ marginBottom: 14 }} />
             <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -510,9 +518,9 @@ export default function ProgressScreen({ profile }: { profile: any }) {
               <SkeletonBox key={i} width={`${pct}%`} height={24} borderRadius={4} style={{ marginBottom: 10 }} />
             ))}
           </View>
-        </ScrollView>
+        </View>
       ) : (
-        <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+        <ScrollView key="stats-content" style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
 
           {/* Weekly summary */}
           {weeklyLoading ? (
