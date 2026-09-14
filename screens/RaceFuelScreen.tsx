@@ -27,11 +27,12 @@ import ShareCardGenerator from '../components/ShareCardGenerator';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { KG_PER_LB } from '../constants/units';
 import {
-  buildRacePlan, estimateSplits, TRI_COURSES,
+  buildRacePlan, estimateSplits, gutCardModel, TRI_COURSES,
   type Leg, type RacePlan, type TriDistance,
 } from '../utils/raceFueling';
+import { daysUntilRace } from '../utils/enduranceFueling';
 import { SPORT_TO_DISTANCE } from '../utils/enduranceContext';
-import { maybeRequestReview } from '../utils/storeReview';
+import { maybeRequestReviewAfterRacePlan } from '../utils/storeReview';
 import { track, EVENTS } from '../utils/analytics';
 import { logError } from '../utils/logError';
 
@@ -129,14 +130,37 @@ export default function RaceFuelScreen({ profile }: { profile: any }) {
    * someone a nine-hour fuelling plan they'd otherwise have built in a
    * spreadsheet is the opposite.
    *
+   * Not on the very first plan, though: that fired the system sheet before
+   * the athlete had even scrolled it (build-165 Simulator run), and Apple
+   * caps prompts at three a year. The gate asks on the first plan built on a
+   * later day — see `maybeRequestReviewAfterRacePlan`.
+   *
    * The delay lets the plan actually paint before the system sheet slides over
    * it; `maybeRequestReview` still enforces its own 60-day floor on top.
    */
   useEffect(() => {
     if (!plan) return;
-    const t = setTimeout(() => { maybeRequestReview(); }, 1500);
+    const t = setTimeout(() => { maybeRequestReviewAfterRacePlan(); }, 1500);
     return () => clearTimeout(t);
   }, [plan]);
+
+  // Gut training: the ramp from the rate the athlete has practised to the rate
+  // the distance supports. Everything it needs already exists — trained rate
+  // and race date come from the profile, the guideline rate from the plan —
+  // which is why this card asks for nothing. Only shown once a plan exists and
+  // a trained rate is set; without a trained rate the warning above already
+  // says what to do, and a ramp from "unknown" would be fiction.
+  // Gut training: the ramp from the rate the athlete has practised to the rate
+  // the distance supports. Everything it needs already exists — trained rate
+  // and race date come from the profile, the guideline rate from the plan —
+  // which is why this card asks for nothing. `gutCardModel` decides when there
+  // is nothing to show (no trained rate, already at the guideline, race is
+  // today or past) and is tested in utils/__tests__/raceFueling.test.ts.
+  const daysToRace = daysUntilRace(profile?.race_date ?? null);
+  const gut = useMemo(
+    () => (plan ? gutCardModel(trainedTolerance, plan.baseRateGPerH, daysToRace) : null),
+    [plan, trainedTolerance, daysToRace],
+  );
 
   const cardData = plan && plan.legs.length > 0 ? {
     raceName: raceName.trim() || `${TRI_COURSES[distance].label} race fuel`,
@@ -380,6 +404,39 @@ export default function RaceFuelScreen({ profile }: { profile: any }) {
             </View>
           ))}
 
+          {gut && (
+            <>
+              <Text style={s.sectionLabel}>GUT TRAINING</Text>
+              <View style={s.legCard} accessibilityLabel="Gut training plan">
+                <View style={s.legHead}>
+                  <Ionicons name="trending-up-outline" size={18} color={colors.accent} />
+                  <Text style={s.legName}>{gut.headline}</Text>
+                  <View style={{ flex: 1 }} />
+                  <Text style={[s.legHours, gut.status === 'no time to ramp' && { color: colors.warning }]}>
+                    {gut.status}
+                  </Text>
+                </View>
+                {gut.plan.steps.length > 0 && (
+                  <View style={s.gutSteps}>
+                    {gut.plan.steps.map(step => (
+                      <View key={step.week} style={s.gutStep}>
+                        <Text style={s.gutStepVal}>{step.rateGPerH}</Text>
+                        <Text style={s.gutStepLabel}>wk {step.week}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                <Text style={s.legNote}>{gut.plan.note}</Text>
+                {gut.hint && (
+                  <Text style={[s.legNote, { color: colors.warning }]}>
+                    This ramp assumes unlimited time. Set your race date in Me → Training and it
+                    will be sized to the weeks you actually have.
+                  </Text>
+                )}
+              </View>
+            </>
+          )}
+
           {plan.notes.length > 0 && (
             <View style={s.card}>
               {plan.notes.map(n => (
@@ -506,6 +563,13 @@ function makeStyles(c: ThemeColors) {
     legStatVal: { fontSize: 18, fontWeight: weight.heavy, color: c.text, letterSpacing: -0.5 },
     legStatLabel: { fontSize: 10, fontWeight: weight.semibold, color: c.textTertiary, marginTop: 2 },
     legNote: { fontSize: 12, color: c.textSecondary, lineHeight: 17, marginTop: spacing.sm },
+    gutSteps: {
+      flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm,
+      backgroundColor: c.cardAlt, borderRadius: radius.md, padding: spacing.md,
+    },
+    gutStep: { minWidth: 56, alignItems: 'center' },
+    gutStepVal: { fontSize: 16, fontWeight: weight.heavy, color: c.text, letterSpacing: -0.4 },
+    gutStepLabel: { fontSize: 10, fontWeight: weight.semibold, color: c.textTertiary, marginTop: 2 },
     noteRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 5 },
     noteText: { flex: 1, fontSize: 13, color: c.textSecondary, lineHeight: 18 },
   });

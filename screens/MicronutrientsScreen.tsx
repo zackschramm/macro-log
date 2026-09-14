@@ -12,7 +12,7 @@ import { useAIGate } from '../hooks/useAIGate';
 
 type MicroKey =
   | 'fiber_g' | 'calcium_mg' | 'iron_mg' | 'vitamin_d_mcg' | 'vitamin_c_mg'
-  | 'vitamin_b12_mcg' | 'magnesium_mg' | 'zinc_mg' | 'potassium_mg' | 'omega3_g';
+  | 'vitamin_b12_mcg' | 'magnesium_mg' | 'zinc_mg' | 'potassium_mg' | 'sodium_mg' | 'omega3_g';
 
 interface NutrientDef {
   key: MicroKey;
@@ -26,10 +26,12 @@ const NUTRIENTS: NutrientDef[] = [
   { key: 'calcium_mg',      label: 'Calcium',     unit: 'mg',  defaultTarget: 1000 },
   { key: 'iron_mg',         label: 'Iron',        unit: 'mg',  defaultTarget: 18 },
   { key: 'vitamin_d_mcg',   label: 'Vitamin D',   unit: 'mcg', defaultTarget: 15 },
+  { key: 'vitamin_c_mg',    label: 'Vitamin C',   unit: 'mg',  defaultTarget: 90 },
   { key: 'vitamin_b12_mcg', label: 'Vitamin B12', unit: 'mcg', defaultTarget: 2.4 },
   { key: 'magnesium_mg',    label: 'Magnesium',   unit: 'mg',  defaultTarget: 320 },
   { key: 'zinc_mg',         label: 'Zinc',        unit: 'mg',  defaultTarget: 8 },
   { key: 'potassium_mg',    label: 'Potassium',   unit: 'mg',  defaultTarget: 2600 },
+  { key: 'sodium_mg',       label: 'Sodium',      unit: 'mg',  defaultTarget: 1500 },
   { key: 'omega3_g',        label: 'Omega-3',     unit: 'g',   defaultTarget: 1.1 },
 ];
 
@@ -41,7 +43,7 @@ type FoodRow = { food: string } & Partial<Record<MicroKey, number | null>>;
 type DayRow  = { date: string } & Partial<Record<MicroKey, number | null>>;
 
 const MICRO_SELECT =
-  'fiber_g,calcium_mg,iron_mg,vitamin_d_mcg,vitamin_c_mg,vitamin_b12_mcg,magnesium_mg,zinc_mg,potassium_mg,omega3_g';
+  'fiber_g,calcium_mg,iron_mg,vitamin_d_mcg,vitamin_c_mg,vitamin_b12_mcg,magnesium_mg,zinc_mg,potassium_mg,sodium_mg,omega3_g';
 
 export default function MicronutrientsScreen({
   date,

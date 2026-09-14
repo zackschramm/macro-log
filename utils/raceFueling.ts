@@ -342,6 +342,47 @@ export function planGutTraining(
   return { currentGPerH: current, targetGPerH: target, weeksNeeded, achievable, achievableGPerH, steps, note };
 }
 
+/**
+ * What the Race Fuel screen's gut-training card shows, derived in one place so
+ * it can be tested without React Native. Returns null when there is nothing
+ * to show: no trained rate, already at/above the guideline (the engine would
+ * otherwise render "90 → 45" as a ramp DOWN), or the race is today/past (no
+ * ramp left to run). `daysToRace` null means no race date is set — the ramp
+ * is then unsized and `hint` asks for the date.
+ */
+export interface GutCardModel {
+  plan: GutTrainingPlan;
+  headline: string;   // "60 → 80 g/h"
+  status: 'on target' | 'no time to ramp' | string;  // or "6 wk to race" / "~13 wk"
+  hint: boolean;      // ask for a race date
+}
+
+export function gutCardModel(
+  trainedGPerH: number | null | undefined,
+  guidelineGPerH: number,
+  daysToRace: number | null | undefined,
+): GutCardModel | null {
+  const raceDateSet = daysToRace != null && Number.isFinite(daysToRace);
+  if (!isPos(trainedGPerH) || !isPos(guidelineGPerH)) return null;
+  if (raceDateSet && (daysToRace as number) <= 0) return null;
+  if ((trainedGPerH as number) >= guidelineGPerH) return null;
+  const weeks = raceDateSet ? (daysToRace as number) / 7 : null;
+  const plan = planGutTraining(trainedGPerH as number, guidelineGPerH, weeks);
+  // `steps` is empty both when on target and when the race is too close to
+  // fit one 2.5-week step; the gap tells those apart, `steps.length` does not.
+  const status =
+    plan.targetGPerH <= plan.currentGPerH ? 'on target'
+    : plan.steps.length === 0 ? 'no time to ramp'
+    : raceDateSet ? `${Math.floor((daysToRace as number) / 7)} wk to race`
+    : `~${plan.weeksNeeded} wk`;
+  return {
+    plan,
+    headline: `${Math.round(plan.currentGPerH)} → ${Math.round(plan.achievableGPerH)} g/h`,
+    status,
+    hint: !raceDateSet && plan.steps.length > 0,
+  };
+}
+
 // ── Carb loading ────────────────────────────────────────────────────────────
 
 /**

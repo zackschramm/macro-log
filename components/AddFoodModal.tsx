@@ -45,8 +45,25 @@ type Food = {
   magnesium_mg?: number | null;
   zinc_mg?: number | null;
   potassium_mg?: number | null;
+  sodium_mg?: number | null;
   omega3_g?: number | null;
 };
+
+/** The micronutrient columns shared by macro_logs and user_foods. */
+export const MICRO_COLUMNS = [
+  'fiber_g', 'calcium_mg', 'iron_mg', 'vitamin_d_mcg', 'vitamin_c_mg', 'vitamin_b12_mcg',
+  'magnesium_mg', 'zinc_mg', 'potassium_mg', 'sodium_mg', 'omega3_g',
+] as const;
+
+/** Pick the micro columns off a food (per serving) for a user_foods row. */
+export function micronutrientColumns(food: Partial<Record<(typeof MICRO_COLUMNS)[number], number | null | undefined>>) {
+  const out: Record<string, number | null> = {};
+  for (const k of MICRO_COLUMNS) {
+    const v = food[k];
+    out[k] = typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null;
+  }
+  return out;
+}
 
 type RecentFood = Food & { lastQty: number };
 
@@ -117,7 +134,14 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
       .eq('user_id', user.id)
       .order('name');
     if (error) console.log('user_foods error:', error.message);
-    setMyFoods(((data ?? []) as any[]).map(f => ({ ...f, source: 'my' as const })));
+    // user_foods carries the same micro column names as macro_logs (see the
+    // 20260911 migration), so a saved food spreads straight into a log row.
+    // `fiber` is the legacy column; rows saved before the migration only have it.
+    setMyFoods(((data ?? []) as any[]).map(f => ({
+      ...f,
+      fiber_g: f.fiber_g ?? f.fiber ?? null,
+      source: 'my' as const,
+    })));
     setLoadingMine(false);
   }, [user]);
 
@@ -186,6 +210,10 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
         magnesium_mg:    f.magnesium > 0 ? f.magnesium : null,
         zinc_mg:         f.zinc     > 0 ? f.zinc     : null,
         potassium_mg:    f.potassium > 0 ? f.potassium : null,
+        // USDA reports sodium in mg. It was returned by the proxy all along but
+        // dropped here, so the Nutrients screen could only ever say "not in
+        // food logs" for the one electrolyte an endurance athlete tracks.
+        sodium_mg:       f.sodium   > 0 ? f.sodium   : null,
         omega3_g:        f.omega3   > 0 ? f.omega3   : null,
       }));
       setUsdaResults(foods);
@@ -223,6 +251,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
     vitamin_d_mcg?: number | null; vitamin_c_mg?: number | null;
     vitamin_b12_mcg?: number | null; magnesium_mg?: number | null;
     zinc_mg?: number | null; potassium_mg?: number | null; omega3_g?: number | null;
+    sodium_mg?: number | null;
   }) => {
     setScannerOpen(false);
     setPicked({ ...r, source: 'barcode' });
@@ -314,6 +343,7 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
         magnesium_mg:    scaleMicro(picked.magnesium_mg),
         zinc_mg:         scaleMicro(picked.zinc_mg),
         potassium_mg:    scaleMicro(picked.potassium_mg),
+        sodium_mg:       scaleMicro(picked.sodium_mg),
         omega3_g:        scaleMicro(picked.omega3_g),
       };
 
@@ -342,6 +372,11 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
             carbs: picked.carbs,
             fat: picked.fat,
             fiber: picked.fiber_g ?? null,
+            // USDA only. Barcode micros come from Open Food Facts in grams per
+            // 100 g and are currently stored as if they were per-serving mg
+            // (scanner units — tracked for 166); persisting them here would
+            // make the wrong numbers durable and re-logged from My Foods.
+            ...(picked.source === 'usda' ? micronutrientColumns(picked) : {}),
           }).then(() => {}, () => {});
         }
       }
@@ -407,7 +442,11 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
             </TouchableOpacity>
           </View>
 
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.mealRow}>
+          {/* flexGrow: 0 — a horizontal ScrollView in a flex column otherwise
+              takes whatever height its siblings leave (all of it while the food
+              list is still loading), and the chips stretch into 350-pt pills
+              (build-165 Simulator finding). */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.mealScroll} contentContainerStyle={s.mealRow}>
             {MEALS.map(m => (
               <TouchableOpacity
                 key={m}
@@ -850,7 +889,8 @@ function makeStyles(c: ThemeColors) {
     title: { fontSize: 22, fontWeight: weight.heavy, color: c.text },
     close: { backgroundColor: c.cardAlt, width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
     closeText: { color: c.textSecondary, fontSize: 22, lineHeight: 22 },
-    mealRow: { paddingHorizontal: spacing.lg, paddingBottom: 10, gap: 8 },
+    mealScroll: { flexGrow: 0 },
+    mealRow: { paddingHorizontal: spacing.lg, paddingBottom: 10, gap: 8, alignItems: 'center' },
     mealChip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.pill, backgroundColor: c.card, marginRight: 8, borderWidth: 1, borderColor: c.border },
     mealChipActive: { backgroundColor: c.accent, borderColor: c.accent },
     mealChipText: { color: c.textSecondary, fontWeight: weight.bold, fontSize: 12 },

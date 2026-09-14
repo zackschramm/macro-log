@@ -4,6 +4,7 @@ import {
   Alert, ActivityIndicator, Image, Platform, Modal, AppState, Linking,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
+import * as Application from 'expo-application';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import AchievementBadges from '../components/AchievementBadges';
@@ -144,7 +145,90 @@ function SubScreenHeader({ title, onBack }: { title: string; onBack: () => void 
   );
 }
 
-export default function ProfileScreen({ profile, onUpdate }: { profile: any; onUpdate: (p: any) => void }) {
+/**
+ * Tile writes (persistChoice) run one after another through this queue. It
+ * lives at module scope, not in a ref: MainTabs unmounts this screen on every
+ * tab switch, and a per-instance queue let a write still in flight from the
+ * previous mount run unserialised against the next mount's writes and Save
+ * (build-165 council pass 3).
+ */
+let tileWriteQueue: Promise<void> = Promise.resolve();
+
+/**
+ * A request that never settles must not block every later tile write and
+ * Save for the life of the process (the per-instance queue self-healed on
+ * remount; a module-level one cannot). Each step gets an AbortSignal that
+ * fires after the timeout and is passed to its Supabase calls, so a stalled
+ * step is actually cancelled — it cannot land later and overwrite a newer
+ * Save (racing the queue against a timer and letting the step run on did
+ * exactly that: council pass 5). The returned promise rejects to the caller
+ * on failure or abort so it can tell the athlete; the queue itself swallows
+ * the rejection and stays usable.
+ */
+const PROFILE_WRITE_TIMEOUT_MS = 15000;
+function enqueueProfileWrite(step: (signal: AbortSignal) => Promise<void>): Promise<void> {
+  const run = tileWriteQueue.then(async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PROFILE_WRITE_TIMEOUT_MS);
+    try { await step(controller.signal); } finally { clearTimeout(timer); }
+  });
+  tileWriteQueue = run.catch((e) => logError('ProfileScreen.profileWriteQueue', e));
+  return run;
+}
+function isAbort(e: unknown): boolean {
+  return !!e && typeof e === 'object' && (e as any).name === 'AbortError';
+}
+/**
+ * postgrest-js reports an aborted request as `{ error }` rather than throwing,
+ * so each step checks its signal after every call and throws this instead —
+ * the callers then show the offline message, not "AbortError: Aborted".
+ */
+function abortedError(): Error {
+  const e = new Error('Profile write timed out');
+  e.name = 'AbortError';
+  return e;
+}
+const OFFLINE_MESSAGE = 'Couldn\u2019t reach Fuelog\u2019s servers. Check your connection and try again.';
+
+/**
+ * The most recent value the athlete tapped on each tile row. Save reads its
+ * tile fields from here rather than from the render it was pressed in: after
+ * a remount the chips are re-seeded from the pre-write profile, and the
+ * prop-sync effects can briefly show an earlier tap until a later one lands,
+ * so the pressed render can lag what the athlete actually chose. Keyed by
+ * user so a sign-out / sign-in can never carry one athlete's picks into the
+ * next one's Save.
+ */
+type TileField = 'activity' | 'goal' | 'sport';
+let latestPicks: { uid: string | null } & Partial<Record<TileField, string>> = { uid: null };
+function picksFor(uid: string) {
+  if (latestPicks.uid !== uid) latestPicks = { uid };
+  return latestPicks;
+}
+/** A tap that never landed must not resurface in a later Save. */
+function forgetPick(uid: string, field: TileField, value: string) {
+  const picks = picksFor(uid);
+  if (picks[field] === value) delete picks[field];
+}
+
+/**
+ * Who is signed in, from auth events rather than `getSession()`: that call
+ * tries to refresh an expired token and, offline, reports no session while
+ * the app is still showing the signed-in user — which turned a failed write
+ * into a silent one. Auth events are local and fire on sign-in, sign-out,
+ * refresh and at subscribe time (INITIAL_SESSION). Until the first event
+ * arrives the guard allows, since the screen only renders with a user.
+ */
+let signedInUid: string | null | undefined;
+supabase.auth.onAuthStateChange((_event, session) => { signedInUid = session?.user?.id ?? null; });
+function stillSignedInAs(uid: string): boolean {
+  return signedInUid === undefined || signedInUid === uid;
+}
+
+// `onUpdate` is App's `setProfile` passed straight through MainTabs, so it
+// accepts React's functional form — persistChoice relies on that to merge
+// onto whatever App holds at resolve time rather than a stale snapshot.
+export default function ProfileScreen({ profile, onUpdate }: { profile: any; onUpdate: (p: any | ((current: any) => any)) => void }) {
   const { user, signOut } = useAuth();
   const health = useHealth();
   const u = useUnits();
@@ -196,6 +280,12 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   const [activity, setActivity] = useState(profile.activity || 'moderate');
   const [goal, setGoal] = useState(profile.goal || 'gain');
   const [sport, setSport] = useState(profile.sport || 'none');
+  // A remount inside a tile write's round-trip (tap, switch tab, come back)
+  // seeds these from the pre-write profile; when the write lands and App
+  // state updates, follow it rather than keep showing the stale value.
+  React.useEffect(() => { setActivity(profile.activity || 'moderate'); }, [profile.activity]);
+  React.useEffect(() => { setGoal(profile.goal || 'gain'); }, [profile.goal]);
+  React.useEffect(() => { setSport(profile.sport || 'none'); }, [profile.sport]);
   // Endurance-only state. All optional — a lifter never sees any of it.
   const [raceDate, setRaceDate] = useState<string>(profile.race_date || '');
   const [trainingPhase, setTrainingPhase] = useState<string>(profile.training_phase || '');
@@ -506,6 +596,27 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
     }
   };
 
+  const contactSupport = async () => {
+    // Native version/build, not app.json: EAS assigns the build number
+    // remotely, so the config value is stale the moment a build is cut.
+    const version = Application.nativeApplicationVersion ?? '1.0.0';
+    const build = Application.nativeBuildVersion ?? '';
+    const subject = encodeURIComponent(`Fuelog support (v${version}${build ? ` · ${build}` : ''} · ${Platform.OS})`);
+    const mailto = `mailto:support@fuelog.app?subject=${subject}`;
+    // openURL, not canOpenURL: on iOS canOpenURL('mailto:') returns false
+    // unless the scheme is whitelisted in LSApplicationQueriesSchemes, which
+    // would send every athlete to the web form. openURL needs no whitelist and
+    // rejects cleanly when there is no mail client.
+    try {
+      await Linking.openURL(mailto);
+      return;
+    } catch (e) {
+      logError('ProfileScreen.contactSupport.mailto', e);
+    }
+    // No mail client — hand them the web form instead of a dead tap.
+    WebBrowser.openBrowserAsync('https://fuelog.app/contact/').catch(e => logError('ProfileScreen.contactSupport.web', e));
+  };
+
   const exportData = async () => {
     if (!user) return;
     setExporting(true);
@@ -598,65 +709,167 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   };
 
   const handleSave = async () => {
+    if (!user) return;
+    const uid = user.id;
     setLoading(true);
-    // profileData is what gets written to the `profiles` row. body_fat_pct
-    // lives in inbody_logs (no such column here), so it's kept separate and
-    // only fed into the target math.
-    const profileData = {
-      weight_lbs: u.toLb(weight), height_in: totalHeightIn,
-      // parseInt('') is NaN, which Postgres rejects / stores as null. Fall back
-      // to the value already on the profile so saving an unrelated field can't
-      // wipe the user's age.
-      age: parseInt(age, 10) || profile.age || null,
-      sex, activity, goal, sport,
-      // Endurance fields. Empty string means "not set" and must become null —
-      // Postgres rejects '' for date and numeric columns.
-      race_date: raceDate.trim() || null,
-      training_phase: trainingPhase || null,
-      carb_tolerance_g_per_h: intOrNull(carbTolerance, 0, 200),
-      sweat_rate_l_per_h: floatOrNull(sweatRate, 0, 4),
-      neat_level: neatLevel || null,
-      experience_level: experienceLevel || null,
-    };
-    const calcInput = { ...profileData, body_fat_pct: bodyFatPct };
-    const auto = calculateTargets(calcInput);
+    // The upsert runs on the same queue as the tile writes, so it lands after
+    // any tap already in flight and before any tap made from a later mount —
+    // one ordered stream of writes to the row (build-165 council pass 4).
+    try {
+      await enqueueProfileWrite(async (signal) => {
+        if (!stillSignedInAs(uid)) return;
+        const picks = picksFor(uid);
+        // profileData is what gets written to the `profiles` row. body_fat_pct
+        // lives in inbody_logs (no such column here), so it's kept separate and
+        // only fed into the target math.
+        const profileData = {
+          weight_lbs: u.toLb(weight), height_in: totalHeightIn,
+          // parseInt('') is NaN, which Postgres rejects / stores as null. Fall back
+          // to the value already on the profile so saving an unrelated field can't
+          // wipe the user's age.
+          age: parseInt(age, 10) || profile.age || null,
+          sex,
+          // Tile rows: the athlete's last tap wins over this render's chips (see
+          // latestPicks) — the chips can lag a tap that is still landing.
+          activity: picks.activity ?? activity,
+          goal: picks.goal ?? goal,
+          sport: picks.sport ?? sport,
+          // Endurance fields. Empty string means "not set" and must become null —
+          // Postgres rejects '' for date and numeric columns.
+          race_date: raceDate.trim() || null,
+          training_phase: trainingPhase || null,
+          carb_tolerance_g_per_h: intOrNull(carbTolerance, 0, 200),
+          sweat_rate_l_per_h: floatOrNull(sweatRate, 0, 4),
+          neat_level: neatLevel || null,
+          experience_level: experienceLevel || null,
+        };
+        const calcInput = { ...profileData, body_fat_pct: bodyFatPct };
+        const auto = calculateTargets(calcInput);
 
-    // calculateTargets returns all zeros when weight/height/age are incomplete.
-    // Writing that would zero out the user's calorie and macro targets, so if
-    // the math couldn't run we keep whatever they already had.
-    const safeAuto = auto.calories > 0 ? auto : {
-      calories: profile.calories ?? 0,
-      protein: profile.protein ?? 0,
-      carbs: profile.carbs ?? 0,
-      fat: profile.fat ?? 0,
-    };
+        // calculateTargets returns all zeros when weight/height/age are incomplete.
+        // Writing that would zero out the user's calorie and macro targets, so if
+        // the math couldn't run we keep whatever they already had.
+        const safeAuto = auto.calories > 0 ? auto : {
+          calories: profile.calories ?? 0,
+          protein: profile.protein ?? 0,
+          carbs: profile.carbs ?? 0,
+          fat: profile.fat ?? 0,
+        };
 
-    const targets = customGoals ? {
-      calories: parseInt(customCal, 10) || safeAuto.calories,
-      protein: parseInt(customProtein, 10) || safeAuto.protein,
-      carbs: parseInt(customCarbs, 10) || safeAuto.carbs,
-      fat: parseInt(customFat, 10) || safeAuto.fat,
-    } : safeAuto;
-    const periodization_settings = periodizationEnabled ? {
-      enabled: true,
-      trainingDay: {
-        calories: parseInt(trainCal)    || 0,
-        protein:  parseInt(trainProtein) || 0,
-        carbs:    parseInt(trainCarbs)  || 0,
-        fat:      parseInt(trainFat)    || 0,
-      },
-      restDay: {
-        calories: parseInt(restCal)     || 0,
-        protein:  parseInt(restProtein) || 0,
-        carbs:    parseInt(restCarbs)   || 0,
-        fat:      parseInt(restFat)     || 0,
-      },
-    } : null;
-    const updated = { id: user!.id, name, ...profileData, ...targets, custom_goals: customGoals, periodization_settings, updated_at: new Date().toISOString() };
-    const { error } = await supabase.from('profiles').upsert(updated);
-    if (error) { Alert.alert('Error', error.message); }
-    else { onUpdate(updated); setSaved(true); setTimeout(() => setSaved(false), 2000); }
-    setLoading(false);
+        const targets = customGoals ? {
+          calories: parseInt(customCal, 10) || safeAuto.calories,
+          protein: parseInt(customProtein, 10) || safeAuto.protein,
+          carbs: parseInt(customCarbs, 10) || safeAuto.carbs,
+          fat: parseInt(customFat, 10) || safeAuto.fat,
+        } : safeAuto;
+        const periodization_settings = periodizationEnabled ? {
+          enabled: true,
+          trainingDay: {
+            calories: parseInt(trainCal)    || 0,
+            protein:  parseInt(trainProtein) || 0,
+            carbs:    parseInt(trainCarbs)  || 0,
+            fat:      parseInt(trainFat)    || 0,
+          },
+          restDay: {
+            calories: parseInt(restCal)     || 0,
+            protein:  parseInt(restProtein) || 0,
+            carbs:    parseInt(restCarbs)   || 0,
+            fat:      parseInt(restFat)     || 0,
+          },
+        } : null;
+        const updated = { id: uid, name, ...profileData, ...targets, custom_goals: customGoals, periodization_settings, updated_at: new Date().toISOString() };
+        const { error } = await supabase.from('profiles').upsert(updated).abortSignal(signal);
+        if (signal.aborted) throw abortedError();
+        if (error) { Alert.alert('Error', error.message); return; }
+        if (!stillSignedInAs(uid)) return;
+        // The row now holds every pick; nothing is pending any more.
+        latestPicks = { uid };
+        onUpdate(updated); setSaved(true); setTimeout(() => setSaved(false), 2000);
+      });
+    } catch (e) {
+      // Timed out (aborted) or threw before Supabase could answer. The athlete
+      // is told, and nothing was confirmed — a spinner that simply stops read
+      // as "saved" (council pass 5).
+      if (isAbort(e)) Alert.alert('Not saved', OFFLINE_MESSAGE);
+      else logError('ProfileScreen.handleSave', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * The Activity / Goal / Sport tiles look like switches, so they behave like
+   * switches: each tap is written to the profile immediately instead of
+   * waiting for "Save & Recalculate" at the bottom of a long screen. Before
+   * this, switching tabs unmounted the screen (MainTabs renders one tab at a
+   * time) and silently threw the pick away — "I have to click Triathlon every
+   * time I switch tabs" (build-165 Simulator finding). Because `sport` also
+   * gates the Race Fuel Plan link, that link vanished with it.
+   *
+   * Targets are recomputed the way Save would for that one change, but from
+   * the SAVED row rather than the draft text fields — a half-typed weight
+   * must never leak into the calorie budget. Custom goals are left alone.
+   *
+   * The first version computed from the `profile` prop captured at tap time
+   * (build-165 council, 5/5 confirmed): two quick taps on different rows each
+   * saw a row without the other's pick and wrote targets for a half-updated
+   * profile, then reverted the first pick in App state; and a same-session
+   * weigh-in on Stats (which writes weight_lbs to Supabase without touching
+   * App state) left it computing from a stale weight. So each tap re-reads
+   * the saved row, writes are queued one after another (Save included), the
+   * merge into App state is functional, the tiles are disabled while Save is
+   * in flight, and Save takes its tile fields from the last tap (latestPicks).
+   */
+  const persistChoice = (field: 'activity' | 'goal' | 'sport', value: string) => {
+    if (field === 'activity') setActivity(value);
+    else if (field === 'goal') setGoal(value);
+    else setSport(value);
+    if (!user) return;
+    const uid = user.id;
+    picksFor(uid)[field] = value;
+    enqueueProfileWrite(async (signal) => {
+      if (!stillSignedInAs(uid)) { forgetPick(uid, field, value); return; }
+      const { data: row, error: readError } = await supabase
+        .from('profiles')
+        .select('weight_lbs, height_in, age, sex, activity, goal, sport, custom_goals')
+        .eq('id', uid)
+        .abortSignal(signal)
+        .single();
+      if (signal.aborted) throw abortedError();
+      if (readError || !row) {
+        forgetPick(uid, field, value);
+        Alert.alert('Couldn\u2019t save', readError?.message ?? 'Profile not found');
+        return;
+      }
+      // Null columns render as the same defaults the chips (and Save) fall back
+      // to — the state initialisers above, sex included — so compute with those.
+      const next = {
+        activity: row.activity || 'moderate',
+        goal: row.goal || 'gain',
+        sport: row.sport || 'none',
+        [field]: value,
+      };
+      const patch: Record<string, any> = { [field]: value, updated_at: new Date().toISOString() };
+      if (!row.custom_goals) {
+        const t = calculateTargets({
+          weight_lbs: row.weight_lbs, height_in: row.height_in, age: row.age, sex: row.sex || 'male',
+          activity: next.activity, goal: next.goal, sport: next.sport, body_fat_pct: bodyFatPct,
+        });
+        if (t.calories > 0) Object.assign(patch, { calories: t.calories, protein: t.protein, carbs: t.carbs, fat: t.fat });
+      }
+      const { error } = await supabase.from('profiles').update(patch).eq('id', uid).abortSignal(signal);
+      if (signal.aborted) throw abortedError();
+      if (error) { forgetPick(uid, field, value); Alert.alert('Couldn\u2019t save', error.message); return; }
+      // Never seed a different (or no) user's App state with this row.
+      if (!stillSignedInAs(uid)) return;
+      // `row` refreshes the saved stats App may be holding stale (weight after
+      // a Stats weigh-in); `patch` is this tap. Merged onto App's CURRENT value.
+      onUpdate((current: any) => ({ ...current, ...row, ...patch }));
+    }).catch((e) => {
+      forgetPick(uid, field, value);
+      if (isAbort(e)) Alert.alert('Not saved', OFFLINE_MESSAGE);
+      else logError('ProfileScreen.persistChoice', e);
+    });
   };
 
   const autoTargets = calculateTargets({
@@ -998,7 +1211,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
           <Text style={s.inlineLabel}>Activity Level</Text>
           <View style={s.chipRow}>
             {ACTIVITY_OPTIONS.map(o => (
-              <TouchableOpacity key={o.key} style={[s.chip, activity === o.key && s.chipActive]} onPress={() => setActivity(o.key)}>
+              <TouchableOpacity key={o.key} style={[s.chip, activity === o.key && s.chipActive]} disabled={loading} onPress={() => persistChoice('activity', o.key)}>
                 <Text style={[s.chipText, activity === o.key && s.chipTextActive]}>{o.label}</Text>
               </TouchableOpacity>
             ))}
@@ -1007,7 +1220,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
           <Text style={[s.inlineLabel, { marginTop: 12 }]}>Goal</Text>
           <View style={s.chipRow}>
             {GOAL_OPTIONS.map(o => (
-              <TouchableOpacity key={o.key} style={[s.chip, goal === o.key && s.chipActive]} onPress={() => setGoal(o.key)}>
+              <TouchableOpacity key={o.key} style={[s.chip, goal === o.key && s.chipActive]} disabled={loading} onPress={() => persistChoice('goal', o.key)}>
                 <Text style={[s.chipText, goal === o.key && s.chipTextActive]}>{o.label}</Text>
               </TouchableOpacity>
             ))}
@@ -1022,7 +1235,8 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
                 <TouchableOpacity
                   key={o.key}
                   style={[s.sportCell, active && s.sportCellActive]}
-                  onPress={() => setSport(o.key)}
+                  disabled={loading}
+                  onPress={() => persistChoice('sport', o.key)}
                   activeOpacity={0.7}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: active }}
@@ -1052,7 +1266,8 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
                     <TouchableOpacity
                       key={o.key}
                       style={[s.distanceRow, active && s.distanceRowActive]}
-                      onPress={() => setSport(o.key)}
+                      disabled={loading}
+                      onPress={() => persistChoice('sport', o.key)}
                       activeOpacity={0.7}
                       accessibilityRole="radio"
                       accessibilityState={{ selected: active }}
@@ -1491,7 +1706,11 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
           </View>
         )}
 
-        {/* AI Coach — local LLM */}
+        {/* AI Coach — local LLM. Developer builds only: a "point the coach at
+            your own Ollama server" switch is a tooling feature, not something
+            an athlete should meet between Nutrition Periodization and Privacy.
+            The plumbing stays; only the UI is gated. */}
+        {__DEV__ && (<>
         <Text style={s.sectionLabel}>AI COACH</Text>
         <TouchableOpacity style={s.customGoalsRow} onPress={toggleOllamaEnabled} activeOpacity={0.8}>
           <View>
@@ -1540,6 +1759,8 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
           </View>
         )}
 
+        </>)}
+
         {/* Privacy & Data */}
         <Text style={s.sectionLabel}>PRIVACY & DATA</Text>
         <TouchableOpacity style={s.exportBtn} onPress={exportData} disabled={exporting} activeOpacity={0.8}>
@@ -1547,6 +1768,32 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
             ? <ActivityIndicator color={colors.text} size="small" />
             : <Text style={s.exportBtnText}>Export My Data</Text>}
         </TouchableOpacity>
+
+        {/* Help & Support. One row, one address. The subject carries the app
+            version and platform so a support thread starts with the two facts
+            every reply needs, without asking the athlete to find them. Falls
+            back to the web contact page when no mail client is configured
+            (Simulator, or a phone with Mail removed) rather than failing
+            silently. */}
+        <Text style={s.sectionLabel}>HELP & SUPPORT</Text>
+        <View style={s.linksCard}>
+          <TouchableOpacity
+            style={s.linkRow}
+            onPress={contactSupport}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="Contact support by email"
+          >
+            <View style={[s.linkIcon, { backgroundColor: colors.accentMuted }]}>
+              <Ionicons name="mail-outline" size={18} color={colors.accent} />
+            </View>
+            <View style={s.linkText}>
+              <Text style={[s.linkLabel, { color: colors.accent }]}>Contact Support</Text>
+              <Text style={s.linkSub}>support@fuelog.app · usually within a day</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.accent} />
+          </TouchableOpacity>
+        </View>
 
         {/* Save */}
         <TouchableOpacity style={s.saveBtn} onPress={handleSave} disabled={loading} activeOpacity={0.8}>

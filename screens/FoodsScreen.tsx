@@ -85,6 +85,9 @@ export default function FoodsScreen() {
   };
 
   const importUSDAFood = async (food: any) => {
+    // The proxy returns USDA micros under short names (calcium, iron, …);
+    // map them onto the column names user_foods shares with macro_logs.
+    const num = (v: any) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
     await supabase.from('user_foods').insert({
       user_id: user!.id,
       name: food.name,
@@ -93,6 +96,18 @@ export default function FoodsScreen() {
       protein: food.protein,
       carbs: food.carbs,
       fat: food.fat,
+      fiber: num(food.fiber),
+      fiber_g:         num(food.fiber),
+      calcium_mg:      num(food.calcium),
+      iron_mg:         num(food.iron),
+      vitamin_d_mcg:   num(food.vitamin_d),
+      vitamin_c_mg:    num(food.vitamin_c),
+      vitamin_b12_mcg: num(food.vitamin_b12),
+      magnesium_mg:    num(food.magnesium),
+      zinc_mg:         num(food.zinc),
+      potassium_mg:    num(food.potassium),
+      sodium_mg:       num(food.sodium),
+      omega3_g:        num(food.omega3),
     });
     await fetchFoods();
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

@@ -28,7 +28,7 @@
         "NSPhotoLibraryUsageDescription": "Fuelog uses your photo library to attach progress photos and food images.",
         "NSUserNotificationsUsageDescription": "Fuelog sends daily reminders to log your meals, water, and workouts.",
         "NSHealthShareUsageDescription": "Fuelog reads your health data — including HRV, sleep, steps, heart rate, and workouts — to personalize your daily fueling targets and race plans.",
-        "NSHealthUpdateUsageDescription": "Fuelog writes your weight, nutrition, and workouts to Apple Health.",
+        "NSHealthUpdateUsageDescription": "Fuelog writes the weight you log to Apple Health.",
         "ITSAppUsesNonExemptEncryption": false,
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true

@@ -112,6 +112,33 @@ function makeProgressBarStyles(c: ThemeColors) {
 
 const todayStr = () => toLocalDateString();
 
+/**
+ * Which nutrients a logged food actually carries, and under what column.
+ *
+ * This screen summed `row[n.key]` — `row.calcium`, `row.iron`, `row.vitamin_d`
+ * — but macro_logs stores them as `calcium_mg`, `iron_mg`, `vitamin_d_mcg`
+ * (see AddFoodModal's insert). The lookup missed every time, so every bar sat
+ * at 0% no matter what was logged. These ten are the only nutrients the food
+ * pipeline writes (sodium is returned by the USDA lookup but AddFoodModal drops
+ * it before insert — plumbing it through is a follow-up, and until then sodium
+ * is honestly "not in food logs"); everything else in NUTRIENTS has no column and
+ * is shown as "not logged" rather than a zero that looks like an answer.
+ * `scale` converts the stored unit to the display unit.
+ */
+const LOGGED_COLUMN: Partial<Record<string, { column: string; scale: number }>> = {
+  calcium:     { column: 'calcium_mg',      scale: 1 },
+  fiber:       { column: 'fiber_g',         scale: 1 },
+  iron:        { column: 'iron_mg',         scale: 1 },
+  magnesium:   { column: 'magnesium_mg',    scale: 1 },
+  omega3:      { column: 'omega3_g',        scale: 1000 }, // stored g, shown mg
+  potassium:   { column: 'potassium_mg',    scale: 1 },
+  sodium:      { column: 'sodium_mg',       scale: 1 },
+  vitamin_b12: { column: 'vitamin_b12_mcg', scale: 1 },
+  vitamin_c:   { column: 'vitamin_c_mg',    scale: 1 },
+  vitamin_d:   { column: 'vitamin_d_mcg',   scale: 1 },
+  zinc:        { column: 'zinc_mg',         scale: 1 },
+};
+
 export default function MineralsScreen({ profile }: Props) {
   const { colors } = useTheme();
   const s = makeStyles(colors);
@@ -139,11 +166,16 @@ export default function MineralsScreen({ profile }: Props) {
     if (!user) return;
     const { data } = await supabase.from('macro_logs')
       .select('*').eq('user_id', user.id).eq('date', todayStr());
-    if (!data?.length) return;
+    // No rows today is a real answer (nothing logged yet) — reset rather than
+    // leave yesterday's totals on screen after midnight.
     const totals: Record<string, number> = {};
-    NUTRIENTS.forEach(n => {
-      totals[n.key] = data.reduce((sum, row) => sum + (row[n.key] || 0), 0);
-    });
+    for (const [key, spec] of Object.entries(LOGGED_COLUMN)) {
+      if (!spec) continue;
+      totals[key] = (data ?? []).reduce((sum, row: any) => {
+        const v = Number(row[spec.column]);
+        return sum + (Number.isFinite(v) ? v * spec.scale : 0);
+      }, 0);
+    }
     setTodayIntake(totals);
   }, [user]);
 
@@ -271,10 +303,14 @@ export default function MineralsScreen({ profile }: Props) {
               </View>
               {nutrients.map(n => {
                 const rda = calcRDA(n, weightKg, age, sex);
+                const logged = n.key in LOGGED_COLUMN;
                 const intake = todayIntake[n.key] || 0;
                 const bloodVal = bloodworkResults[n.key];
                 const effectiveIntake = bloodVal != null ? Math.max(intake, bloodVal) : intake;
-                const pct = rda > 0 ? Math.min(100, Math.round((effectiveIntake / rda) * 100)) : 0;
+                // A nutrient the food pipeline never stores has no honest
+                // percentage — unless bloodwork supplied a value for it.
+                const hasSignal = logged || bloodVal != null;
+                const pct = hasSignal && rda > 0 ? Math.min(100, Math.round((effectiveIntake / rda) * 100)) : 0;
                 const pctColor = pct >= 100 ? colors.accent : pct >= 50 ? CAT_COLORS[category] : colors.textTertiary;
                 return (
                   <View key={n.key} style={s.row}>
@@ -282,14 +318,15 @@ export default function MineralsScreen({ profile }: Props) {
                     <View style={s.info}>
                       <View style={s.nameRow}>
                         <Text style={s.name}>{n.name}</Text>
-                        <Text style={[s.pct, { color: pctColor }]}>{pct}%</Text>
+                        <Text style={[s.pct, { color: pctColor }]}>{hasSignal ? `${pct}%` : '—'}</Text>
                       </View>
                       <Text style={s.notes}>{n.notes}</Text>
                       <ProgressBar value={effectiveIntake} target={rda} color={CAT_COLORS[category]} />
                       <View style={s.intakeRow}>
                         <Text style={s.intakeText}>
-                          {effectiveIntake > 0 ? `${Math.round(effectiveIntake * 10) / 10} / ` : ''}{rda} {n.unit}
-                          {bloodVal != null ? ' •' : ''}
+                          {hasSignal
+                            ? `${effectiveIntake > 0 ? `${Math.round(effectiveIntake * 10) / 10} / ` : ''}${rda} ${n.unit}${bloodVal != null ? ' •' : ''}`
+                            : `Not in food logs · target ${rda} ${n.unit}`}
                         </Text>
                       </View>
                     </View>

@@ -149,6 +149,29 @@ function describe(err: unknown): string {
  * NEVER throws. Callers rely on that: this runs inside catch blocks whose whole
  * job is to not break the surrounding flow.
  */
+/**
+ * For EXPECTED empty results ("no basal energy samples today", "0 workouts
+ * over 7d"). Printed in dev; in production it becomes a Sentry breadcrumb, so
+ * it rides along with the next real error instead of being an event of its
+ * own. Before this, three HealthKit empty-result paths went through logError()
+ * and were captured as exceptions on every tab open for every user without a
+ * watch — ~40 events per session in the Simulator walkthrough — which would
+ * have burned the Sentry quota within days of launch and buried real crashes.
+ */
+export function logEmpty(scope: string, message: string): void {
+  try {
+    if (__DEV__) {
+      // eslint-disable-next-line no-console
+      console.log(`[${scope}] ${message}`);
+    }
+    if (!sentryEnabled) return;
+    const S = loadSentry();
+    S?.addBreadcrumb?.({ category: scope, message, level: 'info' });
+  } catch {
+    // Never let logging break the app.
+  }
+}
+
 export function logError(scope: string, err: unknown, extra?: Record<string, unknown>): void {
   try {
     if (__DEV__) {

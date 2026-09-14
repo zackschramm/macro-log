@@ -7,7 +7,7 @@ import AppleHealthKit, {
   HealthValue,
 } from 'react-native-health';
 import { toLocalDateString } from '../utils/dateUtils';
-import { logError } from '../utils/logError';
+import { logError, logEmpty } from '../utils/logError';
 
 const isHealthAvailable = Platform.OS === 'ios' && AppleHealthKit && typeof AppleHealthKit.isAvailable === 'function';
 
@@ -198,14 +198,14 @@ const PERMISSIONS: HealthKitPermissions = {
       AppleHealthKit.Constants.Permissions.RespiratoryRate,
       AppleHealthKit.Constants.Permissions.Vo2Max,
     ],
+    // Weight is the only thing Fuelog writes back (ProgressScreen → saveWeight
+    // when a weigh-in is logged). The permission sheet used to also ask to
+    // write nutrition, water and workouts for helpers nothing ever called —
+    // an over-ask that contradicted the "read-only" App Review notes and
+    // that Apple's data-minimisation rule (5.1.1) rejects. Add a type here
+    // only together with the code that writes it.
     write: [
       AppleHealthKit.Constants.Permissions.Weight,
-      AppleHealthKit.Constants.Permissions.EnergyConsumed,
-      AppleHealthKit.Constants.Permissions.Protein,
-      AppleHealthKit.Constants.Permissions.Carbohydrates,
-      (AppleHealthKit.Constants.Permissions as any).TotalFat,
-      AppleHealthKit.Constants.Permissions.Water,
-      AppleHealthKit.Constants.Permissions.Workout,
     ] as any,
   },
 };
@@ -238,28 +238,6 @@ const WORKOUT_TYPE_NAMES: Record<number, string> = {
   49: 'Track & Field', 50: 'Strength Training', 52: 'Yoga', 53: 'Water Sports',
   54: 'Racquetball', 55: 'Squash', 57: 'Wrestling', 58: 'Rowing',
   60: 'Dance', 63: 'Walking', 3000: 'Other',
-};
-
-// Map a free-text workout name to the closest HealthKit activity type (L1).
-// Falls back to strength training so saved workouts are never mislabeled as
-// generic when we can do better.
-const activityTypeForName = (name: string): string => {
-  const A = AppleHealthKit.Constants.Activities;
-  const n = (name || '').toLowerCase();
-  if (/(run|jog|sprint)/.test(n)) return A.Running;
-  if (/(walk|ruck)/.test(n)) return A.Walking;
-  if (/(cycl|bike|spin|ride)/.test(n)) return A.Cycling;
-  if (/(swim)/.test(n)) return A.Swimming;
-  if (/(row)/.test(n)) return A.Rowing;
-  if (/(hiit|interval)/.test(n)) return A.HighIntensityIntervalTraining;
-  if (/(yoga)/.test(n)) return A.Yoga;
-  if (/(hike|hiking|trail)/.test(n)) return A.Hiking;
-  if (/(elliptical)/.test(n)) return A.Elliptical;
-  if (/(stair|climb)/.test(n)) return A.StairClimbing;
-  if (/(core|abs)/.test(n)) return A.CoreTraining;
-  if (/(functional|crossfit|wod)/.test(n)) return A.FunctionalStrengthTraining;
-  if (/(cardio|conditioning)/.test(n)) return A.MixedCardio;
-  return A.TraditionalStrengthTraining;
 };
 
 // Two workout samples logged by different sources (e.g. Whoop's iPhone app
@@ -342,7 +320,7 @@ export async function getTodayBurn(): Promise<{ bmr: number | null; active: numb
           (err: any, data: any[]) => {
             if (err) { logError('useHealthKit.tdee.basal', err); return resolve(null); }
             if (!data?.length) {
-              logError('useHealthKit.tdee.basal.empty', new Error('no basal energy samples today'));
+              logEmpty('useHealthKit.tdee.basal', 'no basal energy samples today');
               return resolve(null);
             }
             const total = data.reduce((s: number, d: any) => s + (d.value ?? 0), 0);
@@ -358,7 +336,7 @@ export async function getTodayBurn(): Promise<{ bmr: number | null; active: numb
           (err: any, data: any[]) => {
             if (err) { logError('useHealthKit.tdee.active', err); return resolve(null); }
             if (!data?.length) {
-              logError('useHealthKit.tdee.active.empty', new Error('no active energy samples today'));
+              logEmpty('useHealthKit.tdee.active', 'no active energy samples today');
               return resolve(null);
             }
             const bySource: Record<string, number> = {};
@@ -521,51 +499,6 @@ export function useHealthKit() {
     });
   };
 
-  const saveNutrition = (data: {
-    calories: number;
-    protein: number;
-    carbs: number;
-    fat: number;
-    meal: string;
-  }): Promise<boolean> => {
-    return new Promise((resolve) => {
-      if (!moduleAuthorized) return resolve(false);
-      const now = new Date().toISOString();
-      AppleHealthKit.saveFood(
-        {
-          foodName: data.meal,
-          calories: data.calories,
-          protein: data.protein,
-          carbohydrates: data.carbs,
-          totalFat: data.fat,
-          startDate: now,
-        } as any,
-        (err) => resolve(!err)
-      );
-    });
-  };
-
-  const saveWorkout = (data: {
-    name: string;
-    startDate: Date;
-    endDate: Date;
-    calories?: number;
-  }): Promise<boolean> => {
-    return new Promise((resolve) => {
-      if (!moduleAuthorized) return resolve(false);
-      AppleHealthKit.saveWorkout(
-        {
-          type: activityTypeForName(data.name),
-          startDate: data.startDate.toISOString(),
-          endDate: data.endDate.toISOString(),
-          energyBurned: data.calories || 0,
-          energyBurnedUnit: 'calorie',
-        } as any,
-        (err) => resolve(!err)
-      );
-    });
-  };
-
   const getAvailableSources = (): Promise<Record<string, string[]>> => {
     return new Promise(async (resolve) => {
       if (!moduleAuthorized) return resolve({});
@@ -683,6 +616,24 @@ export function useHealthKit() {
       return filtered.length > 0 ? filtered : data;
     };
 
+    // The "from <tracker>" caption for a metric read through filterBySource.
+    // When the user picked a tracker and it had nothing in the window, the
+    // fallback silently showed another tracker under the tracker's own name —
+    // which is what "I chose WHOOP for HRV and it didn't switch" looks like
+    // from the outside. Say what happened instead of pretending.
+    // Only for the recovery metrics a band-style tracker actually records:
+    // a global "preferred tracker" of WHOOP is merged into EVERY key by
+    // buildSourcePrefs, and WHOOP never writes steps or VO2, so decorating
+    // those would read "iPhone · WHOOP has nothing recent" — true, useless.
+    const CAPTION_KEYS = new Set(['hrv', 'rhr', 'bloodO2', 'respRate']);
+    const sourceCaption = (key: string, rows: any[]) => {
+      const actual = String(rows?.[0]?.sourceName ?? '');
+      const pref = sourcePrefs[key];
+      if (!pref || !actual || !CAPTION_KEYS.has(key)) return actual;
+      const p = pref.toLowerCase(), a = actual.toLowerCase();
+      return a === p || a.includes(p) ? actual : `${actual} · ${pref} has nothing recent`;
+    };
+
     return new Promise(async (resolve) => {
       if (!moduleAuthorized) {
         return resolve({
@@ -753,7 +704,7 @@ export function useHealthKit() {
                 const pool = sameDay.length > 0 ? sameDay : [filtered[0]];
                 const mean = pool.reduce((sum: number, s: any) => sum + s.value, 0) / pool.length;
                 results.hrv = Math.round(mean * 1000); // s → ms
-                results.sources['hrv'] = filtered[0].sourceName ?? '';
+                results.sources['hrv'] = sourceCaption('hrv', filtered);
               }
               res();
             }
@@ -821,7 +772,7 @@ export function useHealthKit() {
               if (!err && filtered?.length > 0) {
                 // ascending: false, so index 0 is the most recent day.
                 results.restingHR = Math.round(filtered[0].value);
-                results.sources['rhr'] = filtered[0].sourceName ?? '';
+                results.sources['rhr'] = sourceCaption('rhr', filtered);
 
                 // One value per day. These are already daily figures, so the
                 // last one written for a given day is the one to keep.
@@ -866,7 +817,7 @@ export function useHealthKit() {
                     if (perDay.length) {
                       results.rhrTrend = perDay;
                       results.restingHR = perDay[perDay.length - 1].value;
-                      results.sources['rhr'] = rawFiltered[0].sourceName ?? '';
+                      results.sources['rhr'] = sourceCaption('rhr', rawFiltered);
                     }
                   }
                   res();
@@ -979,7 +930,7 @@ export function useHealthKit() {
                 // Sum all entries for the preferred source (may have multiple segments)
                 const total = filtered.reduce((s: number, d: any) => s + (d.value ?? 0), 0);
                 results.steps = Math.round(total);
-                results.sources['steps'] = filtered[0].sourceName ?? '';
+                results.sources['steps'] = sourceCaption('steps', filtered);
               }
               res();
             }
@@ -1049,7 +1000,7 @@ export function useHealthKit() {
               const filtered = filterBySource(data, 'bloodO2');
               if (!err && filtered?.length > 0) {
                 results.bloodOxygen = Math.round(filtered[0].value * 100);
-                results.sources['bloodO2'] = filtered[0].sourceName ?? '';
+                results.sources['bloodO2'] = sourceCaption('bloodO2', filtered);
               }
               res();
             }
@@ -1064,7 +1015,7 @@ export function useHealthKit() {
               const filtered = filterBySource(data, 'respRate');
               if (!err && filtered?.length > 0) {
                 results.respiratoryRate = Math.round(filtered[0].value);
-                results.sources['respRate'] = filtered[0].sourceName ?? '';
+                results.sources['respRate'] = sourceCaption('respRate', filtered);
               }
               res();
             }
@@ -1108,7 +1059,7 @@ export function useHealthKit() {
               const filtered = filterBySource(data, 'vo2');
               if (!err && filtered?.length > 0) {
                 results.vo2Max = Math.round(filtered[0].value * 10) / 10;
-                results.sources['vo2'] = filtered[0].sourceName ?? '';
+                results.sources['vo2'] = sourceCaption('vo2', filtered);
               }
               res();
             }
@@ -1162,8 +1113,8 @@ export function useHealthKit() {
             return resolve([]);
           }
           if (!data?.length) {
-            logError('useHealthKit.getWorkoutHistory.empty',
-              new Error(`0 workouts over ${days}d (raw=${Array.isArray(data) ? data.length : typeof data})`));
+            logEmpty('useHealthKit.getWorkoutHistory',
+              `0 workouts over ${days}d (raw=${Array.isArray(data) ? data.length : typeof data})`);
             return resolve([]);
           }
           let workouts: HealthKitWorkout[] = data.map((w: any) => {
@@ -1296,8 +1247,6 @@ export function useHealthKit() {
     probeData,
     saveWeight,
     getLatestWeight,
-    saveNutrition,
-    saveWorkout,
     getRecoveryData,
     getAvailableSources,
     getSourceSyncTimes,

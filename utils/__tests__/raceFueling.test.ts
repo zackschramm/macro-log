@@ -11,6 +11,7 @@ import {
   sweatRateLPerH, planGutTraining, shouldCarbLoad, carbLoadGPerKg,
   TRI_COURSES, MIXED_CARB_THRESHOLD_G_PER_H, FLUID_REPLACEMENT_FRACTION,
   type LegSplit,
+  gutCardModel,
 } from '../raceFueling';
 
 let passed = 0, failed = 0;
@@ -298,6 +299,69 @@ test('no false positive when every leg is under the threshold', () => {
   });
   assert.equal(plan.mixedSourceRequired, false);
   assert.equal(plan.notes.some(n => n.includes('glucose:fructose')), false);
+});
+
+// ── Gut-training card (council on build 165: every case below was a confirmed defect) ──
+
+test('gut card: a race 1-17 days out is "no time to ramp", never "on target"', () => {
+  for (const d of [1, 3, 10, 17]) {
+    const c = gutCardModel(60, 105, d)!;
+    assert.ok(c, `day ${d}: card should render`);
+    assert.equal(c.status, 'no time to ramp', `day ${d}`);
+    assert.equal(c.headline, '60 → 60 g/h', `day ${d}`);   // nothing reachable, and says so
+    assert.equal(c.plan.steps.length, 0);
+    assert.equal(c.hint, false, `day ${d}: the date IS set — do not ask for it`);
+  }
+  const first = gutCardModel(60, 105, 18)!;
+  assert.equal(first.status, '2 wk to race');
+  assert.equal(first.headline, '60 → 70 g/h');
+  assert.equal(first.plan.steps.length, 1);
+});
+
+test('gut card: the race-date hint shows ONLY when no date is set', () => {
+  const noDate = gutCardModel(60, 105, null)!;
+  assert.equal(noDate.hint, true);
+  assert.equal(noDate.status, '~13 wk');
+  assert.equal(noDate.headline, '60 → 105 g/h');
+  assert.equal(noDate.plan.steps.length, 5);
+  for (const d of [10, 42, 120]) assert.equal(gutCardModel(60, 105, d)!.hint, false, `day ${d}`);
+});
+
+test('gut card: race day and past races render nothing — no ramp left to run', () => {
+  assert.equal(gutCardModel(60, 105, 0), null);
+  assert.equal(gutCardModel(60, 105, -1), null);
+  assert.equal(gutCardModel(60, 105, -30), null);
+});
+
+test('gut card: at or above the guideline renders nothing — never a ramp down', () => {
+  assert.equal(gutCardModel(90, 45, 30), null);     // was rendering "90 → 45 g/h"
+  assert.equal(gutCardModel(105, 105, 30), null);
+  assert.equal(gutCardModel(110, 105, null), null);
+});
+
+test('gut card: no trained rate renders nothing (the screen already warns)', () => {
+  assert.equal(gutCardModel(null, 105, 30), null);
+  assert.equal(gutCardModel(0, 105, 30), null);
+  assert.equal(gutCardModel(undefined, 105, 30), null);
+});
+
+test('gut card: with enough time the ramp is sized to the date and achievable', () => {
+  const c = gutCardModel(60, 105, 120)!;
+  assert.equal(c.status, '17 wk to race');
+  assert.equal(c.plan.achievable, true);
+  assert.equal(c.headline, '60 → 105 g/h');
+  assert.equal(c.plan.steps.length, 5);
+  assert.deepEqual(c.plan.steps.map(s => s.rateGPerH), [70, 80, 90, 100, 105]);
+});
+
+test('gut card: too little time sizes the ramp to what is reachable and says so', () => {
+  const c = gutCardModel(60, 105, 42)!;    // 6 weeks: two 2.5-week steps fit
+  assert.equal(c.status, '6 wk to race');
+  assert.equal(c.plan.achievable, false);
+  assert.equal(c.headline, '60 → 80 g/h');
+  assert.equal(c.plan.steps.length, 2);
+  assert.ok(c.plan.note.includes('you have 6'));
+  assert.equal(c.hint, false);
 });
 
 console.log(`\n${passed} passed, ${failed} failed\n`);
