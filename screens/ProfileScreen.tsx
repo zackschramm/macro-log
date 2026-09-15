@@ -172,6 +172,18 @@ function clearPickIfCurrent(uid: string, field: TileField, value: string) {
 }
 
 /**
+ * A counter per tile row. Two taps on one row can be in flight at once and
+ * the network does not promise to deliver their responses in the order the
+ * taps were made, so the older response could land last and merge its value
+ * into App state -- leaving the chip and the profile showing a selection the
+ * athlete had already changed away from, with no further tap to correct it
+ * (external review of build 165, finding 1). A response that is no longer
+ * the newest tap on its row does not touch App state; the newest one does.
+ */
+const latestTapSeq: Partial<Record<TileField, number>> = {};
+let tapCounter = 0;
+
+/**
  * Who is signed in, from auth events rather than `getSession()`: that call
  * tries to refresh an expired token and, offline, reports no session while
  * the app is still showing the signed-in user — which turned a failed write
@@ -272,9 +284,6 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   const [customCarbs, setCustomCarbs] = useState(profile.custom_goals ? String(profile.carbs || '') : '');
   const [customFat, setCustomFat] = useState(profile.custom_goals ? String(profile.fat || '') : '');
   const [saved, setSaved] = useState(false);
-  // True once a tile tap has changed a saved selection that the stored
-  // calorie targets were not computed from. Cleared by Save & Recalculate.
-  const [targetsStale, setTargetsStale] = useState(false);
   const [subScreen, setSubScreen] = useState<SubScreen | null>(null);
 
   // Periodization
@@ -662,11 +671,27 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
       const asset = result.assets[0];
       const path = `${user!.id}/avatar.jpg`;
       const binary = Uint8Array.from(atob(asset.base64 || ''), c => c.charCodeAt(0));
-      await supabase.storage.from('avatars').upload(path, binary, { contentType: 'image/jpeg', upsert: true });
+      // Both errors used to be dropped on the floor, so a photo that never
+      // uploaded still showed here and vanished on the next launch.
+      const { error: uploadError } = await supabase.storage
+        .from('avatars').upload(path, binary, { contentType: 'image/jpeg', upsert: true });
+      if (uploadError) {
+        setUploadingAvatar(false);
+        Alert.alert('Couldn\u2019t upload photo', uploadError.message);
+        return;
+      }
       const { data } = supabase.storage.from('avatars').getPublicUrl(path);
       const url = data.publicUrl + '?t=' + Date.now();
+      const { error: rowError } = await supabase.from('profiles').update({ avatar_url: url }).eq('id', user!.id);
+      if (rowError) {
+        setUploadingAvatar(false);
+        Alert.alert('Couldn\u2019t save photo', rowError.message);
+        return;
+      }
       setAvatarUri(url);
-      await supabase.from('profiles').update({ avatar_url: url }).eq('id', user!.id);
+      // App owns the profile; without this the new photo is lost the moment
+      // the athlete switches tabs, the same way the sport tile used to be.
+      onUpdate((current: any) => ({ ...current, avatar_url: url }));
       setUploadingAvatar(false);
     }
   };
@@ -736,7 +761,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
             fat:      parseInt(restFat)     || 0,
           },
         } : null;
-        const updated = { id: uid, name, ...profileData, ...targets, custom_goals: customGoals, periodization_settings, updated_at: new Date().toISOString() };
+        const updated = { id: uid, name, ...profileData, ...targets, custom_goals: customGoals, periodization_settings, targets_stale: false, updated_at: new Date().toISOString() };
         const { error } = await supabase.from('profiles').upsert(updated);
         if (error) { Alert.alert('Error', error.message); return; }
         if (!stillSignedInAs(uid)) return;
@@ -748,7 +773,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
         (['activity', 'goal', 'sport'] as TileField[]).forEach(
           (f) => clearPickIfCurrent(uid, f, (updated as any)[f]),
         );
-        onUpdate(updated); setSaved(true); setTargetsStale(false); setTimeout(() => setSaved(false), 2000);
+        onUpdate(updated); setSaved(true); setTimeout(() => setSaved(false), 2000);
       }
     } catch (e) {
       logError('ProfileScreen.handleSave', e);
@@ -808,6 +833,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
     if (!user) return;
     const uid = user.id;
     picksFor(uid)[field] = value;
+    const seq = (latestTapSeq[field] = ++tapCounter);
     supabase
       .from('profiles')
       .update({ [field]: value, updated_at: new Date().toISOString() })
@@ -820,10 +846,14 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
           if (error) { Alert.alert('Couldn\u2019t save', error.message); return; }
           // Never seed a different (or no) user's App state with this value.
           if (!stillSignedInAs(uid)) return;
-          onUpdate((current: any) => ({ ...current, [field]: value }));
+          // A newer tap on this row has been made since; its response, not
+          // this one, decides what the row shows.
+          if (latestTapSeq[field] !== seq) return;
           // The selection is saved; the day's targets were computed for the
-          // previous one. Say so rather than leave the rings quietly wrong.
-          setTargetsStale(true);
+          // previous one. `targets_stale` says so on the row itself, so the
+          // notice survives a tab switch (which unmounts this screen) and an
+          // app restart, instead of dying with the screen that set it.
+          onUpdate((current: any) => ({ ...current, [field]: value, targets_stale: true }));
         },
         (e: unknown) => {
           clearPickIfCurrent(uid, field, value);
@@ -1756,7 +1786,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
         </View>
 
         {/* Save */}
-        {targetsStale && !customGoals && (
+        {profile.targets_stale && !customGoals && (
           <Text style={s.staleTargetsNote}>
             Your selection is saved. Tap Save &amp; Recalculate to update your daily targets for it.
           </Text>

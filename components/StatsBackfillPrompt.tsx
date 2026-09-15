@@ -104,7 +104,7 @@ export default function StatsBackfillPrompt({
           goal: profile?.goal || 'maintain',
           sport: profile?.sport || undefined,
         });
-        if (targets.calories > 0) patch = { ...stats, ...targets };
+        if (targets.calories > 0) patch = { ...stats, ...targets, targets_stale: false };
       }
       const { error } = await supabase.from('profiles').update(patch).eq('id', user.id);
       if (error) { Alert.alert('Error', error.message); return; }

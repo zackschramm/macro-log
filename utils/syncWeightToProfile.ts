@@ -107,6 +107,9 @@ export async function syncWeightToProfile(
         protein: targets.protein,
         carbs: targets.carbs,
         fat: targets.fat,
+        // These targets were computed from the row's own activity/goal/sport,
+        // so whatever a tile tap left stale is no longer stale.
+        targets_stale: false,
         updated_at: new Date().toISOString(),
       })
       .eq('id', userId);

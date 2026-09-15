@@ -385,40 +385,55 @@ serve(async (req) => {
     const data = await res.json()
     const foods = (data.foods || []).map((f: any) => {
       const n = f.foodNutrients || []
+      // USDA reports every value in `foodNutrients` per 100 g, while
+      // `servingSize` is the label serving. Labelling the 100 g numbers with
+      // the serving size reported a 48 g Clif bar at 396 kcal instead of 190
+      // (2.1x), and a 20 g granola bar at 300 kcal instead of 60 (5x) --
+      // both verified against the live API. Branded records nearly all carry
+      // a serving size; Foundation/Survey records carry none and are already
+      // on the 100 g basis the fallback label claims.
+      // Units arrive as 'g'/'GRM' or 'ml'/'MLT'; anything else (IU, oz) is
+      // not a mass we can convert, so those stay on the 100 g basis.
+      const rawUnit = String(f.servingSizeUnit || '').toLowerCase()
+      const unit = rawUnit.startsWith('g') ? 'g' : (rawUnit === 'ml' || rawUnit === 'mlt') ? 'ml' : null
+      const size = Number(f.servingSize)
+      const perServing = unit !== null && Number.isFinite(size) && size > 0
+      const scale = perServing ? size / 100 : 1
+      const nut = (...names: string[]) => Math.round(getNutrient(n, ...names) * scale * 100) / 100
       return {
         name: f.description,
         brand: f.brandOwner || f.brandName || null,
-        serving_size: f.servingSize ? `${f.servingSize}${f.servingSizeUnit || 'g'}` : '100g',
-        calories: Math.round(getNutrient(n, 'energy', 'calorie')),
-        protein: getNutrient(n, 'protein'),
-        carbs: getNutrient(n, 'carbohydrate'),
-        fat: getNutrient(n, 'total lipid'),
-        vitamin_a: getNutrient(n, 'vitamin a'),
-        vitamin_c: getNutrient(n, 'vitamin c'),
-        vitamin_d: getNutrient(n, 'vitamin d'),
-        vitamin_e: getNutrient(n, 'vitamin e'),
-        vitamin_k: getNutrient(n, 'vitamin k'),
-        vitamin_b1: getNutrient(n, 'thiamin'),
-        vitamin_b2: getNutrient(n, 'riboflavin'),
-        vitamin_b3: getNutrient(n, 'niacin'),
-        vitamin_b5: getNutrient(n, 'pantothenic'),
-        vitamin_b6: getNutrient(n, 'vitamin b-6'),
-        vitamin_b7: getNutrient(n, 'biotin'),
-        vitamin_b9: getNutrient(n, 'folate', 'folic'),
-        vitamin_b12: getNutrient(n, 'vitamin b-12'),
-        calcium: getNutrient(n, 'calcium'),
-        iron: getNutrient(n, 'iron'),
-        magnesium: getNutrient(n, 'magnesium'),
-        phosphorus: getNutrient(n, 'phosphorus'),
-        potassium: getNutrient(n, 'potassium'),
-        sodium: getNutrient(n, 'sodium'),
-        zinc: getNutrient(n, 'zinc'),
-        copper: getNutrient(n, 'copper'),
-        manganese: getNutrient(n, 'manganese'),
-        selenium: getNutrient(n, 'selenium'),
-        chromium: getNutrient(n, 'chromium'),
-        iodine: getNutrient(n, 'iodine'),
-        omega3: getNutrient(n, 'omega-3', 'epa', 'dha'),
+        serving_size: perServing ? `${size}${unit}` : '100g',
+        calories: Math.round(nut('energy', 'calorie')),
+        protein: nut('protein'),
+        carbs: nut('carbohydrate'),
+        fat: nut('total lipid'),
+        vitamin_a: nut('vitamin a'),
+        vitamin_c: nut('vitamin c'),
+        vitamin_d: nut('vitamin d'),
+        vitamin_e: nut('vitamin e'),
+        vitamin_k: nut('vitamin k'),
+        vitamin_b1: nut('thiamin'),
+        vitamin_b2: nut('riboflavin'),
+        vitamin_b3: nut('niacin'),
+        vitamin_b5: nut('pantothenic'),
+        vitamin_b6: nut('vitamin b-6'),
+        vitamin_b7: nut('biotin'),
+        vitamin_b9: nut('folate', 'folic'),
+        vitamin_b12: nut('vitamin b-12'),
+        calcium: nut('calcium'),
+        iron: nut('iron'),
+        magnesium: nut('magnesium'),
+        phosphorus: nut('phosphorus'),
+        potassium: nut('potassium'),
+        sodium: nut('sodium'),
+        zinc: nut('zinc'),
+        copper: nut('copper'),
+        manganese: nut('manganese'),
+        selenium: nut('selenium'),
+        chromium: nut('chromium'),
+        iodine: nut('iodine'),
+        omega3: nut('omega-3', 'epa', 'dha'),
       }
     })
     return new Response(JSON.stringify({ foods }), {
