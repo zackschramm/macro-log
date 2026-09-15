@@ -146,58 +146,13 @@ function SubScreenHeader({ title, onBack }: { title: string; onBack: () => void 
 }
 
 /**
- * Tile writes (persistChoice) run one after another through this queue. It
- * lives at module scope, not in a ref: MainTabs unmounts this screen on every
- * tab switch, and a per-instance queue let a write still in flight from the
- * previous mount run unserialised against the next mount's writes and Save
- * (build-165 council pass 3).
- */
-let tileWriteQueue: Promise<void> = Promise.resolve();
-
-/**
- * A request that never settles must not block every later tile write and
- * Save for the life of the process (the per-instance queue self-healed on
- * remount; a module-level one cannot). Each step gets an AbortSignal that
- * fires after the timeout and is passed to its Supabase calls, so a stalled
- * step is actually cancelled — it cannot land later and overwrite a newer
- * Save (racing the queue against a timer and letting the step run on did
- * exactly that: council pass 5). The returned promise rejects to the caller
- * on failure or abort so it can tell the athlete; the queue itself swallows
- * the rejection and stays usable.
- */
-const PROFILE_WRITE_TIMEOUT_MS = 15000;
-function enqueueProfileWrite(step: (signal: AbortSignal) => Promise<void>): Promise<void> {
-  const run = tileWriteQueue.then(async () => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), PROFILE_WRITE_TIMEOUT_MS);
-    try { await step(controller.signal); } finally { clearTimeout(timer); }
-  });
-  tileWriteQueue = run.catch((e) => logError('ProfileScreen.profileWriteQueue', e));
-  return run;
-}
-function isAbort(e: unknown): boolean {
-  return !!e && typeof e === 'object' && (e as any).name === 'AbortError';
-}
-/**
- * postgrest-js reports an aborted request as `{ error }` rather than throwing,
- * so each step checks its signal after every call and throws this instead —
- * the callers then show the offline message, not "AbortError: Aborted".
- */
-function abortedError(): Error {
-  const e = new Error('Profile write timed out');
-  e.name = 'AbortError';
-  return e;
-}
-const OFFLINE_MESSAGE = 'Couldn\u2019t reach Fuelog\u2019s servers. Check your connection and try again.';
-
-/**
- * The most recent value the athlete tapped on each tile row. Save reads its
- * tile fields from here rather than from the render it was pressed in: after
- * a remount the chips are re-seeded from the pre-write profile, and the
- * prop-sync effects can briefly show an earlier tap until a later one lands,
- * so the pressed render can lag what the athlete actually chose. Keyed by
- * user so a sign-out / sign-in can never carry one athlete's picks into the
- * next one's Save.
+ * The most recent value the athlete tapped on each tile row — intent, not a
+ * record of what reached the server. Save writes these over the chips of the
+ * render it was pressed in, because a remount re-seeds the chips from the
+ * pre-write profile and would otherwise undo a tap that is still landing.
+ * A pick is dropped once its own write succeeds (App state and the chips
+ * then carry it) and kept when the write fails, so an explicit Save still
+ * applies what the athlete chose. Keyed by user.
  */
 type TileField = 'activity' | 'goal' | 'sport';
 let latestPicks: { uid: string | null } & Partial<Record<TileField, string>> = { uid: null };
@@ -205,10 +160,8 @@ function picksFor(uid: string) {
   if (latestPicks.uid !== uid) latestPicks = { uid };
   return latestPicks;
 }
-/** A tap that never landed must not resurface in a later Save. */
-function forgetPick(uid: string, field: TileField, value: string) {
-  const picks = picksFor(uid);
-  if (picks[field] === value) delete picks[field];
+function clearPickIfCurrent(uid: string, field: TileField, value: string) {
+  if (latestPicks.uid === uid && latestPicks[field] === value) delete latestPicks[field];
 }
 
 /**
@@ -712,12 +665,8 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
     if (!user) return;
     const uid = user.id;
     setLoading(true);
-    // The upsert runs on the same queue as the tile writes, so it lands after
-    // any tap already in flight and before any tap made from a later mount —
-    // one ordered stream of writes to the row (build-165 council pass 4).
     try {
-      await enqueueProfileWrite(async (signal) => {
-        if (!stillSignedInAs(uid)) return;
+      {
         const picks = picksFor(uid);
         // profileData is what gets written to the `profiles` row. body_fat_pct
         // lives in inbody_logs (no such column here), so it's kept separate and
@@ -778,20 +727,16 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
           },
         } : null;
         const updated = { id: uid, name, ...profileData, ...targets, custom_goals: customGoals, periodization_settings, updated_at: new Date().toISOString() };
-        const { error } = await supabase.from('profiles').upsert(updated).abortSignal(signal);
-        if (signal.aborted) throw abortedError();
+        const { error } = await supabase.from('profiles').upsert(updated);
         if (error) { Alert.alert('Error', error.message); return; }
         if (!stillSignedInAs(uid)) return;
-        // The row now holds every pick; nothing is pending any more.
+        // The row now holds every pick; none is pending any more.
         latestPicks = { uid };
         onUpdate(updated); setSaved(true); setTimeout(() => setSaved(false), 2000);
-      });
+      }
     } catch (e) {
-      // Timed out (aborted) or threw before Supabase could answer. The athlete
-      // is told, and nothing was confirmed — a spinner that simply stops read
-      // as "saved" (council pass 5).
-      if (isAbort(e)) Alert.alert('Not saved', OFFLINE_MESSAGE);
-      else logError('ProfileScreen.handleSave', e);
+      logError('ProfileScreen.handleSave', e);
+      Alert.alert('Error', 'Couldn\u2019t save your profile. Check your connection and try again.');
     } finally {
       setLoading(false);
     }
@@ -806,70 +751,52 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
    * time I switch tabs" (build-165 Simulator finding). Because `sport` also
    * gates the Race Fuel Plan link, that link vanished with it.
    *
-   * Targets are recomputed the way Save would for that one change, but from
-   * the SAVED row rather than the draft text fields — a half-typed weight
-   * must never leak into the calorie budget. Custom goals are left alone.
+   * A tap writes ONE column and nothing else: no read-modify-write, no
+   * recomputed targets, no queue. That is what makes it correct rather than
+   * merely careful. Single-column writes of a literal value are idempotent
+   * and order-free, so two quick taps, a tap racing Save, a tap from a
+   * remounted screen, or a retry after a timeout all converge on the same
+   * row whatever order they land in — and Save writes the same values back
+   * from `latestPicks`, so it cannot disagree with a tap either.
    *
-   * The first version computed from the `profile` prop captured at tap time
-   * (build-165 council, 5/5 confirmed): two quick taps on different rows each
-   * saw a row without the other's pick and wrote targets for a half-updated
-   * profile, then reverted the first pick in App state; and a same-session
-   * weigh-in on Stats (which writes weight_lbs to Supabase without touching
-   * App state) left it computing from a stale weight. So each tap re-reads
-   * the saved row, writes are queued one after another (Save included), the
-   * merge into App state is functional, the tiles are disabled while Save is
-   * in flight, and Save takes its tile fields from the last tap (latestPicks).
+   * Four council passes were spent making a read-compute-write version of
+   * this safe (a promise queue, abort timeouts, session guards) and each
+   * pass found another way for it to write a calorie budget derived from a
+   * half-updated row. Targets now have exactly one writer — Save — which is
+   * also where they lived before 165. A tap changes the selection; Save
+   * recalculates. (Council passes 2-5, 16 confirmed findings.)
+   *
+   * KNOWN TRADE-OFF: two taps on the SAME row inside one round-trip settle on
+   * whichever write the server applies last, which is usually but not always
+   * the later tap. The outcome is always self-consistent — the row, App state
+   * and the chip agree, and one more tap changes it — so this is a stale
+   * selection, never a wrong calorie budget. Serialising the two writes to
+   * fix it is what produced the four passes of findings above; it is not
+   * worth buying back.
    */
-  const persistChoice = (field: 'activity' | 'goal' | 'sport', value: string) => {
+  const persistChoice = (field: TileField, value: string) => {
     if (field === 'activity') setActivity(value);
     else if (field === 'goal') setGoal(value);
     else setSport(value);
     if (!user) return;
     const uid = user.id;
     picksFor(uid)[field] = value;
-    enqueueProfileWrite(async (signal) => {
-      if (!stillSignedInAs(uid)) { forgetPick(uid, field, value); return; }
-      const { data: row, error: readError } = await supabase
-        .from('profiles')
-        .select('weight_lbs, height_in, age, sex, activity, goal, sport, custom_goals')
-        .eq('id', uid)
-        .abortSignal(signal)
-        .single();
-      if (signal.aborted) throw abortedError();
-      if (readError || !row) {
-        forgetPick(uid, field, value);
-        Alert.alert('Couldn\u2019t save', readError?.message ?? 'Profile not found');
-        return;
-      }
-      // Null columns render as the same defaults the chips (and Save) fall back
-      // to — the state initialisers above, sex included — so compute with those.
-      const next = {
-        activity: row.activity || 'moderate',
-        goal: row.goal || 'gain',
-        sport: row.sport || 'none',
-        [field]: value,
-      };
-      const patch: Record<string, any> = { [field]: value, updated_at: new Date().toISOString() };
-      if (!row.custom_goals) {
-        const t = calculateTargets({
-          weight_lbs: row.weight_lbs, height_in: row.height_in, age: row.age, sex: row.sex || 'male',
-          activity: next.activity, goal: next.goal, sport: next.sport, body_fat_pct: bodyFatPct,
-        });
-        if (t.calories > 0) Object.assign(patch, { calories: t.calories, protein: t.protein, carbs: t.carbs, fat: t.fat });
-      }
-      const { error } = await supabase.from('profiles').update(patch).eq('id', uid).abortSignal(signal);
-      if (signal.aborted) throw abortedError();
-      if (error) { forgetPick(uid, field, value); Alert.alert('Couldn\u2019t save', error.message); return; }
-      // Never seed a different (or no) user's App state with this row.
-      if (!stillSignedInAs(uid)) return;
-      // `row` refreshes the saved stats App may be holding stale (weight after
-      // a Stats weigh-in); `patch` is this tap. Merged onto App's CURRENT value.
-      onUpdate((current: any) => ({ ...current, ...row, ...patch }));
-    }).catch((e) => {
-      forgetPick(uid, field, value);
-      if (isAbort(e)) Alert.alert('Not saved', OFFLINE_MESSAGE);
-      else logError('ProfileScreen.persistChoice', e);
-    });
+    supabase
+      .from('profiles')
+      .update({ [field]: value, updated_at: new Date().toISOString() })
+      .eq('id', uid)
+      .then(
+        ({ error }) => {
+          if (error) { Alert.alert('Couldn\u2019t save', error.message); return; }
+          // Landed: App state carries it, the chips follow App state, and a
+          // remount re-seeds from it — so Save no longer needs the pick.
+          clearPickIfCurrent(uid, field, value);
+          // Never seed a different (or no) user's App state with this value.
+          if (!stillSignedInAs(uid)) return;
+          onUpdate((current: any) => ({ ...current, [field]: value }));
+        },
+        (e: unknown) => logError('ProfileScreen.persistChoice', e),
+      );
   };
 
   const autoTargets = calculateTargets({
