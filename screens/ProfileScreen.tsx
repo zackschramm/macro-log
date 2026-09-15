@@ -740,8 +740,14 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
         const { error } = await supabase.from('profiles').upsert(updated);
         if (error) { Alert.alert('Error', error.message); return; }
         if (!stillSignedInAs(uid)) return;
-        // The row now holds every pick; none is pending any more.
-        latestPicks = { uid };
+        // Clear only the picks this upsert actually wrote. A tap made after
+        // Save read its snapshot (the tiles re-enable if the screen remounts
+        // mid-save, since `loading` is per-instance) holds a different value
+        // and is still in flight — wiping it would discard the one record of
+        // a write Save did not make. (Council P2.)
+        (['activity', 'goal', 'sport'] as TileField[]).forEach(
+          (f) => clearPickIfCurrent(uid, f, (updated as any)[f]),
+        );
         onUpdate(updated); setSaved(true); setTargetsStale(false); setTimeout(() => setSaved(false), 2000);
       }
     } catch (e) {
@@ -784,7 +790,12 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
    *    and one more tap changes it. Serialising the two writes to fix this
    *    is what produced four passes of findings; not worth buying back.
    *
-   * 2. Between a tap and the next Save, the row holds the new selection with
+   * 2. A tap that races a Save can lose to it: Save writes the whole row
+   *    from the snapshot it read, so a tap landing just before it is
+   *    overwritten. The row, App state and the chip agree afterwards and one
+   *    more tap changes it — the same stale-selection outcome as (1).
+   *
+   * 3. Between a tap and the next Save, the row holds the new selection with
    *    targets computed for the old one. That is why `targetsStale` puts a
    *    line above Save saying exactly that — the alternative (recomputing
    *    targets on every tap) is the read-modify-write this design exists to
