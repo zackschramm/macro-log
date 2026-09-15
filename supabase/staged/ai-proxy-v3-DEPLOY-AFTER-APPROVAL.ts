@@ -408,6 +408,10 @@ serve(async (req) => {
         protein: nut('protein'),
         carbs: nut('carbohydrate'),
         fat: nut('total lipid'),
+        // Present in the deployed function but never committed: AddFoodModal
+        // and FoodsScreen both read `fiber` off the search result, so dropping
+        // it here would silently null out fiber for every USDA food.
+        fiber: nut('fiber'),
         vitamin_a: nut('vitamin a'),
         vitamin_c: nut('vitamin c'),
         vitamin_d: nut('vitamin d'),
