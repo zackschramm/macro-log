@@ -146,13 +146,19 @@ function SubScreenHeader({ title, onBack }: { title: string; onBack: () => void 
 }
 
 /**
- * The most recent value the athlete tapped on each tile row — intent, not a
- * record of what reached the server. Save writes these over the chips of the
- * render it was pressed in, because a remount re-seeds the chips from the
- * pre-write profile and would otherwise undo a tap that is still landing.
- * A pick is dropped once its own write succeeds (App state and the chips
- * then carry it) and kept when the write fails, so an explicit Save still
- * applies what the athlete chose. Keyed by user.
+ * The value of a tile-row tap whose write is STILL IN FLIGHT. Save writes
+ * these over the chips of the render it was pressed in, because a remount
+ * re-seeds the chips from the pre-write profile and would otherwise undo a
+ * tap that is still landing.
+ *
+ * A pick is dropped the moment its write settles — succeeded or failed. An
+ * earlier version kept failed picks as "intent", which meant a tap that
+ * errored, a tab switch (re-seeding the chip from the unchanged profile),
+ * and an unrelated Save an hour later silently wrote a selection the screen
+ * said was not chosen, and recalculated the day's calories from it (council
+ * P1, -650 kcal in the executed repro). The invariant that replaces it:
+ * Save writes what the athlete can see, except for a write still in flight.
+ * Keyed by user.
  */
 type TileField = 'activity' | 'goal' | 'sport';
 let latestPicks: { uid: string | null } & Partial<Record<TileField, string>> = { uid: null };
@@ -160,6 +166,7 @@ function picksFor(uid: string) {
   if (latestPicks.uid !== uid) latestPicks = { uid };
   return latestPicks;
 }
+/** Called when a tap's write settles, either way. */
 function clearPickIfCurrent(uid: string, field: TileField, value: string) {
   if (latestPicks.uid === uid && latestPicks[field] === value) delete latestPicks[field];
 }
@@ -265,6 +272,9 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
   const [customCarbs, setCustomCarbs] = useState(profile.custom_goals ? String(profile.carbs || '') : '');
   const [customFat, setCustomFat] = useState(profile.custom_goals ? String(profile.fat || '') : '');
   const [saved, setSaved] = useState(false);
+  // True once a tile tap has changed a saved selection that the stored
+  // calorie targets were not computed from. Cleared by Save & Recalculate.
+  const [targetsStale, setTargetsStale] = useState(false);
   const [subScreen, setSubScreen] = useState<SubScreen | null>(null);
 
   // Periodization
@@ -732,7 +742,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
         if (!stillSignedInAs(uid)) return;
         // The row now holds every pick; none is pending any more.
         latestPicks = { uid };
-        onUpdate(updated); setSaved(true); setTimeout(() => setSaved(false), 2000);
+        onUpdate(updated); setSaved(true); setTargetsStale(false); setTimeout(() => setSaved(false), 2000);
       }
     } catch (e) {
       logError('ProfileScreen.handleSave', e);
@@ -766,13 +776,19 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
    * also where they lived before 165. A tap changes the selection; Save
    * recalculates. (Council passes 2-5, 16 confirmed findings.)
    *
-   * KNOWN TRADE-OFF: two taps on the SAME row inside one round-trip settle on
-   * whichever write the server applies last, which is usually but not always
-   * the later tap. The outcome is always self-consistent — the row, App state
-   * and the chip agree, and one more tap changes it — so this is a stale
-   * selection, never a wrong calorie budget. Serialising the two writes to
-   * fix it is what produced the four passes of findings above; it is not
-   * worth buying back.
+   * KNOWN TRADE-OFFS, both self-consistent and both visible to the athlete:
+   *
+   * 1. Two taps on the SAME row inside one round-trip settle on whichever
+   *    write the server applies last, which is usually but not always the
+   *    later tap. The row, App state and the chip still agree afterwards,
+   *    and one more tap changes it. Serialising the two writes to fix this
+   *    is what produced four passes of findings; not worth buying back.
+   *
+   * 2. Between a tap and the next Save, the row holds the new selection with
+   *    targets computed for the old one. That is why `targetsStale` puts a
+   *    line above Save saying exactly that — the alternative (recomputing
+   *    targets on every tap) is the read-modify-write this design exists to
+   *    avoid.
    */
   const persistChoice = (field: TileField, value: string) => {
     if (field === 'activity') setActivity(value);
@@ -787,15 +803,21 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
       .eq('id', uid)
       .then(
         ({ error }) => {
-          if (error) { Alert.alert('Couldn\u2019t save', error.message); return; }
-          // Landed: App state carries it, the chips follow App state, and a
-          // remount re-seeds from it — so Save no longer needs the pick.
+          // Settled either way: the pick has done its job and must not
+          // outlive the chip that showed it.
           clearPickIfCurrent(uid, field, value);
+          if (error) { Alert.alert('Couldn\u2019t save', error.message); return; }
           // Never seed a different (or no) user's App state with this value.
           if (!stillSignedInAs(uid)) return;
           onUpdate((current: any) => ({ ...current, [field]: value }));
+          // The selection is saved; the day's targets were computed for the
+          // previous one. Say so rather than leave the rings quietly wrong.
+          setTargetsStale(true);
         },
-        (e: unknown) => logError('ProfileScreen.persistChoice', e),
+        (e: unknown) => {
+          clearPickIfCurrent(uid, field, value);
+          logError('ProfileScreen.persistChoice', e);
+        },
       );
   };
 
@@ -1723,6 +1745,11 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
         </View>
 
         {/* Save */}
+        {targetsStale && !customGoals && (
+          <Text style={s.staleTargetsNote}>
+            Your selection is saved. Tap Save &amp; Recalculate to update your daily targets for it.
+          </Text>
+        )}
         <TouchableOpacity style={s.saveBtn} onPress={handleSave} disabled={loading} activeOpacity={0.8}>
           {loading ? <ActivityIndicator color="#000" /> : <Text style={s.saveBtnText}>{saved ? '✓ Saved!' : 'Save & Recalculate'}</Text>}
         </TouchableOpacity>
@@ -2031,6 +2058,7 @@ const s = StyleSheet.create({
   exportBtnText: { color: colors.text, fontSize: 15, fontWeight: weight.semibold },
   saveBtn: { backgroundColor: colors.accent, borderRadius: radius.md, padding: 16, alignItems: 'center', marginTop: 8 },
   saveBtnText: { color: colors.accentText, fontSize: 15, fontWeight: weight.bold },
+  staleTargetsNote: { fontSize: 12, color: colors.textSecondary, lineHeight: 17, marginHorizontal: 20, marginBottom: 8, textAlign: 'center' },
   signOutBtn: { alignItems: 'center', paddingVertical: 14 },
   signOutText: { color: colors.danger, fontSize: 15, fontWeight: weight.semibold },
   // Deliberately understated: an outlined row rather than a filled red button,
