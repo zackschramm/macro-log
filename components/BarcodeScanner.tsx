@@ -17,10 +17,20 @@ interface NutritionResult {
   protein: number;
   carbs: number;
   fat: number;
-  // Micronutrients are deliberately absent: OFF reports them in grams while
-  // the app's columns are mg/mcg, and until that conversion is verified
-  // against a real label the honest value is "we don't have it". See
-  // utils/openFoodFacts.ts.
+  // Micronutrients are converted from OFF's grams into each column's own unit
+  // and dropped if they land outside a plausibility ceiling. Sodium was never
+  // read here in any earlier version, which is why scans showed none.
+  fiber_g?: number | null;
+  calcium_mg?: number | null;
+  iron_mg?: number | null;
+  vitamin_d_mcg?: number | null;
+  vitamin_c_mg?: number | null;
+  vitamin_b12_mcg?: number | null;
+  magnesium_mg?: number | null;
+  zinc_mg?: number | null;
+  potassium_mg?: number | null;
+  sodium_mg?: number | null;
+  omega3_g?: number | null;
 }
 
 interface Props {

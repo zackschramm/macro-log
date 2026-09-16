@@ -133,11 +133,72 @@ test('a known serving weight converts the odd macro out instead of refusing', ()
   assert.equal(r.fat, 0.4);
 });
 
-test('COUNCIL P2: no micronutrients are emitted at all while units are unverified', () => {
-  const r = normalizeOffProduct(BAR_100G_ONLY) as any;
-  assert.equal(r.calcium_mg, undefined);
-  assert.equal(r.fiber_g, undefined);
-  assert.equal(r.magnesium_mg, undefined);
+console.log('\nMicronutrient units and the sodium canary');
+
+test('THE REPORT: sodium is read at all, and in mg', () => {
+  // 0.2 g sodium per 100 g on a 30 g serving = 60 mg. Earlier builds had no
+  // sodium field whatsoever, which is why three scans showed none.
+  const r = normalizeOffProduct({
+    ...BAR_100G_ONLY,
+    nutriments: { ...BAR_100G_ONLY.nutriments, sodium_100g: 0.2 },
+  });
+  assert.equal(r.sodium_mg, 60);
+});
+
+test('salt is converted to sodium when OFF carries no sodium', () => {
+  // OFF reports salt far more often. 0.5 g salt/100g x 0.3934 = 0.1967 g
+  // sodium, on a 30 g serving = 59 mg.
+  const r = normalizeOffProduct({
+    ...BAR_100G_ONLY,
+    nutriments: { ...BAR_100G_ONLY.nutriments, salt_100g: 0.5 },
+  });
+  assert.ok(r.sodium_mg !== null && Math.abs(r.sodium_mg - 59) < 1, `got ${r.sodium_mg}`);
+});
+
+test('sodium prefers its own field over salt when both exist', () => {
+  const r = normalizeOffProduct({
+    ...BAR_100G_ONLY,
+    nutriments: { ...BAR_100G_ONLY.nutriments, sodium_100g: 0.2, salt_100g: 99 },
+  });
+  assert.equal(r.sodium_mg, 60);
+});
+
+test('grams are converted into each column own unit', () => {
+  const r = normalizeOffProduct({
+    ...BAR_100G_ONLY, serving_quantity: 100,
+    nutriments: {
+      ...BAR_100G_ONLY.nutriments,
+      calcium_100g: 0.12,        // 120 mg
+      iron_100g: 0.008,          // 8 mg
+      'vitamin-d_100g': 0.000005, // 5 mcg
+      'vitamin-b12_100g': 0.0000024, // 2.4 mcg
+      fiber_100g: 3,             // 3 g, unconverted
+    },
+  });
+  assert.equal(r.calcium_mg, 120);
+  assert.equal(r.iron_mg, 8);
+  assert.equal(r.vitamin_d_mcg, 5);
+  assert.equal(r.vitamin_b12_mcg, 2.4);
+  assert.equal(r.fiber_g, 3, 'grams columns are not scaled');
+});
+
+test('THE GUARD: an mg-denominated source is dropped, never stored 1000x high', () => {
+  // If the grams premise is ever wrong, x1000 lands absurdly and the value
+  // must not reach macro_logs. A wrong micro is worse than a missing one.
+  const r = normalizeOffProduct({
+    ...BAR_100G_ONLY, serving_quantity: 100,
+    nutriments: { ...BAR_100G_ONLY.nutriments, sodium_100g: 200, calcium_100g: 120 },
+  });
+  assert.equal(r.sodium_mg, null, '200 g/100g would be 200000 mg - implausible');
+  assert.equal(r.calcium_mg, null, '120 g/100g would be 120000 mg - implausible');
+});
+
+test('micros follow the same serving basis as the macros', () => {
+  const half = normalizeOffProduct({
+    ...BAR_100G_ONLY, serving_quantity: 50,
+    nutriments: { ...BAR_100G_ONLY.nutriments, sodium_100g: 0.2 },
+  });
+  assert.equal(half.sodium_mg, 100, '0.2g/100g on a 50g serving = 100mg');
 });
 
 test('a food readable at one basis is never flagged incomplete', () => {

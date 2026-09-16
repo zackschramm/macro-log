@@ -372,11 +372,13 @@ export default function AddFoodModal({ visible, date, defaultMeal, onClose, onOp
             carbs: picked.carbs,
             fat: picked.fat,
             fiber: picked.fiber_g ?? null,
-            // USDA only. Barcode micros come from Open Food Facts in grams per
-            // 100 g and are currently stored as if they were per-serving mg
-            // (scanner units — tracked for 166); persisting them here would
-            // make the wrong numbers durable and re-logged from My Foods.
-            ...(picked.source === 'usda' ? micronutrientColumns(picked) : {}),
+            // Both sources now arrive in the column's own unit: USDA's are
+            // already mg/mcg, and utils/openFoodFacts.ts converts OFF's grams
+            // and drops anything that fails a plausibility ceiling. The old
+            // `source === 'usda'` gate existed because barcode micros were
+            // ~900x low in grams; with that fixed, gating them out is what
+            // would lose data.
+            ...micronutrientColumns(picked),
           }).then(() => {}, () => {});
         }
       }

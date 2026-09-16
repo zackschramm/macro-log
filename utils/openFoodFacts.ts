@@ -20,16 +20,25 @@
  *      there, converting "cannot read this" into "measured zero grams of
  *      carbohydrate", which is worse than the bug it replaced.
  *
- *   2. NO MICRONUTRIENTS, for now. OFF normalises nutriments to grams while
- *      the app's columns are mg/mcg (`calcium_mg`, `vitamin_d_mcg`), so a
- *      scanned calcium of 0.12 g was being written as 0.12 mg — ~900x low,
- *      and durable: AddFoodModal already guards the `user_foods` insert
- *      against exactly this ("persisting them here would make the wrong
- *      numbers durable") but writes `macro_logs` unfiltered, and that is the
- *      table both micronutrient screens read. Emitting nothing is the only
- *      option that is correct whichever way the unit question resolves.
- *      Re-enable by scanning one fortified product, comparing the label to
- *      what OFF returns, and adding the conversion with a test.
+ *   2. MICRONUTRIENTS ARE CONVERTED, NOT COPIED. OFF normalises nutriments
+ *      to GRAMS while the app's columns are mg/mcg (`calcium_mg`,
+ *      `vitamin_d_mcg`), so a scanned calcium of 0.12 g was being written as
+ *      0.12 mg — ~900x low. Three independent reads agree on the grams
+ *      premise: OFF's own normalisation, AddFoodModal's existing guard
+ *      comment ("Barcode micros come from Open Food Facts in grams per
+ *      100 g"), and the review council's verifier.
+ *
+ *      Rather than trust that outright, every converted value passes a
+ *      plausibility ceiling. If OFF ever turns out to be in mg, the x1000
+ *      lands absurdly high and the value is DROPPED rather than stored — the
+ *      guard fails safe in the only direction that can mislead an athlete.
+ *
+ *      SODIUM was never read at all, in any version of this file: the old
+ *      NutritionResult had no sodium field, which is why scans showed none.
+ *      It is also the best canary for the unit question, because labels state
+ *      it in mg and the numbers are large — a 200 mg product must read 200,
+ *      not 0.2 and not 200000. OFF carries salt far more often than sodium,
+ *      so salt_100g is converted when sodium is absent.
  */
 
 export interface OffNutriments { [key: string]: unknown }
@@ -65,7 +74,42 @@ export interface OffNutrition {
   protein: number;
   carbs: number;
   fat: number;
+  fiber_g: number | null;
+  calcium_mg: number | null;
+  iron_mg: number | null;
+  vitamin_d_mcg: number | null;
+  vitamin_c_mg: number | null;
+  vitamin_b12_mcg: number | null;
+  magnesium_mg: number | null;
+  zinc_mg: number | null;
+  potassium_mg: number | null;
+  sodium_mg: number | null;
+  omega3_g: number | null;
 }
+
+/**
+ * column → [OFF per-serving key, OFF per-100g key, grams→column factor, ceiling]
+ *
+ * The ceiling is a "no food on earth" bound for ONE serving, not an RDA. It
+ * exists only to catch a wrong unit premise: an mg-denominated source would
+ * blow past it after the x1000 and the value gets dropped instead of written.
+ */
+const MICROS: [string, string, string, number, number][] = [
+  ['fiber_g',         'fiber_serving',       'fiber_100g',       1,    100],
+  ['calcium_mg',      'calcium_serving',     'calcium_100g',     1000, 5000],
+  ['iron_mg',         'iron_serving',        'iron_100g',        1000, 200],
+  ['vitamin_d_mcg',   'vitamin-d_serving',   'vitamin-d_100g',   1e6,  2000],
+  ['vitamin_c_mg',    'vitamin-c_serving',   'vitamin-c_100g',   1000, 5000],
+  ['vitamin_b12_mcg', 'vitamin-b12_serving', 'vitamin-b12_100g', 1e6,  1000],
+  ['magnesium_mg',    'magnesium_serving',   'magnesium_100g',   1000, 2000],
+  ['zinc_mg',         'zinc_serving',        'zinc_100g',        1000, 100],
+  ['potassium_mg',    'potassium_serving',   'potassium_100g',   1000, 10000],
+  ['sodium_mg',       'sodium_serving',      'sodium_100g',      1000, 15000],
+  ['omega3_g',        'omega-3-fat_serving', 'omega-3-fat_100g', 1,    100],
+];
+
+/** Salt (NaCl) is 39.34% sodium by mass. OFF reports salt far more often. */
+const SALT_TO_SODIUM = 0.3934;
 
 const MACROS = [
   ['calories', 'energy-kcal_serving', 'energy-kcal_100g', 1],
@@ -137,7 +181,7 @@ export function normalizeOffProduct(p: OffProduct): OffNutrition {
     : (p.serving_size || (knownServing ? `${servingG}g` : 'serving'));
 
   /** Reads one macro at `basis`, converting only when the weight is known. */
-  const read = (r: typeof rows[number]): number | null => {
+  const read = (r: { perServing: number | null; per100: number | null }): number | null => {
     if (basis === 'per-serving') {
       if (r.perServing !== null) return r.perServing;
       return r.per100 !== null && knownServing ? r.per100 * ((servingG as number) / 100) : null;
@@ -157,6 +201,9 @@ export function normalizeOffProduct(p: OffProduct): OffNutrition {
     basis,
     incomplete,
     calories: 0, protein: 0, carbs: 0, fat: 0,
+    fiber_g: null, calcium_mg: null, iron_mg: null, vitamin_d_mcg: null,
+    vitamin_c_mg: null, vitamin_b12_mcg: null, magnesium_mg: null,
+    zinc_mg: null, potassium_mg: null, sodium_mg: null, omega3_g: null,
   } as OffNutrition;
 
   for (const r of rows) {
@@ -170,5 +217,22 @@ export function normalizeOffProduct(p: OffProduct): OffNutrition {
     (out as any)[r.key] = Math.max(0, Math.round((v ?? 0) * r.dp) / r.dp);
   }
   out.incomplete = incomplete;
+
+  // Micronutrients, read at the SAME basis as the macros and converted from
+  // OFF's grams into the column's own unit.
+  for (const [col, servKey, per100Key, factor, ceiling] of MICROS) {
+    let v = read({ perServing: num(n[servKey]), per100: num(n[per100Key]) });
+    // Sodium: fall back to salt, which OFF carries far more often.
+    if (v === null && col === 'sodium_mg') {
+      const salt = read({ perServing: num(n['salt_serving']), per100: num(n['salt_100g']) });
+      if (salt !== null) v = salt * SALT_TO_SODIUM;
+    }
+    if (v === null) continue;
+    const converted = v * factor;
+    // Fails safe: an implausible value means the unit premise was wrong for
+    // this product, and a wrong micronutrient is worse than a missing one.
+    if (!Number.isFinite(converted) || converted <= 0 || converted > ceiling) continue;
+    (out as any)[col] = Math.round(converted * 100) / 100;
+  }
   return out;
 }
