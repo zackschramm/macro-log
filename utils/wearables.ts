@@ -365,14 +365,30 @@ export async function getWhoopData(userId: string): Promise<WhoopData | null> {
     const sl = resp.data?.sleep
     // No recovery record: the call worked, Whoop has no scored recovery yet.
     if (!r) return null
+    // Whoop sends full float precision — hrv_rmssd_milli comes back as
+    // 33.356247, which rendered on the Recovery card as "33.356247ms". The
+    // HealthKit path has always rounded (Math.round(mean * 1000) in
+    // useHealthKit); this is the same treatment for the Whoop path, applied
+    // here rather than in a screen so every consumer gets it.
+    //
+    // NOTE: the value confirms hrv_rmssd_milli IS milliseconds despite the
+    // long-standing suspicion it might be seconds. No scaling is needed.
+    const round1 = (v: unknown) => {
+      const n = Number(v)
+      return Number.isFinite(n) ? Math.round(n * 10) / 10 : null
+    }
+    const roundInt = (v: unknown) => {
+      const n = Number(v)
+      return Number.isFinite(n) ? Math.round(n) : null
+    }
     return {
-      recoveryScore: r.recoveryScore ?? null,
-      hrv: r.hrv ?? null,
-      restingHR: r.restingHR ?? null,
-      spo2: r.spo2 ?? null,
-      skinTemp: r.skinTemp ?? null,
-      sleepPerformance: r.sleepPerformance ?? null,
-      strain: resp.data?.strain ?? null,
+      recoveryScore: roundInt(r.recoveryScore),
+      hrv: roundInt(r.hrv),
+      restingHR: roundInt(r.restingHR),
+      spo2: round1(r.spo2),
+      skinTemp: round1(r.skinTemp),
+      sleepPerformance: roundInt(r.sleepPerformance),
+      strain: round1(resp.data?.strain),
       sleepHours: sl?.totalSleepMs != null ? Math.round(sl.totalSleepMs / 36000) / 100 : null,
       sleepDeepHours: sl?.deepSleepMs != null ? Math.round(sl.deepSleepMs / 36000) / 100 : null,
       sleepRemHours: sl?.remSleepMs != null ? Math.round(sl.remSleepMs / 36000) / 100 : null,
@@ -398,13 +414,16 @@ export async function getWhoopTrends(userId: string): Promise<WhoopTrends> {
     const resp = await fetchWhoopSummary()
     const recRecords: any[] = resp.data?.recoveryHistory ?? []
     const sleepRecords: any[] = resp.data?.sleepHistory ?? []
+    // Same rounding as getWhoopData — the chart tooltip and any future
+    // read of these values should never show 33.356247.
+    const whole = (v: unknown) => Math.round(Number(v))
     const hrvTrend = recRecords
-      .filter((r) => r.hrv != null && r.date)
-      .map((r) => ({ date: r.date, value: r.hrv }))
+      .filter((r) => r.hrv != null && r.date && Number.isFinite(Number(r.hrv)))
+      .map((r) => ({ date: r.date, value: whole(r.hrv) }))
       .sort((a, b) => a.date.localeCompare(b.date))
     const rhrTrend = recRecords
-      .filter((r) => r.restingHR != null && r.date)
-      .map((r) => ({ date: r.date, value: r.restingHR }))
+      .filter((r) => r.restingHR != null && r.date && Number.isFinite(Number(r.restingHR)))
+      .map((r) => ({ date: r.date, value: whole(r.restingHR) }))
       .sort((a, b) => a.date.localeCompare(b.date))
     const sleepTrend = sleepRecords
       .filter((r) => r.sleepHours != null && r.date)
