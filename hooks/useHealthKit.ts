@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { bucketByDayAndSource, sleepTrendByDay, summarizeLastNight, SAMPLE_UNITS, type RawSample } from '../utils/healthBuckets';
+import { stepsByDay } from '../utils/steps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import AppleHealthKit, {
   HealthKitPermissions,
@@ -685,6 +686,10 @@ export function useHealthKit() {
       // so the chart and the number can never come from different trackers.
       let sleepUsedPreference = true;
 
+      // stepsByDay takes an ISO string; the app's toLocalDateString takes a
+      // Date. Bucketing on the ISO string's first ten characters would be
+      // UTC and would push late-evening samples onto tomorrow west of GMT.
+      const toLocalDateString2 = (iso: string) => toLocalDateString(new Date(iso));
       let sawProtectedError = false;
       const results: RecoveryData = {
         hrv: null, restingHR: null, sleepHours: null, sleepDeepHours: null,
@@ -940,10 +945,21 @@ export function useHealthKit() {
               if (err && isProtectedDataError(err) && !(data?.length)) sawProtectedError = true;
               const filtered = filterBySource(data, 'steps');
               if (!err && filtered?.length > 0) {
-                // Sum all entries for the preferred source (may have multiple segments)
-                const total = filtered.reduce((s: number, d: any) => s + (d.value ?? 0), 0);
-                results.steps = Math.round(total);
-                results.sources['steps'] = sourceCaption('steps', filtered);
+                // NOT a reduce over `filtered`. filterBySource falls back to
+                // ALL sources when the preference matches nothing (the common
+                // case — no preference set), and an iPhone and a Watch both
+                // count the same walking, so summing them roughly doubled the
+                // day. stepsByDay sums WITHIN a source and takes the best
+                // source across them, which is what Health itself shows.
+                const today = stepsByDay(filtered, toLocalDateString2)
+                  .find((d) => d.date === toLocalDateString(now));
+                if (today) {
+                  results.steps = today.value;
+                  results.sources['steps'] = sourceCaption(
+                    'steps',
+                    filtered.filter((s: any) => s.sourceName === today.source),
+                  );
+                }
               }
               res();
             }
@@ -962,12 +978,13 @@ export function useHealthKit() {
               if (err && isProtectedDataError(err) && !(data?.length)) sawProtectedError = true;
               const filtered = filterBySource(data, 'steps');
               if (!err && filtered?.length > 0) {
-                results.stepsTrend = filtered
-                  .filter((s: any) => !!s.startDate)
-                  .map((s: any) => ({
-                    date: toLocalDateString(new Date(s.startDate)),
-                    value: Math.round(s.value),
-                  }));
+                // This used to map every sample straight through. HealthKit
+                // returns one entry per day PER SOURCE, so a day with an
+                // iPhone and a Watch produced two points on the same date —
+                // the duplicated days reported on build 169. stepsByDay
+                // guarantees one entry per day.
+                results.stepsTrend = stepsByDay(filtered, toLocalDateString2)
+                  .map(({ date, value }) => ({ date, value }));
               }
               res();
             }
