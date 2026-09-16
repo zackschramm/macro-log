@@ -7,6 +7,7 @@ import { CameraView, Camera } from 'expo-camera';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { MC } from '../constants/data';
+import { normalizeOffProduct } from '../utils/openFoodFacts';
 
 interface NutritionResult {
   name: string;
@@ -16,16 +17,10 @@ interface NutritionResult {
   protein: number;
   carbs: number;
   fat: number;
-  fiber_g?: number | null;
-  calcium_mg?: number | null;
-  iron_mg?: number | null;
-  vitamin_d_mcg?: number | null;
-  vitamin_c_mg?: number | null;
-  vitamin_b12_mcg?: number | null;
-  magnesium_mg?: number | null;
-  zinc_mg?: number | null;
-  potassium_mg?: number | null;
-  omega3_g?: number | null;
+  // Micronutrients are deliberately absent: OFF reports them in grams while
+  // the app's columns are mg/mcg, and until that conversion is verified
+  // against a real label the honest value is "we don't have it". See
+  // utils/openFoodFacts.ts.
 }
 
 interface Props {
@@ -76,34 +71,28 @@ export default function BarcodeScanner({ visible, onClose, onResult }: Props) {
         return;
       }
 
-      const p = json.product;
-      const n = p.nutriments || {};
+      // Serving-basis normalisation lives in utils/openFoodFacts.ts so it can
+      // be tested — see the header there for the bug this replaced.
+      const parsed = normalizeOffProduct(json.product);
 
-      // OFF returns both _serving and _100g variants; prefer _serving when available
-      const srv = (servKey: string, per100Key: string) => {
-        const v = n[servKey] != null ? n[servKey] : n[per100Key];
-        return v != null && v > 0 ? Math.round(v * 100) / 100 : null;
-      };
+      // OFF carries this product's macros at bases we cannot reconcile without
+      // a serving weight it does not give. Refusing beats logging a plausible
+      // number: this is a nutrition log, and a wrong entry is worse than none.
+      if (parsed.incomplete) {
+        Alert.alert(
+          'Incomplete Data',
+          "This product's nutrition data is incomplete in the barcode database — " +
+          'the numbers would be wrong. Add it manually instead.',
+          [
+            { text: 'Scan Again', onPress: () => { setScanned(false); setLoading(false); } },
+            { text: 'Cancel', onPress: onClose },
+          ],
+        );
+        setLoading(false);
+        return;
+      }
 
-      const result: NutritionResult = {
-        name: p.product_name || p.generic_name || 'Unknown Food',
-        brand: p.brands || '',
-        serving_size: p.serving_size || '100g',
-        calories:     Math.round(n['energy-kcal_serving'] || n['energy-kcal_100g'] || 0),
-        protein:      Math.round((n.proteins_serving || n.proteins_100g || 0) * 10) / 10,
-        carbs:        Math.round((n.carbohydrates_serving || n.carbohydrates_100g || 0) * 10) / 10,
-        fat:          Math.round((n.fat_serving || n.fat_100g || 0) * 10) / 10,
-        fiber_g:         srv('fiber_serving', 'fiber_100g'),
-        calcium_mg:      srv('calcium_serving', 'calcium_100g'),
-        iron_mg:         srv('iron_serving', 'iron_100g'),
-        vitamin_d_mcg:   srv('vitamin-d_serving', 'vitamin-d_100g'),
-        vitamin_c_mg:    srv('vitamin-c_serving', 'vitamin-c_100g'),
-        vitamin_b12_mcg: srv('vitamin-b12_serving', 'vitamin-b12_100g'),
-        magnesium_mg:    srv('magnesium_serving', 'magnesium_100g'),
-        zinc_mg:         srv('zinc_serving', 'zinc_100g'),
-        potassium_mg:    srv('potassium_serving', 'potassium_100g'),
-        omega3_g:        srv('omega-3-fat_serving', 'omega-3-fat_100g'),
-      };
+      const result: NutritionResult = parsed;
 
       setFound(result);
     } catch (e) {

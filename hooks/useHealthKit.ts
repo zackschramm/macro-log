@@ -8,6 +8,9 @@ import AppleHealthKit, {
 } from 'react-native-health';
 import { toLocalDateString } from '../utils/dateUtils';
 import { logError, logEmpty } from '../utils/logError';
+import { deriveHrvNote, type HrvNote } from '../utils/recoveryScore';
+export { deriveHrvNote };
+export type { HrvNote };
 
 const isHealthAvailable = Platform.OS === 'ios' && AppleHealthKit && typeof AppleHealthKit.isAvailable === 'function';
 
@@ -276,6 +279,14 @@ function dedupeOverlappingWorkouts(workouts: HealthKitWorkout[]): HealthKitWorko
   return kept;
 }
 
+/**
+ * Why the HRV headline is empty, when it is.
+ *
+ * The headline reads a 36h window and the trend chart reads 7 days, so a
+ * bare "No data" could render directly above a chart with three plotted
+ * points — both statements true, the pair unreadable. This says which of the
+ * two real causes applies.
+ */
 export interface RecoveryData {
   hrv: number | null;           // ms, latest overnight
   restingHR: number | null;     // bpm
@@ -293,6 +304,8 @@ export interface RecoveryData {
   sleepTrend: { date: string; value: number }[];
   stepsTrend: { date: string; value: number }[];
   sources: Record<string, string>; // metric key → sourceName that provided the value
+  /** Set only when `hrv` is null and we know why. See HrvNote. */
+  hrvNote?: HrvNote;
   /**
    * True when HealthKit refused reads because the device was locked
    * (Code=6 "Protected health data is inaccessible") — the values in this
@@ -1074,6 +1087,10 @@ export function useHealthKit() {
         results.lockedOut = true;
       } else {
         AsyncStorage.setItem(STORAGE_LAST_SYNC, Date.now().toString());
+        // Only meaningful on a read that actually happened: under lockedOut a
+        // null HRV means "couldn't look", and explaining an absence we never
+        // confirmed would be worse than saying nothing.
+        results.hrvNote = deriveHrvNote(results);
       }
       resolve(results);
     });

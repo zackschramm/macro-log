@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Circle, Polyline, Line, Text as SvgText } from 'react-native-svg';
 import { useHealth, RecoveryData, WeeklyTrainingLoad, STORAGE_PREFERRED_TRACKER, STORAGE_HK_SOURCES, STORAGE_LAST_SYNC, buildSourcePrefs } from '../hooks/useHealth';
+import { calcRecoveryScore, describeBasis } from '../utils/recoveryScore';
 import { useTheme, ThemeColors, spacing, radius, weight } from '../constants/theme';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -132,30 +133,15 @@ const EMPTY_RECOVERY_DATA: RecoveryData = {
 };
 
 // ─── Recovery Score ────────────────────────────────────────────────────────────
-function calcScore(data: RecoveryData): number | null {
-  let score = 0;
+// calcScore used to live here, where nothing could import it and so nothing
+// tested it — which is how a sleep step function shipped with a 17-point
+// cliff at exactly 5h. It now lives in utils/recoveryScore.ts with tests.
 
-  if (data.hrv !== null) {
-    const hrvScore = Math.min(40, Math.max(0, ((data.hrv - 20) / 80) * 40));
-    score += hrvScore;
-  }
-
-  if (data.restingHR !== null) {
-    const rhrScore = Math.min(30, Math.max(0, ((80 - data.restingHR) / 35) * 30));
-    score += rhrScore;
-  }
-
-  if (data.sleepHours !== null) {
-    let sleepScore = 0;
-    if (data.sleepHours >= 7 && data.sleepHours <= 8.5) sleepScore = 30;
-    else if (data.sleepHours >= 6) sleepScore = 20;
-    else if (data.sleepHours >= 5) sleepScore = 10;
-    score += sleepScore;
-  }
-
-  if (data.hrv === null && data.restingHR === null && data.sleepHours === null) return null;
-  const maxPossible = (data.hrv !== null ? 40 : 0) + (data.restingHR !== null ? 30 : 0) + (data.sleepHours !== null ? 30 : 0);
-  return Math.round((score / maxPossible) * 100);
+/** "2026-09-10" → "Sep 10". Parsed as a local date so it never shifts a day. */
+function fmtShortDate(localDate: string): string {
+  const [y, m, d] = String(localDate).split('-').map(Number);
+  if (!y || !m || !d) return localDate;
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function scoreColor(score: number | null, c: ThemeColors): string {
@@ -240,7 +226,7 @@ function WideChart({ data, color }: { data: { date: string; value: number }[]; c
 
 // ─── Stat Card ─────────────────────────────────────────────────────────────────
 function StatCard({
-  label, value, unit, sub, color, trendData, source,
+  label, value, unit, sub, color, trendData, source, emptyNote,
 }: {
   label: string;
   value: string | null;
@@ -249,6 +235,12 @@ function StatCard({
   color: string;
   trendData?: { date: string; value: number }[];
   source?: string;
+  /**
+   * Shown in place of "No data" when we know WHY the value is missing.
+   * `headline` is rendered small unless `headlineUnit` is set, in which case
+   * it is a real (but muted) reading — a last-known value, not a live one.
+   */
+  emptyNote?: { headline: string; headlineUnit?: string; detail: string };
 }) {
   const { colors } = useTheme();
   const sc = makeStatCardStyles(colors);
@@ -260,11 +252,24 @@ function StatCard({
           <Text style={[sc.value, { color }]}>{value}</Text>
           {unit && <Text style={sc.unit}>{unit}</Text>}
         </View>
+      ) : emptyNote ? (
+        emptyNote.headlineUnit ? (
+          <View style={sc.valueRow}>
+            <Text style={[sc.value, sc.valueStale]}>{emptyNote.headline}</Text>
+            <Text style={sc.unit}>{emptyNote.headlineUnit}</Text>
+          </View>
+        ) : (
+          <Text style={sc.noData}>{emptyNote.headline}</Text>
+        )
       ) : (
         <Text style={sc.noData}>No data</Text>
       )}
-      {sub && <Text style={sc.sub}>{sub}</Text>}
-      {source ? <Text style={sc.source}>from {source}</Text> : null}
+      {emptyNote ? (
+        <Text style={sc.sub}>{emptyNote.detail}</Text>
+      ) : (
+        sub ? <Text style={sc.sub}>{sub}</Text> : null
+      )}
+      {source && !emptyNote ? <Text style={sc.source}>from {source}</Text> : null}
       {trendData && trendData.length >= 2 && (
         <View style={{ marginTop: 8 }}>
           <MiniChart data={trendData} color={color} />
@@ -836,18 +841,63 @@ export default function RecoveryScreen({
         rhrTrend: whoopTrends?.rhrTrend.length ? whoopTrends.rhrTrend : [],
         sleepTrend: whoopTrends?.sleepTrend.length ? whoopTrends.sleepTrend : [],
         sources: { ...safeData.sources, hrv: 'Whoop', rhr: 'Whoop', sleep: 'Whoop' },
+        // hrvNote explains a gap in APPLE HEALTH's HRV. On this branch HRV
+        // comes from Whoop's API directly, so a HealthKit-derived note would
+        // be answering a question nobody asked — and the "not-shared" wording
+        // would be flatly wrong next to a Whoop-sourced card.
+        hrvNote: undefined,
       }
     : data;
   // While Whoop is connected but its score hasn't arrived yet (first load,
   // nothing cached), don't flash a HealthKit-derived score that will visibly
   // jump when Whoop lands a second later — hold the slot until it resolves.
   const whoopScorePending = whoopConnected && whoopData == null && wearableLoading;
+  // Whoop reports its own score on its own scale; ours is only computed when
+  // we are the ones doing the computing.
+  const computed = effectiveData ? calcRecoveryScore(effectiveData) : null;
+  const usingWhoopScore = whoopConnected && whoopData?.recoveryScore != null;
   const score = whoopScorePending
     ? null
-    : whoopConnected && whoopData?.recoveryScore != null
-      ? whoopData.recoveryScore
-      : (effectiveData ? calcScore(effectiveData) : null);
+    : usingWhoopScore
+      ? whoopData!.recoveryScore
+      : (computed?.score ?? null);
   const color = scoreColor(score, colors);
+  // A score built from two components is not the same measurement as one
+  // built from three, and rendering them identically invites an athlete to
+  // compare today against a day when HRV was still arriving. Say the basis
+  // whenever it is not the full three.
+  const scoreBasis = usingWhoopScore || score === null
+    ? null
+    : describeBasis(computed?.basis ?? []);
+
+  // "No data" used to render directly above a chart with three plotted points,
+  // because the headline reads 36h and the chart reads 7 days. Both true; the
+  // pair reads as a bug, and got filed as one. Say which it actually is.
+  const hrvEmptyNote = (() => {
+    const note = effectiveData?.hrvNote;
+    if (!note || effectiveData?.hrv != null) return undefined;
+    if (note.kind === 'stale') {
+      return {
+        headline: String(note.value),
+        headlineUnit: 'ms',
+        detail: `Last reading ${fmtShortDate(note.date)}`,
+      };
+    }
+    if (note.kind === 'not-shared') {
+      return {
+        headline: 'Not shared',
+        detail: `${note.source} doesn't send HRV to Apple Health`,
+      };
+    }
+    // Nothing for 7 days, no verified explanation. Name no tracker — an empty
+    // window is equally what a denied HRV permission looks like, and the old
+    // wording sent Apple Watch owners to their watch settings to fix a Fuelog
+    // permission. Point at the cause we can actually do something about.
+    return {
+      headline: 'No recent data',
+      detail: 'Nothing in 7 days — check HRV in Health permissions',
+    };
+  })();
 
   const fmtSleep = (h: number | null) => {
     if (h === null) return null;
@@ -1053,6 +1103,10 @@ export default function RecoveryScreen({
             </View>
           </View>
 
+          {scoreBasis && (
+            <Text style={s.scoreBasisText}>{scoreBasis}</Text>
+          )}
+
           {lastSyncMs && (
             <Text style={s.lastSyncText}>Updated {formatLastSync(lastSyncMs)}</Text>
           )}
@@ -1078,6 +1132,7 @@ export default function RecoveryScreen({
                   color="#a78bfa"
                   trendData={effectiveData.hrvTrend}
                   source={effectiveData.sources['hrv']}
+                  emptyNote={hrvEmptyNote}
                 />
               )}
               {isVisible('rhr') && (
@@ -1431,6 +1486,10 @@ function makeStatCardStyles(c: ThemeColors) {
     sub: { fontSize: 11, color: c.textTertiary, fontWeight: weight.medium, marginTop: 4 },
     source: { fontSize: 10, color: c.textTertiary, fontWeight: weight.medium, marginTop: 2 },
     noData: { fontSize: 14, color: c.textTertiary, fontWeight: weight.semibold, marginTop: 4 },
+    // A last-known reading is shown in the metric's own size so the chart it
+    // sits above still makes sense, but greyed so it is never mistaken for
+    // today's number.
+    valueStale: { color: c.textTertiary },
   });
 }
 
@@ -1508,6 +1567,7 @@ function makeStyles(c: ThemeColors) {
     scoreRight: { marginLeft: 16 },
     sourceNote: { fontSize: 11, color: c.textTertiary, fontWeight: weight.medium, textAlign: 'center', marginTop: -4 },
     lastSyncText: { fontSize: 11, color: c.textTertiary, fontWeight: weight.regular, textAlign: 'center', marginTop: 2, marginBottom: 4, opacity: 0.7 },
+    scoreBasisText: { fontSize: 11, color: c.textTertiary, fontWeight: weight.medium, textAlign: 'center', marginTop: 8 },
     row: { flexDirection: 'row', gap: 10 },
     cardTitle: { fontSize: 10, fontWeight: weight.bold, color: c.textTertiary, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4 },
     cardSource: { fontSize: 10, color: c.textTertiary, fontWeight: weight.medium },
