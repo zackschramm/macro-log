@@ -200,6 +200,12 @@ function stillSignedInAs(uid: string): boolean {
 // `onUpdate` is App's `setProfile` passed straight through MainTabs, so it
 // accepts React's functional form — persistChoice relies on that to merge
 // onto whatever App holds at resolve time rather than a stale snapshot.
+/**
+ * One-line kill switch for the Whoop connect row. See the filter below.
+ * Set to false and rebuild if the OAuth flow dead-ends.
+ */
+const WHOOP_CONNECT_ENABLED = true;
+
 export default function ProfileScreen({ profile, onUpdate }: { profile: any; onUpdate: (p: any | ((current: any) => any)) => void }) {
   const { user, signOut } = useAuth();
   const health = useHealth();
@@ -1475,7 +1481,7 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
                 rendered as a bare strip in the Me tab (device-test finding).
                 Rows exist only for already-connected grants; Apple Health is
                 the wearable path for everyone else. */}
-            {(connectedWearables.length > 0 || dexcomConnected || !DEXCOM_CLIENT_ID.startsWith('YOUR_')) && (<>
+            {(WHOOP_CONNECT_ENABLED || connectedWearables.length > 0 || dexcomConnected || !DEXCOM_CLIENT_ID.startsWith('YOUR_')) && (<>
             <Text style={s.sectionLabel}>WEARABLES</Text>
             <View style={s.formCard}>
               {/* Garmin is deliberately absent. garmin-proxy is written and
@@ -1493,10 +1499,20 @@ export default function ProfileScreen({ profile, onUpdate }: { profile: any; onU
                 { key: 'whoop' as Provider, label: 'Whoop' },
                 { key: 'oura' as Provider, label: 'Oura Ring' },
               ])
-                // API connects are OFF (back-burner, see Whoop saga Aug 2026):
-                // rows render only for grants that already exist, so those users
-                // keep a working Disconnect. Apple Health is the wearable path.
-                .filter(w => connectedWearables.includes(w.key))
+                // Whoop's connect is back ON: the Aug 2026 failure was a
+                // duplicate redirect URI registered on the Whoop app plus two
+                // emails on the account, not a broken integration — the proxy
+                // and RecoveryScreen's sole-source-of-truth branch were always
+                // written. Oura stays hidden: OURA_CLIENT_ID is still a
+                // placeholder, so its button could only dead-end, which is the
+                // same worse-than-no-button / Guideline 2.1 situation as the
+                // removed Garmin row.
+                //
+                // THIS IS UNVERIFIED END TO END. Flip WHOOP_CONNECT_ENABLED to
+                // false and rebuild if the connect dead-ends in TestFlight — a
+                // reviewer tapping a button that cannot succeed is a 2.1
+                // rejection, and no user has completed this flow yet.
+                .filter(w => (w.key === 'whoop' && WHOOP_CONNECT_ENABLED) || connectedWearables.includes(w.key))
                 .map((w, i) => {
                 const isConnected = connectedWearables.includes(w.key);
                 const isConnecting = wearableConnecting === w.key;
