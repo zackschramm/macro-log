@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  ActivityIndicator, Share, Alert,
+  ActivityIndicator, Share, Alert, TextInput, Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,9 +9,9 @@ import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { supabase } from '../constants/supabase';
 import { useAuth } from '../hooks/useAuth';
-import { hasPro } from '../constants/purchases';
 import { colors, weight, radius } from '../constants/theme';
 import { logError } from '../utils/logError';
+import { parseReferralInput } from '../utils/referral';
 
 interface Props {
   onBack: () => void;
@@ -39,6 +39,13 @@ export default function ReferralScreen({ onBack, profile }: Props) {
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [loadingReferrals, setLoadingReferrals] = useState(true);
   const [copied, setCopied] = useState(false);
+  // Entering a friend's code. There was no way to do this in 1.0 — the only
+  // path was a deep link, and the link the app shared was not the shape the
+  // app parsed. Most codes are passed on as text ("my code is ZACK1234"), so
+  // this is the path that actually gets used.
+  const [friendCode, setFriendCode] = useState('');
+  const [redeeming, setRedeeming] = useState(false);
+  const [referredBy, setReferredBy] = useState<string | null>(profile.referred_by ?? null);
 
   const ensureCode = useCallback(async () => {
     if (!user) return;
@@ -69,25 +76,67 @@ export default function ReferralScreen({ onBack, profile }: Props) {
     setLoadingReferrals(false);
   }, [user]);
 
-  const markConversions = useCallback(async () => {
-    if (!user) return;
-    const isPro = await hasPro();
-    if (isPro) {
-      // Update referral status if this user (the referee) has gone Pro
-      await supabase
-        .from('referrals')
-        .update({ status: 'converted', converted_at: new Date().toISOString() })
-        .eq('referee_id', user.id)
-        .eq('status', 'signed_up');
-      // TODO: Grant referrer 1 free month via RevenueCat promo/coupon API once configured
+  /**
+   * Redeem a code a friend gave you.
+   *
+   * All the rules — code exists, not your own, not already referred — are
+   * enforced by the redeem_referral RPC, because the client cannot be the
+   * authority on any of them. The old INSERT policy was `auth.uid() =
+   * referee_id` and nothing else, which permitted self-referral, unlimited
+   * referrers per account, and a client-chosen 'converted' status.
+   */
+  const redeemFriendCode = useCallback(async () => {
+    const parsed = parseReferralInput(friendCode);
+    if (!parsed) {
+      Alert.alert('Check the code', "That doesn't look like a referral code. It's letters and numbers, like ZACK1234 — you can also paste the whole link your friend sent.");
+      return;
     }
-  }, [user]);
+    if (parsed === code) {
+      Alert.alert('That\u2019s your code', 'You can\u2019t refer yourself. Share it with someone you train with instead.');
+      return;
+    }
+    Keyboard.dismiss();
+    setRedeeming(true);
+    try {
+      const { data, error } = await supabase.rpc('redeem_referral', { p_code: parsed });
+      if (error) throw error;
+      if (data?.ok) {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setReferredBy(data.code);
+        profile.referred_by = data.code;
+        setFriendCode('');
+        Alert.alert('Code applied', `You\u2019re down as referred by ${data.code}. Thanks for telling us who sent you.`);
+      } else {
+        // Say which rule was hit. A generic failure here is what makes people
+        // retype a perfectly good code five times.
+        const msg: Record<string, string> = {
+          unknown_code: "We don't have that code. Check it with your friend — codes are letters then numbers, like ZACK1234.",
+          self_referral: 'That is your own code. Share it with someone else instead.',
+          already_referred: `You're already down as referred by ${data?.code ?? 'another athlete'}. Only the first code counts.`,
+          invalid_code: "That doesn't look like a referral code.",
+          not_signed_in: 'Sign in first, then apply the code.',
+        };
+        Alert.alert('Could not apply that code', msg[data?.reason] ?? 'Please try again.');
+      }
+    } catch (e) {
+      logError('ReferralScreen.redeemFriendCode', e);
+      Alert.alert('Connection problem', 'Could not reach the server. Try again in a moment.');
+    } finally {
+      setRedeeming(false);
+    }
+  }, [friendCode, code, profile]);
 
   useEffect(() => {
     ensureCode();
     loadReferrals();
-    markConversions();
-  }, [ensureCode, loadReferrals, markConversions]);
+    // markConversions() used to run here: it asked hasPro() on the referee's
+    // own device and wrote status='converted' from the client. RLS silently
+    // refused it (there is no UPDATE policy on referrals), so status could
+    // never leave 'signed_up' — and had it worked, anyone could have minted
+    // the reward by claiming Pro. Conversion belongs to the RevenueCat
+    // webhook via mark_referral_converted(), which is the only thing that
+    // knows whether money changed hands. Tracked for the reward wiring.
+  }, [ensureCode, loadReferrals]);
 
   const shareLink = async () => {
     if (!code) return;
@@ -163,6 +212,52 @@ export default function ReferralScreen({ onBack, profile }: Props) {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* A friend's code. Hidden once used — only the first code counts, and
+            an input that can no longer do anything is worse than no input. */}
+        {referredBy ? (
+          <View style={s.friendCard}>
+            <Text style={s.sectionLabel}>REFERRED BY</Text>
+            <View style={s.referredRow}>
+              <Ionicons name="checkmark-circle" size={18} color={colors.accent} />
+              <Text style={s.referredCode}>{referredBy}</Text>
+            </View>
+            <Text style={s.friendHint}>Thanks for telling us who sent you.</Text>
+          </View>
+        ) : (
+          <View style={s.friendCard}>
+            <Text style={s.sectionLabel}>HAVE A FRIEND'S CODE?</Text>
+            <Text style={s.friendHint}>
+              Enter it below, or paste the whole link they sent you.
+            </Text>
+            <View style={s.friendRow}>
+              <TextInput
+                style={s.friendInput}
+                value={friendCode}
+                onChangeText={setFriendCode}
+                placeholder="ZACK1234"
+                placeholderTextColor={colors.textTertiary}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                spellCheck={false}
+                returnKeyType="done"
+                onSubmitEditing={redeemFriendCode}
+                editable={!redeeming}
+                maxLength={120}
+              />
+              <TouchableOpacity
+                style={[s.applyBtn, (!friendCode.trim() || redeeming) && s.applyBtnOff]}
+                onPress={redeemFriendCode}
+                activeOpacity={0.8}
+                disabled={!friendCode.trim() || redeeming}
+              >
+                {redeeming
+                  ? <ActivityIndicator color={colors.accentText} size="small" />
+                  : <Text style={s.applyBtnText}>Apply</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {/* Stats */}
         {!loadingReferrals && referrals.length > 0 && (
@@ -273,6 +368,26 @@ const s = StyleSheet.create({
 
   sectionLabel: { fontSize: 11, fontWeight: weight.semibold, color: colors.textSecondary, letterSpacing: 1.5, marginBottom: 14 },
 
+  friendCard: {
+    backgroundColor: colors.card, borderRadius: radius.card, padding: 18,
+    borderWidth: 1, borderColor: colors.border, marginBottom: 14,
+  },
+  friendHint: { fontSize: 13, color: colors.textTertiary, lineHeight: 19, marginTop: -6, marginBottom: 14 },
+  friendRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  friendInput: {
+    flex: 1, backgroundColor: colors.bg, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border,
+    paddingHorizontal: 14, paddingVertical: 13,
+    fontSize: 16, fontWeight: weight.semibold, color: colors.text, letterSpacing: 1,
+  },
+  applyBtn: {
+    backgroundColor: colors.accent, borderRadius: radius.md,
+    paddingHorizontal: 20, paddingVertical: 14, minWidth: 86, alignItems: 'center',
+  },
+  applyBtnOff: { opacity: 0.4 },
+  applyBtnText: { fontSize: 15, fontWeight: weight.bold, color: colors.accentText },
+  referredRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  referredCode: { fontSize: 18, fontWeight: weight.bold, color: colors.text, letterSpacing: 1.5 },
   statsCard: {
     backgroundColor: colors.card, borderRadius: radius.lg, padding: 20,
     borderWidth: 1, borderColor: colors.border,

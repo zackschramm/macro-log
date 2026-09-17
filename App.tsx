@@ -24,6 +24,7 @@ import {
 } from './utils/notifications';
 import { initErrorReporting, logError, setErrorUser } from './utils/logError';
 import { identify } from './utils/analytics';
+import { extractReferralCode } from './utils/referral';
 
 // Crash reporting first, so anything that blows up during the rest of module
 // init is captured. No-ops cleanly until a Sentry DSN is configured —
@@ -63,12 +64,11 @@ function isPasswordRecoveryUrl(url: string | null): boolean {
   return url.includes('reset-password');
 }
 
-// Extracts a referral code from fuelog://invite/CODE or https://fuelog.app/invite/CODE
-function extractInviteCode(url: string | null): string | null {
-  if (!url) return null;
-  const match = url.match(/invite\/([A-Z0-9]+)/i);
-  return match ? match[1].toUpperCase() : null;
-}
+// Referral parsing lives in utils/referral.ts and is tested there. This used
+// to be a local regex matching only `invite/CODE` while ReferralScreen shared
+// `?ref=CODE` — so no shared link was ever attributed. Both shapes now work,
+// permanently: links already sent by text outlive whichever form we prefer.
+const extractInviteCode = extractReferralCode;
 
 function AppContent() {
   const { session, loading } = useAuth();
@@ -180,26 +180,30 @@ function AppContent() {
           setProfile(data ?? null);
           setProfileLoading(false);
 
-          // Link this user as a referee if they signed up via a referral invite
+          // Link this user as a referee if they arrived via a referral link.
+          //
+          // This was a client-side lookup plus two client writes, under an
+          // INSERT policy of `auth.uid() = referee_id` and nothing else — so
+          // it also permitted self-referral, any number of referrers for one
+          // account, and a status the client chose. It is now one RPC that
+          // enforces all of that server-side (20260917_referral_redemption).
           if (data && !data.referred_by) {
             const pendingCode = await AsyncStorage.getItem('fuelog_pending_referral_code');
             if (pendingCode) {
-              const { data: referrer } = await supabase
-                .from('profiles')
-                .select('id')
-                .eq('referral_code', pendingCode)
-                .single();
-              if (referrer && referrer.id !== session.user.id) {
-                await supabase.from('referrals').insert({
-                  referrer_id: referrer.id,
-                  referee_id: session.user.id,
-                  referral_code: pendingCode,
-                  status: 'signed_up',
-                  signed_up_at: new Date().toISOString(),
-                });
-                await supabase.from('profiles').update({ referred_by: pendingCode }).eq('id', session.user.id);
+              try {
+                const { data: result } = await supabase.rpc('redeem_referral', { p_code: pendingCode });
+                if (result?.ok) {
+                  // Keep local state in step so the Me tab does not offer the
+                  // code field to someone who has just used one.
+                  setProfile((cur: any) => (cur ? { ...cur, referred_by: result.code } : cur));
+                }
+                // Clear on any definitive answer. Retrying an unknown code or
+                // a self-referral forever is noise; a network failure throws
+                // and keeps the code for the next launch.
+                await AsyncStorage.removeItem('fuelog_pending_referral_code');
+              } catch (e) {
+                logError('App.redeemReferral', e);
               }
-              await AsyncStorage.removeItem('fuelog_pending_referral_code');
             }
           }
         });
