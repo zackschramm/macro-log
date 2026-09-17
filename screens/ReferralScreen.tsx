@@ -181,11 +181,18 @@ export default function ReferralScreen({ onBack, profile }: Props) {
         {/* Hero */}
         <View style={s.heroCard}>
           <Ionicons name="gift-outline" size={44} color={colors.textTertiary} />
-          {/* No reward promise until the grant is actually wired to RevenueCat —
-              status can never leave 'pending' today, so promising "1 month
-              free" next to a live paywall is bait we can't honor yet. */}
+          {/* The reward IS wired now: revenuecat-webhook grants a stacking
+              month of Pro on a referee's first PAID renewal, not on a trial
+              start. Two things must be true in production before this copy is
+              honest — the webhook deployed, and REVENUECAT_SECRET_KEY set. If
+              either is missing the conversion is still recorded and the grant
+              is skipped with a log line, so revert this string rather than
+              leaving a promise the server cannot keep. */}
           <Text style={s.heroTitle}>Invite your training partners</Text>
-          <Text style={s.heroSub}>Share your code with athletes you train with. Referral rewards are coming soon.</Text>
+          <Text style={s.heroSub}>
+            When someone you refer subscribes, you get a free month of Pro. Months stack —
+            refer three athletes who subscribe and you get three.
+          </Text>
         </View>
 
         {/* Code display */}
